@@ -1837,15 +1837,6 @@ elif st.session_state.screen == "menu":
         f"### 🪙 {profile.get('coins', 0)}　💎 {profile.get('smelting_stones', 0)}"
     )
     render_avatar_editor(profile)
-    economy_a, economy_b, economy_space = st.columns([1, 1, 4])
-    if economy_a.button("🏪 商店兌換", use_container_width=True):
-        st.session_state.economy_tab = "shop"
-        st.session_state.screen = "economy"
-        st.rerun()
-    if economy_b.button("🔥 裝備融煉", use_container_width=True):
-        st.session_state.economy_tab = "forge"
-        st.session_state.screen = "economy"
-        st.rerun()
     render_stats(profile)
     chapter_id = st.selectbox(
         "選擇章節",
@@ -1881,6 +1872,15 @@ elif st.session_state.screen == "menu":
         st.rerun()
     if rank_col.button("🏆 查看排行榜", use_container_width=True):
         st.session_state.screen = "rankings"
+        st.rerun()
+    economy_a, economy_b, economy_space_1, economy_space_2 = st.columns(4)
+    if economy_a.button("🏪 商店兌換", use_container_width=True):
+        st.session_state.economy_tab = "shop"
+        st.session_state.screen = "economy"
+        st.rerun()
+    if economy_b.button("🔥 裝備融煉", use_container_width=True):
+        st.session_state.economy_tab = "forge"
+        st.session_state.screen = "economy"
         st.rerun()
     if chapter_id == "1":
         boss_unlocked = all(profile["unit_best_stars"][uid] == 3 for uid in chapter_unit_ids("1"))
