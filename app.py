@@ -30,6 +30,24 @@ except ImportError:
 
 st.set_page_config(page_title="數學冒險", page_icon="⚔️", layout="wide")
 
+# Streamlit新版會把上一頁的頁籤列暫時黏在畫面上方，切換到商店等頁面時
+# 可能看見「目前裝備／背包／圖鑑收集」殘留；取消頁籤列的 sticky 定位。
+st.markdown(
+    """
+    <style>
+    div[data-baseweb="tab-list"],
+    div[data-testid="stTabs"] div[role="tablist"] {
+        position: static !important;
+        top: auto !important;
+    }
+    div[data-testid="stTabs"] {
+        position: static !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 MAX_QUESTIONS = 20
 BOSS_CONFIGS = {
     "1_normal": {"name": "負數魔獸", "hp": 600, "damage": 30, "interval": 3.0, "exp": 100},
@@ -176,12 +194,12 @@ AFFIX_NAMES = {
     "speed_pct": "攻擊速度",
     "hp_pct": "HP",
     "defense_pct": "防禦力",
-    "boss_damage_pct": "對BOSS傷害",
+    "boss_damage_pct": "對菁英BOSS傷害",
     "damage_reduction_pct": "受到傷害降低",
     "critical_rate": "暴擊率",
     "critical_damage": "暴擊傷害",
     "shield_pct": "開場護盾",
-    "boss_attack_slow_pct": "BOSS攻擊速度降低",
+    "boss_attack_slow_pct": "菁英BOSS攻擊速度降低",
 }
 AFFIX_VALUES = {
     "default": {1: [0.05, 0.10], 2: [0.05, 0.10, 0.15], 3: [0.10, 0.15, 0.20]},
@@ -235,6 +253,14 @@ DEFAULT_STATE = {
     "shop_purchase_uid": None,
     "forge_result_uid": None,
     "economy_tab": "shop",
+    "economy_mode": "shop",
+    "scroll_economy_to_top": False,
+    "scroll_inventory_to_top": False,
+    "scroll_ranking_to_top": False,
+    "scroll_boss_to_top": False,
+    "sweep_result_uid": None,
+    "inventory_default_tab": "目前裝備",
+    "inventory_tab_version": 0,
 }
 
 for key, value in DEFAULT_STATE.items():
@@ -461,8 +487,16 @@ def new_profile(name):
         "slot_smelting_stones": 0,
         "basic_affix_smelting_stones": 0,
         "advanced_affix_smelting_stones": 0,
+        "sweep_tickets": 0,
+        "ticket_rewarded_units": [],
+        "titles": [],
+        "equipped_title": None,
+        "retro_reward_notice": [],
+        "daily_login_period": None,
+        "daily_login_claimed": False,
         "shop": {"generated_at": None, "items": []},
         "inventory": [],
+        "collection_catalog": [],
         "equipment": {slot: None for slot in SLOT_NAMES},
         "unit_best_stars": {unit_id: 0 for unit_id in UNITS},
         "chapter_reward_claimed": False,
@@ -500,6 +534,34 @@ def normalize_profile(profile, name):
         profile["equipment"].setdefault(slot, None)
     for unit_id in UNITS:
         profile["unit_best_stars"].setdefault(unit_id, 0)
+    # 圖鑑記錄「曾經取得」，即使日後分解、融煉或販售也不會倒退。
+    catalog = set(profile.get("collection_catalog", []))
+    for item in profile["inventory"]:
+        if not item.get("achievement"):
+            chapter_id = item_chapter_id(item)
+            if chapter_id:
+                catalog.add(f"{chapter_id}:{item.get('stars', 0)}:{item['slot']}")
+    profile["collection_catalog"] = sorted(catalog)
+    # 依歷史通關資料補發每個單元一張擊殺券。
+    rewarded_units = set(profile.get("ticket_rewarded_units", []))
+    passed_units = {
+        unit_id for unit_id, stars in profile["unit_best_stars"].items() if stars > 0
+    }
+    missing_units = sorted(passed_units - rewarded_units)
+    if missing_units:
+        profile["sweep_tickets"] += len(missing_units)
+        profile["ticket_rewarded_units"] = sorted(rewarded_units | set(missing_units))
+        profile["retro_reward_notice"].append(
+            f"依歷史通關紀錄補發 {len(missing_units)} 張擊殺券"
+        )
+    title_rewards = [
+        ("elite_boss_wins", "好像有點勇哦"),
+        ("chapter2_elite_boss_wins", "別小看我！"),
+    ]
+    for wins_key, title in title_rewards:
+        if profile.get(wins_key, 0) > 0 and title not in profile["titles"]:
+            profile["titles"].append(title)
+            profile["retro_reward_notice"].append(f"補發成就稱號「{title}」")
     return profile
 
 
@@ -602,7 +664,9 @@ def get_profile():
         st.session_state.active_player = None
         st.session_state.screen = "login"
         st.rerun()
-    profile = normalize_profile(json.loads(row["profile_json"]), row["hero_name"])
+    raw_profile = json.loads(row["profile_json"])
+    profile = normalize_profile(raw_profile, row["hero_name"])
+    normalized_changed = profile != raw_profile
     if profile.get("collection_reward_claimed") and not achievement_item(profile, "chapter-1-collection"):
         profile["inventory"].append(make_collection_reward())
         profile["collection_item_claimed"] = True
@@ -617,7 +681,7 @@ def get_profile():
         ("chapter-2-elite", make_chapter2_elite_reward),
     ):
         migrated = sync_achievement_item(profile, unit_key, maker) or migrated
-    if migrated:
+    if migrated or normalized_changed:
         save_profile(profile)
     return profile
 
@@ -722,8 +786,11 @@ def ranking_rows(boss_type="normal", chapter_id="1", include_private_identity=Fa
     result = []
     for row in rows:
         profile = json.loads(row["profile_json"])
+        public_name = row["玩家"]
+        if profile.get("equipped_title"):
+            public_name = f"「{profile['equipped_title']}」{public_name}"
         ranking_row = {
-            "頭像": profile.get("avatar_data"), "玩家": row["玩家"], "等級": row["等級"],
+            "頭像": profile.get("avatar_data"), "玩家": public_name, "等級": row["等級"],
             "通關秒數": row["通關秒數"], "日期": taipei_time_text(row["日期"]),
         }
         if include_private_identity:
@@ -805,6 +872,30 @@ def add_exp(profile, amount):
         profile["level"] += 1
         gained += 1
     return gained
+
+
+def current_daily_period():
+    now = datetime.now(TAIPEI_TZ)
+    if now.hour < 8:
+        now -= timedelta(days=1)
+    return now.strftime("%Y-%m-%d")
+
+
+def sync_daily_tasks(profile):
+    period = current_daily_period()
+    if profile.get("daily_login_period") != period:
+        profile["daily_login_period"] = period
+        profile["daily_login_claimed"] = False
+        return True
+    return False
+
+
+def award_unit_ticket(profile, unit_id):
+    if unit_id not in profile["ticket_rewarded_units"]:
+        profile["ticket_rewarded_units"].append(unit_id)
+        profile["sweep_tickets"] += 1
+        return True
+    return False
 
 
 def item_signature(item):
@@ -923,9 +1014,8 @@ def remove_inventory_items(profile, uids):
     profile["inventory"] = [item for item in profile["inventory"] if item["uid"] not in uid_set]
 
 
-def make_forged_item(profile, source_stars, selected_slot=None, selected_affix=None):
+def make_forged_item(profile, source_stars, chapter_id, selected_slot=None, selected_affix=None):
     target_stars = source_stars + 1
-    chapter_id = highest_shop_chapter(profile)
     if selected_slot:
         unit_id = next(
             uid for uid in chapter_unit_ids(chapter_id)
@@ -1028,11 +1118,17 @@ def item_chapter_id(item):
 
 
 def collected_three_star_slots(profile, chapter_id="1"):
-    return {
+    prefix = f"{chapter_id}:3:"
+    recorded = {
+        entry[len(prefix):] for entry in profile.get("collection_catalog", [])
+        if entry.startswith(prefix)
+    }
+    currently_owned = {
         item["slot"] for item in profile["inventory"]
-        if item["stars"] == 3 and not item.get("achievement")
+        if item.get("stars") == 3 and not item.get("achievement")
         and item_chapter_id(item) == chapter_id
     }
+    return recorded | currently_owned
 
 
 def has_full_three_star_set(profile, chapter_id="1"):
@@ -1078,8 +1174,8 @@ def sync_achievement_item(profile, unit_key, maker):
 def fixed_text(item):
     names = {
         "hp": "HP", "attack": "攻擊力", "defense": "防禦力",
-        "attack_speed": "攻擊速度", "boss_hp_reduction": "BOSS初始血量降低",
-        "first_hit_percent": "第一擊額外扣血",
+        "attack_speed": "攻擊速度", "boss_hp_reduction": "菁英BOSS初始血量降低",
+        "first_hit_percent": "第一擊額外扣除菁英BOSS血量",
     }
     value = item["fixed_value"]
     if item["fixed_stat"] in ("boss_hp_reduction", "first_hit_percent"):
@@ -1102,11 +1198,45 @@ def item_text(item):
 def render_item_comparison(profile, new_item):
     current = find_item(profile, profile["equipment"].get(new_item["slot"]))
     left, right = st.columns(2)
-    left.info(f"**新取得**\n\n{item_text(new_item)}")
+    left.info(f"**準備更換**\n\n{item_text(new_item)}")
     if current:
         right.warning(f"**目前穿戴**\n\n{item_text(current)}")
     else:
         right.success(f"**目前穿戴**\n\n{SLOT_ICONS[new_item['slot']]} {SLOT_NAMES[new_item['slot']]}尚未裝備")
+    before = player_stats(profile)
+    preview = json.loads(json.dumps(profile, ensure_ascii=False))
+    preview["equipment"][new_item["slot"]] = new_item["uid"]
+    after = player_stats(preview)
+    stat_specs = [
+        ("HP", "hp", "number"), ("攻擊", "attack", "number"),
+        ("防禦", "defense", "number"), ("攻速／秒", "attack_speed", "speed"),
+        ("菁英BOSS初始血量降低", "boss_hp_reduction", "percent"),
+        ("第一擊額外扣除菁英BOSS血量", "first_hit_percent", "percent"),
+        ("對菁英BOSS傷害", "boss_damage_pct", "percent"),
+        ("受到傷害降低", "damage_reduction_pct", "percent"),
+        ("暴擊率", "critical_rate", "percent"),
+        ("暴擊傷害", "critical_damage", "percent"),
+        ("開場護盾", "shield_pct", "percent"),
+        ("菁英BOSS攻速降低", "boss_attack_slow_pct", "percent"),
+    ]
+
+    def display_value(value, kind, signed=False):
+        if kind == "percent":
+            return f"{value:+.0%}" if signed else f"{value:.0%}"
+        digits = 2 if kind == "speed" else 1
+        return f"{value:+.{digits}f}" if signed else f"{value:.{digits}f}"
+
+    comparison_rows = []
+    for label, key, kind in stat_specs:
+        difference = after[key] - before[key]
+        comparison_rows.append({
+            "人物能力": label,
+            "目前": display_value(before[key], kind),
+            "更換後": display_value(after[key], kind),
+            "增減": ("—" if abs(difference) < 1e-9 else display_value(difference, kind, signed=True)),
+        })
+    st.write("**人物完整能力前後對照**")
+    st.dataframe(comparison_rows, hide_index=True, use_container_width=True)
 
 
 def equipped_items(profile):
@@ -1220,10 +1350,38 @@ def focus_answer_input():
     )
 
 
+def scroll_page_to_top(state_key):
+    """只在剛切換頁面時，把 Streamlit 主畫面可靠地捲到頂端。"""
+    if not st.session_state.get(state_key):
+        return
+    components.html(
+        """
+        <script>
+        const scrollTop = () => {
+            const doc = parent.window.document;
+            const main = doc.querySelector('.stMain')
+                || doc.querySelector('[data-testid="stMain"]')
+                || doc.querySelector('[data-testid="stAppViewContainer"]');
+            if (main) main.scrollTo({top: 0, left: 0, behavior: 'auto'});
+            doc.documentElement.scrollTop = 0;
+            doc.body.scrollTop = 0;
+            parent.window.scrollTo(0, 0);
+            if (window.frameElement) {
+                window.frameElement.scrollIntoView({block: 'start', behavior: 'auto'});
+            }
+        };
+        [0, 50, 150, 300, 600].forEach(delay => setTimeout(scrollTop, delay));
+        </script>
+        """,
+        height=0,
+    )
+    st.session_state[state_key] = False
+
+
 def stars_for_combo(combo):
-    if combo > 10:
+    if combo >= 10:
         return 3
-    if combo >= 6:
+    if combo >= 5:
         return 2
     if combo >= 1:
         return 1
@@ -1294,7 +1452,7 @@ def submit_quiz_answer():
         "answered_at": database_timestamp(),
     })
     st.session_state.answer_input = None
-    if st.session_state.max_combo > 10 or st.session_state.attempts >= MAX_QUESTIONS:
+    if st.session_state.max_combo >= 10 or st.session_state.attempts >= MAX_QUESTIONS:
         finish_quiz()
     else:
         st.session_state.question = make_question(st.session_state.selected_unit)
@@ -1312,6 +1470,8 @@ def process_rewards():
     if levels_gained:
         st.session_state.level_up_to = profile["level"]
     profile["unit_best_stars"][unit_id] = new_best
+    if old_best == 0 and new_best > 0 and award_unit_ticket(profile, unit_id):
+        st.session_state.extra_reward_messages.append("首次通過新單元，獲得1張擊殺券！")
     item = make_random_item(profile, unit_id, st.session_state.stars)
     if item:
         profile["inventory"].append(item)
@@ -1364,11 +1524,15 @@ def process_rewards():
 def simulate_battle(stats, boss_type="normal"):
     chapter_id = st.session_state.selected_chapter
     config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
-    boss_max = config["hp"] * (1 - stats["boss_hp_reduction"])
+    elite_boss_reduction = stats["boss_hp_reduction"] if boss_type == "elite" else 0.0
+    elite_boss_damage = stats["boss_damage_pct"] if boss_type == "elite" else 0.0
+    elite_boss_slow = stats["boss_attack_slow_pct"] if boss_type == "elite" else 0.0
+    elite_first_hit = stats["first_hit_percent"] if boss_type == "elite" else 0.0
+    boss_max = config["hp"] * (1 - elite_boss_reduction)
     boss_hp = boss_max
     player_hp = stats["hp"] * (1 + stats["shield_pct"])
     hero_interval = 1 / stats["attack_speed"]
-    boss_interval = config["interval"] * (1 + stats["boss_attack_slow_pct"])
+    boss_interval = config["interval"] * (1 + elite_boss_slow)
     received = (
         config["damage"] * 100 / (100 + stats["defense"])
         * (1 - stats["damage_reduction_pct"])
@@ -1382,10 +1546,10 @@ def simulate_battle(stats, boss_type="normal"):
             now = next_hero
             hero_hits += 1
             is_critical = bool(critical_every and hero_hits % critical_every == 0)
-            normal_damage = stats["attack"] * (1 + stats["boss_damage_pct"])
+            normal_damage = stats["attack"] * (1 + elite_boss_damage)
             if is_critical:
                 normal_damage *= 1.5 + stats["critical_damage"]
-            damage = normal_damage + (boss_max * stats["first_hit_percent"] if hero_hits == 1 else 0)
+            damage = normal_damage + (boss_max * elite_first_hit if hero_hits == 1 else 0)
             boss_hp = max(0.0, boss_hp - damage)
             critical_text = "，暴擊！" if is_critical else ""
             events.append({"time": now, "boss_hp": boss_hp, "player_hp": player_hp, "text": f"勇者第{hero_hits}擊{critical_text}造成{damage:.1f}傷害"})
@@ -1434,6 +1598,11 @@ def finish_battle(result):
             profile["inventory"].append(reward)
             profile[reward_claimed_key] = True
             reward_item_uid = reward["uid"]
+        if boss_type == "elite":
+            earned_title = "好像有點勇哦" if chapter_id == "1" else "別小看我！"
+            if earned_title not in profile["titles"]:
+                profile["titles"].append(earned_title)
+                result["earned_title"] = earned_title
         save_best_ranking(profile, result["duration"], boss_type, chapter_id)
     save_profile(profile)
     result["exp_gain"] = exp_gain
@@ -1486,19 +1655,25 @@ def render_stats(profile):
         help=formula_help("attack_speed", "speed_pct", stats["attack_speed"], "/秒"),
     )
     special_effects = [
-        ("對BOSS傷害", stats["boss_damage_pct"]),
+        ("菁英BOSS初始血量降低", stats["boss_hp_reduction"]),
+        ("第一擊額外扣除菁英BOSS血量", stats["first_hit_percent"]),
+        ("對菁英BOSS傷害", stats["boss_damage_pct"]),
         ("傷害減免", stats["damage_reduction_pct"]),
         ("暴擊率", stats["critical_rate"]),
         ("暴擊傷害", stats["critical_damage"]),
         ("開場護盾", stats["shield_pct"]),
-        ("BOSS攻速降低", stats["boss_attack_slow_pct"]),
+        ("菁英BOSS攻速降低", stats["boss_attack_slow_pct"]),
     ]
     active_effects = [f"{name} +{value:.0%}" for name, value in special_effects if value]
     if active_effects:
-        st.caption("特殊附屬能力：" + "｜".join(active_effects))
+        st.caption("附屬能力：" + "｜".join(active_effects))
+    else:
+        st.caption("附屬能力：目前無")
     if stats["critical_rate"]:
         critical_every = round(1 / stats["critical_rate"])
         st.caption(f"排行榜採固定暴擊：目前每第 {critical_every} 擊必定暴擊，不使用隨機判定。")
+    elif stats["critical_damage"]:
+        st.caption("目前暴擊率為0%，因此暴擊傷害詞條暫時不會生效；需要先取得暴擊率。")
     if profile["level"] < 20:
         st.progress(profile["exp"] / (profile["level"] * 100))
         st.caption(f"EXP：{profile['exp']} / {profile['level'] * 100}")
@@ -1690,14 +1865,14 @@ elif st.session_state.screen == "admin_panel":
                 stat_cols[4].metric("防禦", f"{detail_stats['defense']:.1f}")
                 stat_cols[5].metric("攻速", f"{detail_stats['attack_speed']:.2f}/秒")
                 special_stats = [
-                    ("BOSS初始血量降低", detail_stats["boss_hp_reduction"]),
-                    ("第一擊額外扣血", detail_stats["first_hit_percent"]),
-                    ("對BOSS傷害", detail_stats["boss_damage_pct"]),
+                    ("菁英BOSS初始血量降低", detail_stats["boss_hp_reduction"]),
+                    ("第一擊額外扣除菁英BOSS血量", detail_stats["first_hit_percent"]),
+                    ("對菁英BOSS傷害", detail_stats["boss_damage_pct"]),
                     ("傷害減免", detail_stats["damage_reduction_pct"]),
                     ("暴擊率", detail_stats["critical_rate"]),
                     ("暴擊傷害", detail_stats["critical_damage"]),
                     ("開場護盾", detail_stats["shield_pct"]),
-                    ("BOSS攻速降低", detail_stats["boss_attack_slow_pct"]),
+                    ("菁英BOSS攻速降低", detail_stats["boss_attack_slow_pct"]),
                 ]
                 active_specials = [f"{name} {value:.0%}" for name, value in special_stats if value]
                 st.caption("特殊能力：" + ("｜".join(active_specials) if active_specials else "目前無"))
@@ -1707,6 +1882,11 @@ elif st.session_state.screen == "admin_panel":
                     f"部位石：{detail_profile.get('slot_smelting_stones', 0)}｜"
                     f"基礎詞條石：{detail_profile.get('basic_affix_smelting_stones', 0)}｜"
                     f"進階詞條石：{detail_profile.get('advanced_affix_smelting_stones', 0)}"
+                )
+                st.caption(
+                    f"🎫 擊殺券：{detail_profile.get('sweep_tickets', 0)}｜"
+                    f"目前稱號：{detail_profile.get('equipped_title') or '未佩戴'}｜"
+                    f"已解鎖稱號：{'、'.join(detail_profile.get('titles', [])) or '無'}"
                 )
 
                 st.write("### 學習與通關進度")
@@ -1787,13 +1967,13 @@ elif st.session_state.screen == "admin_panel":
             st.info("目前尚未建立學生帳號。")
     with progress_tab:
         rows = ranking_rows("normal", include_private_identity=True)
-        st.write("### 一般BOSS最佳排名")
+        st.write("### 第一章一般BOSS最佳排名")
         if rows:
             render_ranking(rows)
         else:
             st.info("目前尚無BOSS通關紀錄。")
         elite_rows = ranking_rows("elite", include_private_identity=True)
-        st.write("### 菁英BOSS最佳排名")
+        st.write("### 第一章菁英BOSS最佳排名")
         if elite_rows:
             render_ranking(elite_rows)
         else:
@@ -1831,8 +2011,15 @@ elif st.session_state.screen == "admin_panel":
 
 elif st.session_state.screen == "menu":
     profile = get_profile()
+    if sync_daily_tasks(profile):
+        save_profile(profile)
+    if profile.get("retro_reward_notice"):
+        st.success("🎁 補發獎勵：" + "；".join(profile["retro_reward_notice"]) + "。可到背包的消耗道具與成就稱號查看。")
+        profile["retro_reward_notice"] = []
+        save_profile(profile)
     name_col, money_col = st.columns([4, 2])
-    name_col.subheader(f"🧙 {profile['name']}")
+    title_prefix = f"「{profile['equipped_title']}」" if profile.get("equipped_title") else ""
+    name_col.subheader(f"🧙 {title_prefix}{profile['name']}")
     money_col.markdown(
         f"### 🪙 {profile.get('coins', 0)}　💎 {profile.get('smelting_stones', 0)}"
     )
@@ -1855,7 +2042,7 @@ elif st.session_state.screen == "menu":
     for unit_id in current_unit_ids:
         unit = UNITS[unit_id]
         unlocked = unit_unlocked(profile, unit_id)
-        cols = st.columns([1, 4, 2])
+        cols = st.columns([1, 4, 1, 1])
         cols[0].write(f"### {unit_id}")
         cols[1].write(f"**{unit['name']}**｜{unit['description']}  \n掉落：{'、'.join(SLOT_NAMES[s] for s in unit['slots'])}")
         stars = profile["unit_best_stars"][unit_id]
@@ -1863,34 +2050,62 @@ elif st.session_state.screen == "menu":
             if cols[2].button(f"{'⭐' * stars or '未通關'}｜開始", key=f"start_{unit_id}", use_container_width=True):
                 start_quiz(unit_id)
                 st.rerun()
+            if cols[3].button(
+                f"🎫 擊殺券 ×{profile['sweep_tickets']}", key=f"sweep_{unit_id}",
+                disabled=stars <= 0 or profile["sweep_tickets"] <= 0, use_container_width=True,
+                help="直接依本單元最高星級取得一次裝備，不獲得經驗值。",
+            ):
+                item = make_random_item(profile, unit_id, stars)
+                profile["sweep_tickets"] -= 1
+                if item:
+                    profile["inventory"].append(item)
+                    st.session_state.sweep_result_uid = item["uid"]
+                else:
+                    st.session_state.sweep_result_uid = "none"
+                save_profile(profile)
+                st.session_state.screen = "sweep_result"
+                st.rerun()
         else:
             cols[2].button("🔒 尚未解鎖", disabled=True, key=f"locked_{unit_id}", use_container_width=True)
+            cols[3].button("🎫 尚未通關", disabled=True, key=f"sweep_locked_{unit_id}", use_container_width=True)
     st.divider()
     a, rank_col, b, c = st.columns(4)
     if a.button("🎒 裝備與物品欄", use_container_width=True):
+        st.session_state.scroll_inventory_to_top = True
         st.session_state.screen = "inventory"
         st.rerun()
     if rank_col.button("🏆 查看排行榜", use_container_width=True):
+        st.session_state.scroll_ranking_to_top = True
         st.session_state.screen = "rankings"
         st.rerun()
-    economy_a, economy_b, economy_space_1, economy_space_2 = st.columns(4)
+    economy_a, economy_b, task_col, economy_space = st.columns(4)
     if economy_a.button("🏪 商店兌換", use_container_width=True):
         st.session_state.economy_tab = "shop"
+        st.session_state.economy_mode = "shop"
+        st.session_state.scroll_economy_to_top = True
         st.session_state.screen = "economy"
         st.rerun()
     if economy_b.button("🔥 裝備融煉", use_container_width=True):
         st.session_state.economy_tab = "forge"
+        st.session_state.economy_mode = "forge"
+        st.session_state.scroll_economy_to_top = True
         st.session_state.screen = "economy"
+        st.rerun()
+    task_label = "🔴 📋 每日任務" if not profile.get("daily_login_claimed") else "📋 每日任務"
+    if task_col.button(task_label, use_container_width=True):
+        st.session_state.screen = "daily_tasks"
         st.rerun()
     if chapter_id == "1":
         boss_unlocked = all(profile["unit_best_stars"][uid] == 3 for uid in chapter_unit_ids("1"))
         if b.button("🐉 挑戰一般BOSS", disabled=not boss_unlocked, use_container_width=True):
             st.session_state.selected_boss_type = "normal"
+            st.session_state.scroll_boss_to_top = True
             st.session_state.screen = "boss_ready"
             st.rerun()
         elite_unlocked = profile.get("boss_wins", 0) > 0
         if c.button("🐲 挑戰菁英BOSS", disabled=not elite_unlocked, use_container_width=True):
             st.session_state.selected_boss_type = "elite"
+            st.session_state.scroll_boss_to_top = True
             st.session_state.screen = "boss_ready"
             st.rerun()
         if not boss_unlocked:
@@ -1900,18 +2115,20 @@ elif st.session_state.screen == "menu":
         if profile["chapter_reward_claimed"]:
             st.success("第一章滿星成就已完成：★★★★ 整數勇者之劍｜固定：攻擊力 +8｜詞條：攻擊力 +25%")
         if profile["collection_reward_claimed"]:
-            st.success("三星全裝收藏家已完成：100 EXP＋★★★★ 九星守護項鍊｜BOSS血量降低13%｜HP +25%")
+            st.success("三星全裝收藏家已完成：100 EXP＋★★★★ 九星守護項鍊｜菁英BOSS血量降低13%｜HP +25%")
         if profile["elite_reward_claimed"]:
             st.success("菁英征服成就已完成：★★★★ 收藏家王冠｜固定：HP +25｜詞條：防禦力 +25%")
     else:
         boss_unlocked = all(profile["unit_best_stars"][uid] == 3 for uid in chapter_unit_ids("2"))
         if b.button("🐉 挑戰一般BOSS", disabled=not boss_unlocked, use_container_width=True):
             st.session_state.selected_boss_type = "normal"
+            st.session_state.scroll_boss_to_top = True
             st.session_state.screen = "boss_ready"
             st.rerun()
         elite_unlocked = profile.get("chapter2_boss_wins", 0) > 0
         if c.button("🐲 挑戰菁英BOSS", disabled=not elite_unlocked, use_container_width=True):
             st.session_state.selected_boss_type = "elite"
+            st.session_state.scroll_boss_to_top = True
             st.session_state.screen = "boss_ready"
             st.rerun()
         if not boss_unlocked:
@@ -1934,7 +2151,53 @@ elif st.session_state.screen == "menu":
         st.session_state.screen = "login"
         st.rerun()
 
+elif st.session_state.screen == "sweep_result":
+    profile = get_profile()
+    st.subheader("🎫 擊殺券快速通關")
+    item = find_item(profile, st.session_state.sweep_result_uid)
+    if item:
+        st.success("快速通關完成！本次不獲得經驗值，裝備已放入背包。")
+        render_item_comparison(profile, item)
+        equip_col, keep_col = st.columns(2)
+        if equip_col.button("立即裝備", type="primary", use_container_width=True):
+            profile["equipment"][item["slot"]] = item["uid"]
+            save_profile(profile)
+            st.session_state.sweep_result_uid = None
+            st.session_state.screen = "menu"
+            st.rerun()
+        if keep_col.button("放入背包並返回章節", use_container_width=True):
+            st.session_state.sweep_result_uid = None
+            st.session_state.screen = "menu"
+            st.rerun()
+    else:
+        st.info("此單元目前沒有新的詞條組合，但擊殺券已完成一次快速練習結算。")
+        if st.button("返回章節", use_container_width=True):
+            st.session_state.sweep_result_uid = None
+            st.session_state.screen = "menu"
+            st.rerun()
+
+elif st.session_state.screen == "daily_tasks":
+    profile = get_profile()
+    if sync_daily_tasks(profile):
+        save_profile(profile)
+    title_col, back_col = st.columns([4, 1])
+    title_col.subheader("📋 每日任務")
+    if back_col.button("返回章節", use_container_width=True):
+        st.session_state.screen = "menu"
+        st.rerun()
+    st.caption("每日任務於台灣時間上午8:00重置。")
+    task_left, task_right = st.columns([3, 2])
+    task_left.write("**每日登入一次**")
+    if profile.get("daily_login_claimed"):
+        task_right.success("✅ 已領取：200金幣")
+    elif task_right.button("領取200金幣", type="primary", use_container_width=True):
+        profile["coins"] += 200
+        profile["daily_login_claimed"] = True
+        save_profile(profile)
+        st.rerun()
+
 elif st.session_state.screen == "rankings":
+    scroll_page_to_top("scroll_ranking_to_top")
     chapter_id = st.session_state.selected_chapter
     title_col, back_col = st.columns([4, 1])
     title_col.subheader(f"🏆 {CHAPTERS[chapter_id]['number']} BOSS排行榜")
@@ -1957,6 +2220,7 @@ elif st.session_state.screen == "rankings":
     st.caption("排行榜只公開大頭貼、勇者名稱、等級、通關時間與日期，不顯示正式姓名或學生代碼。")
 
 elif st.session_state.screen == "economy":
+    scroll_page_to_top("scroll_economy_to_top")
     profile = get_profile()
     changed = ensure_shop(profile)
     if changed:
@@ -1974,9 +2238,8 @@ elif st.session_state.screen == "economy":
 
     mode = st.radio(
         "選擇功能", ["shop", "forge"], horizontal=True,
-        index=0 if st.session_state.economy_tab == "shop" else 1,
         format_func=lambda value: "🏪 商店兌換" if value == "shop" else "🔥 裝備融煉",
-        label_visibility="collapsed",
+        label_visibility="collapsed", key="economy_mode",
     )
     st.session_state.economy_tab = mode
 
@@ -2042,8 +2305,9 @@ elif st.session_state.screen == "economy":
                         st.rerun()
     else:
         st.info(
-            "選擇三件同星級裝備：3件一星→1件二星；3件二星＋1顆融煉石→1件三星。"
-            "未放入特殊融煉石時，部位與詞條維持隨機。"
+            "選擇三件同章節、同星級裝備：3件一星→同章節1件二星；"
+            "3件二星＋1顆融煉石→同章節1件三星。產出裝備沿用材料章節的基礎值；"
+            "未放入特殊融煉石時，部位與詞條維持隨機。四星裝備不能分解或投入融煉。"
         )
         st.write("### 特殊融煉石合成")
         stone_cols = st.columns(3)
@@ -2086,7 +2350,11 @@ elif st.session_state.screen == "economy":
         )
         selected_items = [item_by_uid[uid] for uid in selected]
         same_star = len(selected_items) == 3 and len({item["stars"] for item in selected_items}) == 1
-        source_stars = selected_items[0]["stars"] if same_star else None
+        selected_chapters = {item_chapter_id(item) for item in selected_items}
+        same_chapter = len(selected_items) == 3 and len(selected_chapters) == 1 and None not in selected_chapters
+        valid_materials = same_star and same_chapter
+        source_stars = selected_items[0]["stars"] if valid_materials else None
+        source_chapter = item_chapter_id(selected_items[0]) if valid_materials else None
         enough_stone = source_stars != 2 or profile["smelting_stones"] >= 1
 
         use_slot_stone = st.checkbox(
@@ -2117,14 +2385,21 @@ elif st.session_state.screen == "economy":
             )
         if len(selected_items) == 3 and not same_star:
             st.warning("三件裝備必須是相同星級。")
+        elif len(selected_items) == 3 and not same_chapter:
+            st.warning("三件裝備必須來自同一章節；不同章節的基礎值不同，不能混合融煉。")
+        elif valid_materials:
+            st.success(
+                f"材料確認：{CHAPTERS[source_chapter]['number']}・{'⭐' * source_stars}，"
+                f"產出使用{CHAPTERS[source_chapter]['number']}裝備基礎值。"
+            )
         if source_stars == 2 and not enough_stone:
             st.warning("二星升三星需要1顆融煉石，目前數量不足。")
         if st.button(
             "開始融煉", type="primary", use_container_width=True,
-            disabled=not same_star or not enough_stone,
+            disabled=not valid_materials or not enough_stone,
         ):
             result_item = make_forged_item(
-                profile, source_stars, selected_slot=selected_slot,
+                profile, source_stars, source_chapter, selected_slot=selected_slot,
                 selected_affix=selected_affix,
             )
             remove_inventory_items(profile, selected)
@@ -2142,6 +2417,7 @@ elif st.session_state.screen == "economy":
             st.rerun()
 
 elif st.session_state.screen == "inventory":
+    scroll_page_to_top("scroll_inventory_to_top")
     profile = get_profile()
     title_col, back_col = st.columns([4, 1])
     title_col.subheader("🎒 裝備與物品欄")
@@ -2150,9 +2426,11 @@ elif st.session_state.screen == "inventory":
         st.rerun()
     render_stats(profile)
     st.divider()
-    tab1, tab2, tab3 = st.tabs([
-        "目前裝備", f"全部物品（{len(profile['inventory'])}）", "圖鑑收集"
-    ])
+    tab1, tab2, tab3 = st.tabs(
+        ["目前裝備", "背包", "圖鑑收集"],
+        key=f"inventory_tabs_{st.session_state.inventory_tab_version}",
+        default=st.session_state.inventory_default_tab,
+    )
     with tab1:
         for slot, label in SLOT_NAMES.items():
             uid = profile["equipment"].get(slot)
@@ -2165,42 +2443,86 @@ elif st.session_state.screen == "inventory":
                 save_profile(profile)
                 st.rerun()
     with tab2:
-        st.caption(
-            f"持有：🪙 {profile.get('coins', 0)} 金幣｜💎 {profile.get('smelting_stones', 0)} 融煉石　"
-            "分解：一星100金幣、二星200金幣、三星300金幣＋1顆融煉石；四星不可分解。"
+        gear_tab, consumable_tab, title_tab, future_tab = st.tabs(
+            ["⚔️ 裝備", "🧪 消耗道具", "🏅 成就稱號", "🔒 待開放"],
+            key="backpack_tabs", default="⚔️ 裝備",
         )
-        if not profile["inventory"]:
-            st.info("完成單元後可以取得裝備。")
-        sorted_items = sorted(profile["inventory"], key=lambda x: (-x["stars"], list(SLOT_NAMES).index(x["slot"])))
-        for item in sorted_items:
-            equipped = profile["equipment"].get(item["slot"]) == item["uid"]
-            cols = st.columns([7, 1, 1])
-            cols[0].write(item_text(item))
-            if equipped:
-                cols[1].write("使用中")
-            elif cols[1].button("裝備", key=f"equip_{item['uid']}"):
-                profile["equipment"][item["slot"]] = item["uid"]
-                save_profile(profile)
-                st.rerun()
-            can_dismantle = item["stars"] in (1, 2, 3) and not equipped
-            dismantle_label = "四星保留" if item["stars"] >= 4 else ("先卸下" if equipped else "分解")
-            if can_dismantle:
-                with cols[2].popover("分解", use_container_width=True):
-                    coin_gain = item["stars"] * 100
-                    stone_gain = 1 if item["stars"] == 3 else 0
-                    stone_text = "＋1顆融煉石" if stone_gain else ""
-                    st.warning(f"分解後無法復原，將獲得{coin_gain}金幣{stone_text}。")
-                    if st.button("確認分解", key=f"confirm_dismantle_{item['uid']}", type="primary"):
-                        profile["coins"] += coin_gain
-                        profile["smelting_stones"] += stone_gain
-                        remove_inventory_items(profile, [item["uid"]])
+        with gear_tab:
+            equipped_uids = {uid for uid in profile["equipment"].values() if uid}
+            backpack_items = [
+                item for item in profile["inventory"] if item["uid"] not in equipped_uids
+            ]
+            st.write(f"### 未裝備物品（{len(backpack_items)}件）")
+            st.caption("背包只顯示未穿戴裝備；點擊格子可查看、裝備或分解。每列5格，超過25件可繼續往下瀏覽。")
+            sorted_items = sorted(backpack_items, key=lambda x: (-x["stars"], list(SLOT_NAMES).index(x["slot"])))
+            if not sorted_items:
+                st.info("完成單元後可以取得裝備。")
+            for start in range(0, len(sorted_items), 5):
+                grid_cols = st.columns(5)
+                for col, item in zip(grid_cols, sorted_items[start:start + 5]):
+                    equipped = profile["equipment"].get(item["slot"]) == item["uid"]
+                    label = f"{SLOT_ICONS[item['slot']]} {item['name']}\n{'⭐' * item['stars']}　×1"
+                    with col.popover(label, use_container_width=True):
+                        render_item_comparison(profile, item)
+                        if equipped:
+                            st.success("目前使用中")
+                            if st.button("卸下", key=f"grid_off_{item['uid']}", use_container_width=True):
+                                profile["equipment"][item["slot"]] = None
+                                save_profile(profile)
+                                st.session_state.inventory_default_tab = "背包"
+                                st.session_state.inventory_tab_version += 1
+                                st.rerun()
+                        else:
+                            if st.button("裝備", key=f"grid_equip_{item['uid']}", use_container_width=True):
+                                profile["equipment"][item["slot"]] = item["uid"]
+                                save_profile(profile)
+                                st.session_state.inventory_default_tab = "背包"
+                                st.session_state.inventory_tab_version += 1
+                                st.rerun()
+                        if item["stars"] in (1, 2, 3) and not equipped:
+                            coin_gain = item["stars"] * 100
+                            stone_text = "＋1顆融煉石" if item["stars"] == 3 else ""
+                            st.warning(f"分解不可復原：{coin_gain}金幣{stone_text}")
+                            if st.button("確認分解", key=f"grid_break_{item['uid']}", use_container_width=True):
+                                profile["coins"] += coin_gain
+                                profile["smelting_stones"] += 1 if item["stars"] == 3 else 0
+                                remove_inventory_items(profile, [item["uid"]])
+                                save_profile(profile)
+                                st.session_state.inventory_default_tab = "背包"
+                                st.session_state.inventory_tab_version += 1
+                                st.rerun()
+                        elif item["stars"] >= 4:
+                            st.caption("四星以上裝備目前不能分解。")
+        with consumable_tab:
+            consumables = [
+                ("🎫", "擊殺券", profile["sweep_tickets"]),
+                ("💎", "融煉石", profile["smelting_stones"]),
+                ("🧭", "部位融煉石", profile["slot_smelting_stones"]),
+                ("🔷", "基礎詞條融煉石", profile["basic_affix_smelting_stones"]),
+                ("🔶", "進階詞條融煉石", profile["advanced_affix_smelting_stones"]),
+            ]
+            cols = st.columns(5)
+            for col, (icon, name, count) in zip(cols, consumables):
+                col.metric(f"{icon} {name}", count)
+            st.caption("擊殺券請在章節單元旁使用；融煉石請前往裝備融煉工坊使用。")
+        with title_tab:
+            if not profile["titles"]:
+                st.info("擊敗各章菁英BOSS可以解鎖成就稱號。")
+            for title in profile["titles"]:
+                cols = st.columns([4, 1])
+                cols[0].write(f"🏅 **「{title}」**")
+                if profile.get("equipped_title") == title:
+                    if cols[1].button("卸下稱號", key=f"title_off_{title}", use_container_width=True):
+                        profile["equipped_title"] = None
                         save_profile(profile)
                         st.rerun()
-            else:
-                cols[2].button(
-                    dismantle_label, key=f"dismantle_{item['uid']}",
-                    disabled=True, use_container_width=True,
-                )
+                elif cols[1].button("佩戴", key=f"title_on_{title}", use_container_width=True):
+                    profile["equipped_title"] = title
+                    save_profile(profile)
+                    st.rerun()
+            st.caption("佩戴後會顯示在角色名稱前方，其他學生也能在排行榜看到。")
+        with future_tab:
+            st.info("此分類保留給後續開放的道具與功能。")
     with tab3:
         gallery_chapter = st.selectbox(
             "選擇圖鑑章節", list(CHAPTERS),
@@ -2276,6 +2598,7 @@ elif st.session_state.screen == "inventory":
                     if col.button("前往菁英BOSS", key=f"elite_go_{unit_key}", disabled=not elite_ready, use_container_width=True):
                         st.session_state.selected_chapter = gallery_chapter
                         st.session_state.selected_boss_type = "elite"
+                        st.session_state.scroll_boss_to_top = True
                         st.session_state.screen = "boss_ready"
                         st.rerun()
             st.caption("四星固定值不隨章節倍率變動，但都高於首次登場章節可掉落的同部位三星固定值。")
@@ -2283,6 +2606,7 @@ elif st.session_state.screen == "inventory":
 elif st.session_state.screen == "quiz":
     unit = UNITS[st.session_state.selected_unit]
     st.subheader(f"單元{st.session_state.selected_unit}：{unit['name']}")
+    st.caption("星級規則：最高連擊1～4為一星、5～9為二星；達成10連擊立即三星通關。最多作答20題。")
     @st.fragment
     def quiz_panel():
         if st.session_state.screen != "quiz":
@@ -2323,7 +2647,9 @@ elif st.session_state.screen == "quiz_result":
         f"共作答 {st.session_state.attempts}題｜總時間 {st.session_state.quiz_elapsed:.1f}秒｜"
         f"平均每題 {average_seconds:.1f}秒"
     )
-    if st.session_state.earned_exp:
+    if st.session_state.stars == 0:
+        st.warning("本回合尚未答對任何題目，因此不獲得星星、經驗值或裝備。")
+    elif st.session_state.earned_exp:
         level_message = (
             f" 已升級到 Lv{st.session_state.level_up_to}！"
             if st.session_state.level_up_to else ""
@@ -2369,6 +2695,7 @@ elif st.session_state.screen == "quiz_result":
             st.rerun()
 
 elif st.session_state.screen == "boss_ready":
+    scroll_page_to_top("scroll_boss_to_top")
     profile = get_profile()
     stats = player_stats(profile)
     boss_type = st.session_state.selected_boss_type
@@ -2439,6 +2766,8 @@ elif st.session_state.screen == "boss_result":
             profile = get_profile()
             reward = find_item(profile, result["reward_item_uid"])
             st.success(f"🏆 首次擊敗菁英BOSS，獲得：{item_text(reward)}")
+        if result.get("earned_title"):
+            st.success(f"🏅 解鎖成就稱號「{result['earned_title']}」！可到背包的成就稱號欄佩戴。")
     else:
         st.error(f"勇者在 {result['duration']:.2f}秒後被擊敗，請調整裝備再挑戰。")
     ranking = ranking_rows(boss_type, result.get("chapter_id", "1"))
