@@ -810,19 +810,57 @@ def render_avatar_editor(profile):
             st.rerun()
         except Exception as error:
             st.error(f"無法處理圖片：{error}")
-    with st.expander("選擇內建 Q 版大頭貼（20款）"):
+    if "show_builtin_avatar_picker" not in st.session_state:
+        st.session_state.show_builtin_avatar_picker = False
+    if not st.session_state.show_builtin_avatar_picker:
+        if st.button("選擇內建 Q 版大頭貼（20款）", key="open_builtin_avatar_picker", use_container_width=True):
+            st.session_state.show_builtin_avatar_picker = True
+            st.rerun()
+    else:
+        picker_header, picker_close = st.columns([5, 1], vertical_alignment="center")
+        picker_header.markdown("#### 選擇內建 Q 版大頭貼（20款）")
+        if picker_close.button("關閉", key="close_builtin_avatar_picker", use_container_width=True):
+            st.session_state.show_builtin_avatar_picker = False
+            st.rerun()
         st.caption("內建大頭貼可以隨時更換，也可以改用自己上傳的圖片。")
-        for row_start in range(1, 21, 5):
-            columns = st.columns(5)
-            for column, index in zip(columns, range(row_start, row_start + 5)):
-                avatar_data = built_in_avatar_data(index)
-                if avatar_data:
-                    column.image(avatar_data, use_container_width=True)
-                if column.button("使用", key=f"use_builtin_avatar_{index}", use_container_width=True):
-                    profile["avatar_data"] = avatar_data
-                    save_profile(profile)
-                    st.success(f"已套用內建大頭貼 {index}。")
-                    st.rerun()
+        st.markdown(
+            """
+            <style>
+            @media (max-width:768px) and (orientation:portrait) {
+              [class*="st-key-avatar_picker_row_"] [data-testid="stHorizontalBlock"] {
+                display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;
+                gap:.18rem !important;width:100% !important;
+              }
+              [class*="st-key-avatar_picker_row_"] [data-testid="stColumn"] {
+                min-width:0 !important;width:calc(25% - .14rem) !important;
+                max-width:calc(25% - .14rem) !important;flex:0 0 calc(25% - .14rem) !important;
+                padding:0 !important;
+              }
+              [class*="st-key-avatar_picker_row_"] [data-testid="stImage"] img {
+                width:100% !important;height:auto !important;border-radius:8px !important;
+              }
+              [class*="st-key-avatar_picker_row_"] button {
+                min-height:1.9rem !important;padding:.15rem .05rem !important;
+                font-size:.72rem !important;
+              }
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        for row_number, row_start in enumerate(range(1, 21, 4), 1):
+            with st.container(key=f"avatar_picker_row_{row_number}"):
+                columns = st.columns(4, gap="small")
+                for column, index in zip(columns, range(row_start, row_start + 4)):
+                    avatar_data = built_in_avatar_data(index)
+                    if avatar_data:
+                        column.image(avatar_data, use_container_width=True)
+                    if column.button("使用", key=f"use_builtin_avatar_{index}", use_container_width=True):
+                        profile["avatar_data"] = avatar_data
+                        save_profile(profile)
+                        st.session_state.show_builtin_avatar_picker = False
+                        st.session_state.scroll_home_after_avatar = True
+                        st.rerun()
 
 
 def log_attempt(unit_id):
@@ -2650,6 +2688,7 @@ elif st.session_state.screen == "admin_panel":
         st.rerun()
 
 elif st.session_state.screen == "home":
+    scroll_page_to_top("scroll_home_after_avatar")
     profile = get_profile()
     if sync_daily_tasks(profile):
         save_profile(profile)
