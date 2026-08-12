@@ -523,6 +523,7 @@ def new_profile(name):
         "claimed_special_tasks": [],
         "task_rewards_initialized": False,
         "elite_special_tasks_migrated": False,
+        "boss_best_times": {},
         "shop": {"generated_at": None, "items": []},
         "inventory": [],
         "collection_catalog": [],
@@ -1010,6 +1011,7 @@ def permanent_task_definitions():
         for unit_id in chapter_unit_ids(chapter_id):
             tasks.append({
                 "id": f"unit_{unit_id}", "chapter": chapter_id,
+                "task_type": "unit", "target_unit": unit_id,
                 "name": f"通過{unit_id}單元：{UNITS[unit_id]['name']}",
                 "reward_text": "100金幣", "coins": 100,
                 "complete": lambda profile, uid=unit_id: profile["unit_best_stars"].get(uid, 0) > 0,
@@ -1018,6 +1020,7 @@ def permanent_task_definitions():
         tasks.extend([
             {
                 "id": f"boss_{chapter_id}_normal", "chapter": chapter_id,
+                "task_type": "boss", "boss_type": "normal",
                 "name": f"通過{CHAPTERS[chapter_id]['number']}普通BOSS",
                 "reward_text": "300金幣＋1顆部位融煉石", "coins": 300,
                 "stone_key": "slot_smelting_stones",
@@ -1025,6 +1028,7 @@ def permanent_task_definitions():
             },
             {
                 "id": f"boss_{chapter_id}_elite", "chapter": chapter_id,
+                "task_type": "boss", "boss_type": "elite",
                 "name": f"通過{CHAPTERS[chapter_id]['number']}菁英BOSS",
                 "reward_text": "300金幣＋1顆基礎詞條融煉石", "coins": 300,
                 "stone_key": "basic_affix_smelting_stones",
@@ -1034,7 +1038,7 @@ def permanent_task_definitions():
     return tasks
 
 
-def special_task_definitions(code):
+def special_task_definitions(code, profile=None):
     table_by_chapter = {
         "1": ("rankings", "elite_rankings"),
         "2": ("chapter2_rankings", "chapter2_elite_rankings"),
@@ -1047,7 +1051,13 @@ def special_task_definitions(code):
                 row = db.execute(
                     f"SELECT clear_time FROM {table} WHERE student_code=?", (code,)
                 ).fetchone()
-                clear_times[(chapter_id, boss_type)] = row["clear_time"] if row else None
+                ranking_time = row["clear_time"] if row else None
+                profile_time = (
+                    profile.get("boss_best_times", {}).get(f"{chapter_id}_{boss_type}")
+                    if profile else None
+                )
+                available_times = [value for value in (ranking_time, profile_time) if value is not None]
+                clear_times[(chapter_id, boss_type)] = min(available_times) if available_times else None
     tasks = []
     for chapter_id in CHAPTERS:
         for boss_type, boss_label in (("normal", "普通BOSS"), ("elite", "菁英BOSS")):
@@ -1086,7 +1096,7 @@ def visible_permanent_tasks(profile):
 def visible_special_tasks(profile, code):
     claimed = set(profile["claimed_special_tasks"])
     result = []
-    for task in special_task_definitions(code):
+    for task in special_task_definitions(code, profile):
         chapter_id = task["chapter"]
         if task["boss_type"] == "elite" and f"speed_{chapter_id}_normal" not in claimed:
             continue
@@ -1113,7 +1123,7 @@ def retroactively_grant_tasks(profile, code):
                 grant_task_reward(profile, task)
                 profile["claimed_permanent_tasks"].append(task["id"])
                 messages.append(f"{task['name']}：{task['reward_text']}")
-        for task in special_task_definitions(code):
+        for task in special_task_definitions(code, profile):
             if task["complete"] and task["id"] not in profile["claimed_special_tasks"]:
                 grant_task_reward(profile, task)
                 profile["claimed_special_tasks"].append(task["id"])
@@ -1122,7 +1132,7 @@ def retroactively_grant_tasks(profile, code):
         profile["elite_special_tasks_migrated"] = True
     elif not profile.get("elite_special_tasks_migrated"):
         # 已使用舊版任務系統的玩家，只補發新增的菁英BOSS特殊任務。
-        for task in special_task_definitions(code):
+        for task in special_task_definitions(code, profile):
             if (
                 task["boss_type"] == "elite" and task["complete"]
                 and task["id"] not in profile["claimed_special_tasks"]
@@ -1134,6 +1144,25 @@ def retroactively_grant_tasks(profile, code):
     if messages:
         profile["retro_reward_notice"].append("任務補發獎勵｜" + "；".join(messages))
     return messages
+
+
+def boss_is_unlocked(profile, chapter_id, boss_type):
+    if boss_type == "normal":
+        return all(
+            profile["unit_best_stars"].get(unit_id, 0) == 3
+            for unit_id in chapter_unit_ids(chapter_id)
+        )
+    normal_wins_key = {
+        "1": "boss_wins", "2": "chapter2_boss_wins", "3": "chapter3_boss_wins",
+    }[chapter_id]
+    return profile.get(normal_wins_key, 0) > 0
+
+
+def go_to_boss(chapter_id, boss_type):
+    st.session_state.selected_chapter = chapter_id
+    st.session_state.selected_boss_type = boss_type
+    st.session_state.scroll_boss_to_top = True
+    st.session_state.screen = "boss_ready"
 
 
 def item_signature(item):
@@ -1878,6 +1907,10 @@ def finish_battle(result):
             if earned_title not in profile["titles"]:
                 profile["titles"].append(earned_title)
                 result["earned_title"] = earned_title
+        best_time_key = f"{chapter_id}_{boss_type}"
+        previous_best = profile["boss_best_times"].get(best_time_key)
+        if previous_best is None or result["duration"] < previous_best:
+            profile["boss_best_times"][best_time_key] = round(result["duration"], 2)
         save_best_ranking(profile, result["duration"], boss_type, chapter_id)
     save_profile(profile)
     result["exp_gain"] = exp_gain
@@ -2567,7 +2600,25 @@ elif st.session_state.screen == "daily_tasks":
                     save_profile(profile)
                     st.rerun()
             else:
-                right.info("進行中")
+                if task["task_type"] == "unit":
+                    target_unit = task["target_unit"]
+                    unlocked = unit_unlocked(profile, target_unit)
+                    if right.button(
+                        "進行中｜前往挑戰" if unlocked else "🔒 尚未解鎖",
+                        key=f"go_perm_{task['id']}", disabled=not unlocked,
+                        use_container_width=True,
+                    ):
+                        start_quiz(target_unit)
+                        st.rerun()
+                else:
+                    unlocked = boss_is_unlocked(profile, task["chapter"], task["boss_type"])
+                    if right.button(
+                        "進行中｜前往挑戰" if unlocked else "🔒 尚未解鎖",
+                        key=f"go_perm_{task['id']}", disabled=not unlocked,
+                        use_container_width=True,
+                    ):
+                        go_to_boss(task["chapter"], task["boss_type"])
+                        st.rerun()
         highest_visible = max((int(task["chapter"]) for task in permanent_tasks), default=1)
         if highest_visible < len(CHAPTERS):
             st.caption("完成並領取本章全部永久任務後，才會顯示下一章永久任務。")
@@ -2589,7 +2640,14 @@ elif st.session_state.screen == "daily_tasks":
                     save_profile(profile)
                     st.rerun()
             else:
-                right.info("進行中")
+                unlocked = boss_is_unlocked(profile, task["chapter"], task["boss_type"])
+                if right.button(
+                    "進行中｜前往挑戰" if unlocked else "🔒 尚未解鎖",
+                    key=f"go_special_{task['id']}", disabled=not unlocked,
+                    use_container_width=True,
+                ):
+                    go_to_boss(task["chapter"], task["boss_type"])
+                    st.rerun()
         if len(special_tasks) < len(CHAPTERS):
             st.caption("完成並領取目前章節的特殊任務後，才會顯示下一章特殊任務。")
 
