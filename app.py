@@ -208,15 +208,22 @@ def postgres_pool():
         min_size=1,
         max_size=10,
         timeout=15,
+        max_lifetime=300,
+        max_idle=60,
+        reconnect_timeout=30,
+        check=ConnectionPool.check_connection,
         kwargs={"row_factory": dict_row},
     )
 
 
 class DatabaseConnection:
+    def _open_postgres_connection(self):
+        self.pool_context = postgres_pool().connection()
+        self.connection = self.pool_context.__enter__()
+
     def __enter__(self):
         if USE_POSTGRES:
-            self.pool_context = postgres_pool().connection()
-            self.connection = self.pool_context.__enter__()
+            self._open_postgres_connection()
         else:
             self.connection = sqlite3.connect(DB_FILE, timeout=10)
             self.connection.row_factory = sqlite3.Row
@@ -241,6 +248,15 @@ class DatabaseConnection:
             if "INSERT INTO settings" in sql and "registration_enabled" in sql and "ON CONFLICT" not in sql:
                 sql += " ON CONFLICT(key) DO NOTHING"
             sql = sql.replace("?", "%s")
+            try:
+                return self.connection.execute(sql, parameters)
+            except psycopg.OperationalError:
+                # Neon 免費方案喚醒或重啟時可能終止既有連線；唯讀查詢可安全重連一次。
+                if not sql.lstrip().upper().startswith("SELECT"):
+                    raise
+                self.pool_context.__exit__(*__import__("sys").exc_info())
+                self._open_postgres_connection()
+                return self.connection.execute(sql, parameters)
         return self.connection.execute(sql, parameters)
 
     def executescript(self, script):
