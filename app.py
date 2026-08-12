@@ -50,12 +50,12 @@ st.markdown(
 
 MAX_QUESTIONS = 20
 BOSS_CONFIGS = {
-    "1_normal": {"name": "荒野魔狼", "image": "wild-wolf.png", "hp": 600, "damage": 30, "interval": 3.0, "exp": 100},
-    "1_elite": {"name": "血月狼人", "image": "blood-moon-werewolf.png", "hp": 900, "damage": 45, "interval": 2.5, "exp": 150},
-    "2_normal": {"name": "刺甲蜘蛛", "image": "thorn-armor-spider.png", "hp": 800, "damage": 36, "interval": 3.0, "exp": 150},
-    "2_elite": {"name": "魅惑影蛛", "image": "charming-shadow-spider.png", "hp": 1200, "damage": 54, "interval": 2.5, "exp": 200},
-    "3_normal": {"name": "深淵魔龍", "image": "abyss-dragon.png", "hp": 1050, "damage": 45, "interval": 3.0, "exp": 200, "critical_rate": 0.20},
-    "3_elite": {"name": "烈焰龍王", "image": "flame-dragon-king.png", "hp": 1550, "damage": 62, "interval": 2.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 20},
+    "1_normal": {"name": "荒野魔狼", "image": "wild-wolf.webp", "hp": 600, "damage": 30, "interval": 3.0, "exp": 100},
+    "1_elite": {"name": "血月狼人", "image": "blood-moon-werewolf.webp", "hp": 900, "damage": 45, "interval": 2.5, "exp": 150},
+    "2_normal": {"name": "刺甲蜘蛛", "image": "thorn-armor-spider.webp", "hp": 800, "damage": 36, "interval": 3.0, "exp": 150},
+    "2_elite": {"name": "魅惑影蛛", "image": "charming-shadow-spider.webp", "hp": 1200, "damage": 54, "interval": 2.5, "exp": 200},
+    "3_normal": {"name": "深淵魔龍", "image": "abyss-dragon.webp", "hp": 1050, "damage": 45, "interval": 3.0, "exp": 200, "critical_rate": 0.20},
+    "3_elite": {"name": "烈焰龍王", "image": "flame-dragon-king.webp", "hp": 1550, "damage": 62, "interval": 2.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 20},
 }
 BOSS_MAX_HP = 400
 BOSS_DAMAGE = 30
@@ -2077,16 +2077,39 @@ def battle_presentation_state(result, real_elapsed):
 @st.cache_data(show_spinner=False)
 def boss_image_data_uri(filename):
     image_path = Path(__file__).parent / "assets" / "bosses" / filename
-    return "data:image/png;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
+    if not image_path.exists():
+        return ""
+    return "data:image/webp;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
 
 
-def render_battle_scene(event, chapter_id, boss_type, active_skill=None):
+@st.cache_data(show_spinner=False)
+def hero_image_data_uri():
+    image_path = Path(__file__).parent / "assets" / "heroes" / "blue-silver-hero.webp"
+    if not image_path.exists():
+        return ""
+    return "data:image/webp;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
+
+
+def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_skill=None):
     hero_attacking = event["text"].startswith("勇者") and active_skill is None
     boss_attacking = ("BOSS第" in event["text"] or "BOSS發動" in event["text"]) and active_skill is None
     hero_class = "fighter hero hero-attack" if hero_attacking else "fighter hero"
     boss_class = "fighter boss boss-attack" if boss_attacking else "fighter boss"
+    hero_hit = boss_attacking or active_skill is not None
+    boss_hit = hero_attacking
+    hero_claws = '<div class="claw-hit hero-claw"><i></i><i></i><i></i></div>' if hero_hit else ""
+    boss_claws = '<div class="claw-hit boss-claw"><i></i><i></i><i></i></div>' if boss_hit else ""
     boss_config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
     boss_image = boss_image_data_uri(boss_config["image"])
+    hero_image = hero_image_data_uri()
+    hero_visual = (
+        f'<img class="hero-portrait" src="{hero_image}" alt="勇者">'
+        if hero_image else '<div class="hero-fallback">🦸</div>'
+    )
+    boss_visual = (
+        f'<img class="boss-portrait" src="{boss_image}" alt="{boss_config["name"]}">'
+        if boss_image else '<div class="boss-fallback">🐉</div>'
+    )
     skill_overlay = ""
     if active_skill:
         skill_overlay = (
@@ -2099,23 +2122,35 @@ def render_battle_scene(event, chapter_id, boss_type, active_skill=None):
         .battle-arena {{position:relative;height:250px;margin:14px 0 18px;padding:24px;
           overflow:hidden;border-radius:22px;background:linear-gradient(#dff3ff 0 62%,#c7e5ad 62%);
           border:2px solid #d8e1ea;display:flex;align-items:flex-end;justify-content:space-between;}}
-        .fighter {{font-size:88px;line-height:1;text-align:center;filter:drop-shadow(0 8px 5px #0003);}}
+        .fighter {{position:relative;font-size:88px;line-height:1;text-align:center;filter:drop-shadow(0 8px 5px #0003);}}
         .boss-portrait {{width:150px;height:150px;border-radius:22px;object-fit:cover;border:3px solid #fff;}}
+        .hero-portrait {{width:150px;height:150px;border-radius:22px;object-fit:cover;border:3px solid #fff;}}
+        .boss-fallback {{font-size:100px;line-height:150px;}}
+        .hero-fallback {{font-size:100px;line-height:150px;}}
         .fighter span {{display:block;margin-top:10px;font-size:20px;font-weight:700;color:#313442;}}
-        .hero-attack {{animation:heroStrike .5s ease-in-out;}}
-        .boss-attack {{animation:bossStrike .5s ease-in-out;}}
+        .hero-attack {{animation:heroStrike{event_sequence} .55s ease-in-out;}}
+        .boss-attack {{animation:bossStrike{event_sequence} .55s ease-in-out;}}
+        .claw-hit {{position:absolute;z-index:4;inset:8px 12px 34px;pointer-events:none;
+          animation:clawFlash{event_sequence} .65s ease-out forwards;}}
+        .claw-hit i {{position:absolute;left:48%;top:8%;width:8px;height:82%;border-radius:8px;
+          background:linear-gradient(90deg,#fff,#ff304f 35%,#8b0016);box-shadow:0 0 12px #ff173c;
+          transform:rotate(32deg);}}
+        .claw-hit i:nth-child(1) {{margin-left:-30px;}}
+        .claw-hit i:nth-child(2) {{margin-left:0;}}
+        .claw-hit i:nth-child(3) {{margin-left:30px;}}
         .skill-cinematic {{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;
           align-items:center;justify-content:center;color:white;font-size:26px;text-align:center;
           background:radial-gradient(circle,#ff7a18dd,#8b0000ee);animation:skillFlash .55s ease-in-out infinite alternate;}}
         .skill-flame {{font-size:82px;animation:flameGrow .5s ease-in-out infinite alternate;}}
-        @keyframes heroStrike {{50%{{transform:translateX(110px) rotate(-8deg) scale(1.12);}}}}
-        @keyframes bossStrike {{50%{{transform:translateX(-110px) rotate(8deg) scale(1.12);}}}}
+        @keyframes heroStrike{event_sequence} {{50%{{transform:translateX(110px) rotate(-8deg) scale(1.12);}}}}
+        @keyframes bossStrike{event_sequence} {{50%{{transform:translateX(-110px) rotate(8deg) scale(1.12);}}}}
+        @keyframes clawFlash{event_sequence} {{0%{{opacity:0;transform:scale(1.7);}}25%{{opacity:1;transform:scale(1);}}100%{{opacity:0;transform:scale(.92);}}}}
         @keyframes skillFlash {{to{{filter:brightness(1.35);}}}}
         @keyframes flameGrow {{to{{transform:scale(1.35) rotate(8deg);}}}}
         </style>
         <div class="battle-arena">
-          <div class="{hero_class}">🦸<span>勇者</span></div>
-          <div class="{boss_class}"><img class="boss-portrait" src="{boss_image}" alt="{boss_config['name']}"><span>{boss_config['name']}</span></div>
+          <div class="{hero_class}">{hero_visual}{hero_claws}<span>勇者</span></div>
+          <div class="{boss_class}">{boss_visual}{boss_claws}<span>{boss_config['name']}</span></div>
           {skill_overlay}
         </div>
         """,
@@ -2130,7 +2165,11 @@ def render_chapter_boss_card(chapter_id, boss_type, unlocked):
     label = "菁英 BOSS" if is_elite else "一般 BOSS"
     with st.container(border=True):
         image_col, info_col, button_col = st.columns([0.75, 4, 1.35], vertical_alignment="center")
-        image_col.image(Path(__file__).parent / "assets" / "bosses" / config["image"], width=72)
+        image_path = Path(__file__).parent / "assets" / "bosses" / config["image"]
+        if image_path.exists():
+            image_col.image(image_path, width=72)
+        else:
+            image_col.markdown("## 🐉")
         info_col.markdown(f"### {label}｜{config['name']}")
         info_col.write(
             f"**HP：{config['hp']}**　｜　"
@@ -3446,10 +3485,11 @@ elif st.session_state.screen == "boss_ready":
     has_cleared = boss_has_been_cleared(profile, chapter_id, boss_type)
     boss_label = "菁英BOSS" if boss_type == "elite" else "一般BOSS"
     st.subheader(f"🐉 {CHAPTERS[chapter_id]['number']}{boss_label}：{config['name']}")
-    st.image(
-        Path(__file__).parent / "assets" / "bosses" / config["image"],
-        width=320, caption=config["name"],
-    )
+    boss_image_path = Path(__file__).parent / "assets" / "bosses" / config["image"]
+    if boss_image_path.exists():
+        st.image(boss_image_path, width=320, caption=config["name"])
+    else:
+        st.warning("BOSS 圖片素材尚未安裝，目前暫時使用預設圖示。")
     render_stats(profile)
     st.write(f"BOSS HP：{config['hp']}｜每{config['interval']:g}秒攻擊{config['damage']}")
     if config.get("critical_rate"):
@@ -3485,7 +3525,7 @@ elif st.session_state.screen == "boss_ready":
         st.rerun()
 
 elif st.session_state.screen == "boss_watch":
-    @st.fragment(run_every=0.25)
+    @st.fragment(run_every=0.35)
     def battle_panel():
         result = st.session_state.battle_events
         elapsed = time.time() - st.session_state.battle_started_at
@@ -3504,7 +3544,7 @@ elif st.session_state.screen == "boss_watch":
         )
         render_battle_scene(
             event, st.session_state.selected_chapter,
-            st.session_state.selected_boss_type, active_skill,
+            st.session_state.selected_boss_type, len(visible), active_skill,
         )
         if active_skill:
             st.error(f"🔥 {active_skill['text']}（技能演出期間計時暫停）")
