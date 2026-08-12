@@ -19,9 +19,11 @@ from PIL import Image
 
 try:
     import psycopg
+    from psycopg_pool import ConnectionPool
     from psycopg.rows import dict_row
 except ImportError:
     psycopg = None
+    ConnectionPool = None
 
 
 st.set_page_config(page_title="數學冒險：整數加減法", page_icon="⚔️", layout="wide")
@@ -197,12 +199,24 @@ for key, value in DEFAULT_STATE.items():
         st.session_state[key] = value
 
 
+@st.cache_resource(show_spinner=False)
+def postgres_pool():
+    if ConnectionPool is None:
+        raise RuntimeError("公開版需要安裝 psycopg[pool]。")
+    return ConnectionPool(
+        conninfo=DATABASE_URL,
+        min_size=1,
+        max_size=10,
+        timeout=15,
+        kwargs={"row_factory": dict_row},
+    )
+
+
 class DatabaseConnection:
     def __enter__(self):
         if USE_POSTGRES:
-            if psycopg is None:
-                raise RuntimeError("公開版需要安裝 psycopg[binary]。")
-            self.connection = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+            self.pool_context = postgres_pool().connection()
+            self.connection = self.pool_context.__enter__()
         else:
             self.connection = sqlite3.connect(DB_FILE, timeout=10)
             self.connection.row_factory = sqlite3.Row
@@ -211,6 +225,8 @@ class DatabaseConnection:
         return self
 
     def __exit__(self, error_type, error, traceback):
+        if USE_POSTGRES:
+            return self.pool_context.__exit__(error_type, error, traceback)
         if error_type:
             self.connection.rollback()
         else:
@@ -240,6 +256,7 @@ def db_connection():
     return DatabaseConnection()
 
 
+@st.cache_resource(show_spinner=False)
 def init_db():
     with db_connection() as db:
         db.executescript(
@@ -317,6 +334,7 @@ def init_db():
             }
             if "real_name" not in player_columns:
                 db.execute("ALTER TABLE players ADD COLUMN real_name TEXT NOT NULL DEFAULT ''")
+    return True
 
 
 def setting_get(key):
@@ -813,13 +831,17 @@ def sync_achievement_item(profile, unit_key, maker):
     expected = maker()
     old_slot = item["slot"]
     was_equipped = profile["equipment"].get(old_slot) == item["uid"]
-    for key in ("slot", "stars", "name", "fixed_stat", "fixed_value", "affix_stat", "affix_value", "achievement"):
+    synced_keys = ("slot", "stars", "name", "fixed_stat", "fixed_value", "affix_stat", "affix_value", "achievement")
+    changed = any(item.get(key) != expected[key] for key in synced_keys)
+    if not changed:
+        return False
+    for key in synced_keys:
         item[key] = expected[key]
     if old_slot != item["slot"] and was_equipped:
         profile["equipment"][old_slot] = None
         if not profile["equipment"].get(item["slot"]):
             profile["equipment"][item["slot"]] = item["uid"]
-    return True
+    return changed
 
 
 def fixed_text(item):
