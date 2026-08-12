@@ -6,6 +6,7 @@ import hmac
 import math
 import os
 import random
+import re
 import secrets
 import sqlite3
 import time
@@ -58,6 +59,13 @@ USE_POSTGRES = bool(DATABASE_URL)
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 EXP_BY_STARS = {0: 0, 1: 20, 2: 40, 3: 60}
 
+BLOCKED_NAME_WORDS = {
+    "fuck", "shit", "bitch", "asshole", "dick", "penis", "pussy", "sex",
+    "幹你", "幹您", "幹林", "操你", "操妳", "媽的", "馬的", "靠北", "靠杯",
+    "白癡", "智障", "低能", "垃圾", "去死", "雞掰", "機掰", "懶叫", "覽叫",
+    "陰莖", "陰道", "性交", "色情",
+}
+
 
 def database_timestamp():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -71,6 +79,21 @@ def taipei_time_text(value):
         # 公開版早期紀錄由 UTC 伺服器寫入，但當時未附時區。
         parsed = parsed.replace(tzinfo=timezone.utc if USE_POSTGRES else TAIPEI_TZ)
     return parsed.astimezone(TAIPEI_TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def normalized_hero_name(name):
+    return name.casefold()
+
+
+def validate_hero_name(name):
+    if not name:
+        return "請輸入勇者名稱。"
+    if not re.fullmatch(r"[A-Za-z0-9\u3400-\u4DBF\u4E00-\u9FFF]+", name):
+        return "勇者名稱只能使用中文、英文字母與數字，不能包含空格或符號。"
+    normalized = normalized_hero_name(name)
+    if any(word in normalized for word in BLOCKED_NAME_WORDS):
+        return "此勇者名稱含有不適合公開顯示的文字，請更換名稱。"
+    return None
 
 SLOT_NAMES = {
     "helmet": "頭盔",
@@ -467,6 +490,9 @@ def sequential_student_code(number):
 
 
 def create_student(real_name, hero_name, pin):
+    validation_error = validate_hero_name(hero_name)
+    if validation_error:
+        raise ValueError(validation_error)
     salt, digest = make_pin_hash(pin)
     with db_connection() as db:
         db.execute("BEGIN IMMEDIATE")
@@ -477,6 +503,12 @@ def create_student(real_name, hero_name, pin):
             )
         lock_suffix = " FOR UPDATE" if USE_POSTGRES else ""
         row = db.execute(f"SELECT value FROM settings WHERE key='student_counter'{lock_suffix}").fetchone()
+        duplicate = db.execute(
+            "SELECT 1 FROM players WHERE LOWER(hero_name)=LOWER(?) AND student_code <> '__TEACHER__' LIMIT 1",
+            (hero_name,),
+        ).fetchone()
+        if duplicate:
+            raise ValueError("這個勇者名稱已經有人使用，請換一個名稱。")
         number = int(row["value"]) + 1 if row else 1
         code = sequential_student_code(number)
         profile = new_profile(hero_name)
@@ -642,24 +674,30 @@ def save_best_ranking(profile, clear_time, boss_type="normal", chapter_id="1"):
             )
 
 
-def ranking_rows(boss_type="normal", chapter_id="1"):
+def ranking_rows(boss_type="normal", chapter_id="1", include_private_identity=False):
     table = {
         ("1", "normal"): "rankings", ("1", "elite"): "elite_rankings",
         ("2", "normal"): "chapter2_rankings", ("2", "elite"): "chapter2_elite_rankings",
     }[(chapter_id, boss_type)]
     with db_connection() as db:
         rows = db.execute(
-            "SELECT r.hero_name AS 玩家, r.level AS 等級, r.clear_time AS 通關秒數, "
+            "SELECT r.student_code AS 學生代碼, p.real_name AS 正式姓名, "
+            "r.hero_name AS 玩家, r.level AS 等級, r.clear_time AS 通關秒數, "
             f"r.achieved_at AS 日期, p.profile_json FROM {table} r "
             "JOIN players p ON p.student_code=r.student_code ORDER BY r.clear_time ASC"
         ).fetchall()
     result = []
     for row in rows:
         profile = json.loads(row["profile_json"])
-        result.append({
+        ranking_row = {
             "頭像": profile.get("avatar_data"), "玩家": row["玩家"], "等級": row["等級"],
             "通關秒數": row["通關秒數"], "日期": taipei_time_text(row["日期"]),
-        })
+        }
+        if include_private_identity:
+            ranking_row = {
+                "學生代碼": row["學生代碼"], "正式姓名": row["正式姓名"], **ranking_row
+            }
+        result.append(ranking_row)
     return result
 
 
@@ -1357,16 +1395,20 @@ elif st.session_state.screen == "login":
                 new_pin = st.text_input("設定6位數字PIN", type="password", max_chars=6, key="register_pin")
                 new_pin_again = st.text_input("再次輸入PIN", type="password", max_chars=6, key="register_pin_again")
                 if st.button("建立新勇者", type="primary", use_container_width=True):
+                    name_error = validate_hero_name(hero_name)
                     if not real_name:
                         st.warning("請輸入正式姓名，方便老師辨識身分。")
-                    elif not hero_name:
-                        st.warning("請輸入勇者名稱。")
+                    elif name_error:
+                        st.warning(name_error)
                     elif len(new_pin) != 6 or not new_pin.isdigit():
                         st.warning("PIN必須是6位數字。")
                     elif new_pin != new_pin_again:
                         st.warning("兩次輸入的PIN不一致。")
                     else:
-                        st.session_state.created_account = create_student(real_name, hero_name, new_pin)
+                        try:
+                            st.session_state.created_account = create_student(real_name, hero_name, new_pin)
+                        except ValueError as error:
+                            st.warning(str(error))
                 if st.session_state.created_account:
                     account = st.session_state.created_account
                     st.success("建立完成！請截圖或抄下學生代碼，之後登入會使用它。")
@@ -1399,12 +1441,13 @@ elif st.session_state.screen == "admin_panel":
         "老師測試角色名稱", value=teacher_default_name, max_chars=12
     ).strip()
     if teacher_col2.button("進入老師測試角色", type="primary", use_container_width=True):
-        if teacher_hero_name:
+        teacher_name_error = validate_hero_name(teacher_hero_name)
+        if not teacher_name_error:
             st.session_state.active_player = ensure_teacher_profile(teacher_hero_name)
             st.session_state.screen = "menu"
             st.rerun()
         else:
-            st.warning("請輸入測試角色名稱。")
+            st.warning(teacher_name_error)
     st.caption("老師測試角色不需要學生代碼或額外PIN，也不會占用學生編號或學生排名。")
     st.divider()
     create_tab, manage_tab, progress_tab = st.tabs(["建立學生", "帳號管理", "測試進度"])
@@ -1419,11 +1462,17 @@ elif st.session_state.screen == "admin_panel":
         real_name = st.text_input("學生正式姓名", max_chars=30, key="new_real_name").strip()
         hero_name = st.text_input("勇者名稱", max_chars=12, key="new_hero_name").strip()
         if st.button("產生學生代碼與PIN", type="primary"):
-            if real_name and hero_name:
-                generated_pin = f"{secrets.randbelow(1000000):06d}"
-                st.session_state.created_account = create_student(real_name, hero_name, generated_pin)
+            name_error = validate_hero_name(hero_name)
+            if not real_name:
+                st.warning("請輸入學生正式姓名。")
+            elif name_error:
+                st.warning(name_error)
             else:
-                st.warning("請輸入學生正式姓名與勇者名稱。")
+                generated_pin = f"{secrets.randbelow(1000000):06d}"
+                try:
+                    st.session_state.created_account = create_student(real_name, hero_name, generated_pin)
+                except ValueError as error:
+                    st.warning(str(error))
         if st.session_state.created_account:
             account = st.session_state.created_account
             st.success("帳號已建立，PIN只會在這裡顯示，請交給學生保存。")
@@ -1456,25 +1505,25 @@ elif st.session_state.screen == "admin_panel":
         else:
             st.info("目前尚未建立學生帳號。")
     with progress_tab:
-        rows = ranking_rows("normal")
+        rows = ranking_rows("normal", include_private_identity=True)
         st.write("### 一般BOSS最佳排名")
         if rows:
             render_ranking(rows)
         else:
             st.info("目前尚無BOSS通關紀錄。")
-        elite_rows = ranking_rows("elite")
+        elite_rows = ranking_rows("elite", include_private_identity=True)
         st.write("### 菁英BOSS最佳排名")
         if elite_rows:
             render_ranking(elite_rows)
         else:
             st.info("目前尚無菁英BOSS通關紀錄。")
-        chapter2_rows = ranking_rows("normal", "2")
+        chapter2_rows = ranking_rows("normal", "2", include_private_identity=True)
         st.write("### 第二章一般BOSS最佳排名")
         if chapter2_rows:
             render_ranking(chapter2_rows)
         else:
             st.info("目前尚無第二章一般BOSS通關紀錄。")
-        chapter2_elite_rows = ranking_rows("elite", "2")
+        chapter2_elite_rows = ranking_rows("elite", "2", include_private_identity=True)
         st.write("### 第二章菁英BOSS最佳排名")
         if chapter2_elite_rows:
             render_ranking(chapter2_elite_rows)
@@ -1482,7 +1531,8 @@ elif st.session_state.screen == "admin_panel":
             st.info("目前尚無第二章菁英BOSS通關紀錄。")
         with db_connection() as db:
             attempts = [dict(row) for row in db.execute(
-                "SELECT p.hero_name AS 勇者, a.unit_id AS 單元, a.stars AS 星級, "
+                "SELECT p.student_code AS 學生代碼, p.real_name AS 正式姓名, "
+                "p.hero_name AS 勇者, a.unit_id AS 單元, a.stars AS 星級, "
                 "a.max_combo AS 最高連擊, a.correct_count AS 答對題數, "
                 "ROUND(CAST(a.average_seconds AS NUMERIC), 1) AS 平均每題秒數, a.finished_at AS 完成時間 "
                 "FROM attempts a JOIN players p ON p.student_code=a.student_code ORDER BY a.id DESC LIMIT 200"
