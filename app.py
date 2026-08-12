@@ -458,6 +458,9 @@ def new_profile(name):
         "exp": 0,
         "coins": 0,
         "smelting_stones": 0,
+        "slot_smelting_stones": 0,
+        "basic_affix_smelting_stones": 0,
+        "advanced_affix_smelting_stones": 0,
         "shop": {"generated_at": None, "items": []},
         "inventory": [],
         "equipment": {slot: None for slot in SLOT_NAMES},
@@ -920,12 +923,33 @@ def remove_inventory_items(profile, uids):
     profile["inventory"] = [item for item in profile["inventory"] if item["uid"] not in uid_set]
 
 
-def make_forged_item(profile, source_stars):
+def make_forged_item(profile, source_stars, selected_slot=None, selected_affix=None):
     target_stars = source_stars + 1
     chapter_id = highest_shop_chapter(profile)
-    unit_id = random.choice(chapter_unit_ids(chapter_id))
+    if selected_slot:
+        unit_id = next(
+            uid for uid in chapter_unit_ids(chapter_id)
+            if selected_slot in UNITS[uid]["slots"]
+        )
+    else:
+        unit_id = random.choice(chapter_unit_ids(chapter_id))
     # 使用空白暫存，讓既有裝備不會阻止融煉結果生成。
     item = make_random_item({"inventory": []}, unit_id, target_stars)
+    if selected_slot:
+        item["slot"] = selected_slot
+        item["name"] = GEAR_NAMES[target_stars][selected_slot]
+        fixed_stat, values = FIXED_STATS[selected_slot]
+        raw_value = values[target_stars] * CHAPTERS[chapter_id]["multiplier"]
+        item["fixed_stat"] = fixed_stat
+        item["fixed_value"] = (
+            round(raw_value) if fixed_stat in ("hp", "attack", "defense")
+            else round(raw_value, 3)
+        )
+    if selected_affix:
+        item["affix_stat"] = selected_affix
+        item["affix_value"] = random.choice(
+            AFFIX_VALUES.get(selected_affix, AFFIX_VALUES["default"])[target_stars]
+        )
     item["source"] = "forge"
     return item
 
@@ -1679,7 +1703,10 @@ elif st.session_state.screen == "admin_panel":
                 st.caption("特殊能力：" + ("｜".join(active_specials) if active_specials else "目前無"))
                 st.caption(
                     f"🪙 金幣：{detail_profile.get('coins', 0)}｜"
-                    f"💎 融煉石：{detail_profile.get('smelting_stones', 0)}"
+                    f"💎 融煉石：{detail_profile.get('smelting_stones', 0)}｜"
+                    f"部位石：{detail_profile.get('slot_smelting_stones', 0)}｜"
+                    f"基礎詞條石：{detail_profile.get('basic_affix_smelting_stones', 0)}｜"
+                    f"進階詞條石：{detail_profile.get('advanced_affix_smelting_stones', 0)}"
                 )
 
                 st.write("### 學習與通關進度")
@@ -2016,8 +2043,35 @@ elif st.session_state.screen == "economy":
     else:
         st.info(
             "選擇三件同星級裝備：3件一星→1件二星；3件二星＋1顆融煉石→1件三星。"
-            "融煉出的部位與詞條隨機，裝備會採用目前最高通關章節的固定值。"
+            "未放入特殊融煉石時，部位與詞條維持隨機。"
         )
+        st.write("### 特殊融煉石合成")
+        stone_cols = st.columns(3)
+        special_stones = [
+            ("slot_smelting_stones", "🧭 部位融煉石", "融煉時指定九個部位之一"),
+            ("basic_affix_smelting_stones", "🔷 基礎詞條融煉石", "指定HP、攻擊、防禦或攻速"),
+            ("advanced_affix_smelting_stones", "🔶 進階詞條融煉石", "指定其餘戰鬥詞條"),
+        ]
+        for col, (key, label, description) in zip(stone_cols, special_stones):
+            with col.container(border=True):
+                st.markdown(f"#### {label} × {profile.get(key, 0)}")
+                st.caption(description)
+                if st.button(
+                    "用5顆融煉石合成", key=f"craft_{key}",
+                    disabled=profile["smelting_stones"] < 5, use_container_width=True,
+                ):
+                    profile["smelting_stones"] -= 5
+                    profile[key] += 1
+                    save_profile(profile)
+                    st.rerun()
+        st.caption(
+            f"目前普通融煉石：💎 {profile['smelting_stones']}｜"
+            f"部位石 {profile['slot_smelting_stones']}｜"
+            f"基礎詞條石 {profile['basic_affix_smelting_stones']}｜"
+            f"進階詞條石 {profile['advanced_affix_smelting_stones']}"
+        )
+        st.divider()
+        st.write("### 裝備融煉")
         eligible = [
             item for item in profile["inventory"]
             if item["stars"] in (1, 2)
@@ -2034,6 +2088,33 @@ elif st.session_state.screen == "economy":
         same_star = len(selected_items) == 3 and len({item["stars"] for item in selected_items}) == 1
         source_stars = selected_items[0]["stars"] if same_star else None
         enough_stone = source_stars != 2 or profile["smelting_stones"] >= 1
+
+        use_slot_stone = st.checkbox(
+            "放入1顆部位融煉石", disabled=profile["slot_smelting_stones"] <= 0,
+            help="放入後可指定融煉結果的裝備部位。",
+        ) and profile["slot_smelting_stones"] > 0
+        selected_slot = st.selectbox(
+            "指定部位", list(SLOT_NAMES), format_func=lambda slot: f"{SLOT_ICONS[slot]} {SLOT_NAMES[slot]}",
+            disabled=not use_slot_stone,
+        ) if use_slot_stone else None
+
+        available_affix_stones = ["不使用"]
+        if profile["basic_affix_smelting_stones"] > 0:
+            available_affix_stones.append("基礎詞條融煉石")
+        if profile["advanced_affix_smelting_stones"] > 0:
+            available_affix_stones.append("進階詞條融煉石")
+        affix_stone_type = st.radio("詞條融煉石", available_affix_stones, horizontal=True)
+        basic_affixes = ["hp_pct", "attack_pct", "defense_pct", "speed_pct"]
+        advanced_affixes = [key for key in AFFIX_NAMES if key not in basic_affixes]
+        selected_affix = None
+        if affix_stone_type == "基礎詞條融煉石":
+            selected_affix = st.selectbox(
+                "指定基礎詞條", basic_affixes, format_func=lambda key: AFFIX_NAMES[key]
+            )
+        elif affix_stone_type == "進階詞條融煉石":
+            selected_affix = st.selectbox(
+                "指定進階詞條", advanced_affixes, format_func=lambda key: AFFIX_NAMES[key]
+            )
         if len(selected_items) == 3 and not same_star:
             st.warning("三件裝備必須是相同星級。")
         if source_stars == 2 and not enough_stone:
@@ -2042,10 +2123,19 @@ elif st.session_state.screen == "economy":
             "開始融煉", type="primary", use_container_width=True,
             disabled=not same_star or not enough_stone,
         ):
-            result_item = make_forged_item(profile, source_stars)
+            result_item = make_forged_item(
+                profile, source_stars, selected_slot=selected_slot,
+                selected_affix=selected_affix,
+            )
             remove_inventory_items(profile, selected)
             if source_stars == 2:
                 profile["smelting_stones"] -= 1
+            if use_slot_stone:
+                profile["slot_smelting_stones"] -= 1
+            if affix_stone_type == "基礎詞條融煉石":
+                profile["basic_affix_smelting_stones"] -= 1
+            elif affix_stone_type == "進階詞條融煉石":
+                profile["advanced_affix_smelting_stones"] -= 1
             profile["inventory"].append(result_item)
             save_profile(profile)
             st.session_state.forge_result_uid = result_item["uid"]
