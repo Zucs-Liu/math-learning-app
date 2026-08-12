@@ -26,7 +26,7 @@ except ImportError:
     ConnectionPool = None
 
 
-st.set_page_config(page_title="數學冒險：整數加減法", page_icon="⚔️", layout="wide")
+st.set_page_config(page_title="數學冒險", page_icon="⚔️", layout="wide")
 
 MAX_QUESTIONS = 20
 BOSS_CONFIGS = {
