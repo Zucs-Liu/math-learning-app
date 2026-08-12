@@ -50,12 +50,12 @@ st.markdown(
 
 MAX_QUESTIONS = 20
 BOSS_CONFIGS = {
-    "1_normal": {"name": "負數魔獸", "hp": 600, "damage": 30, "interval": 3.0, "exp": 100},
-    "1_elite": {"name": "整數霸主", "hp": 900, "damage": 45, "interval": 2.5, "exp": 150},
-    "2_normal": {"name": "乘除巨像", "hp": 800, "damage": 36, "interval": 3.0, "exp": 150},
-    "2_elite": {"name": "乘除霸主", "hp": 1200, "damage": 54, "interval": 2.5, "exp": 200},
-    "3_normal": {"name": "小數暴擊獸", "hp": 1050, "damage": 45, "interval": 3.0, "exp": 200, "critical_rate": 0.20},
-    "3_elite": {"name": "烈焰小數龍", "hp": 1550, "damage": 62, "interval": 2.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 20},
+    "1_normal": {"name": "荒野魔狼", "image": "wild-wolf.png", "hp": 600, "damage": 30, "interval": 3.0, "exp": 100},
+    "1_elite": {"name": "血月狼人", "image": "blood-moon-werewolf.png", "hp": 900, "damage": 45, "interval": 2.5, "exp": 150},
+    "2_normal": {"name": "刺甲蜘蛛", "image": "thorn-armor-spider.png", "hp": 800, "damage": 36, "interval": 3.0, "exp": 150},
+    "2_elite": {"name": "魅惑影蛛", "image": "charming-shadow-spider.png", "hp": 1200, "damage": 54, "interval": 2.5, "exp": 200},
+    "3_normal": {"name": "深淵魔龍", "image": "abyss-dragon.png", "hp": 1050, "damage": 45, "interval": 3.0, "exp": 200, "critical_rate": 0.20},
+    "3_elite": {"name": "烈焰龍王", "image": "flame-dragon-king.png", "hp": 1550, "damage": 62, "interval": 2.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 20},
 }
 BOSS_MAX_HP = 400
 BOSS_DAMAGE = 30
@@ -2028,6 +2028,16 @@ def render_health_bar(label, current, maximum, color):
     )
 
 
+def render_bottom_home_button(key):
+    """長頁面底部的首頁捷徑，避免手機使用者再捲回頁首。"""
+    st.divider()
+    if st.button("← 回到首頁", key=f"bottom_home_{key}", use_container_width=True):
+        st.session_state.shop_purchase_uid = None
+        st.session_state.forge_result_uid = None
+        st.session_state.screen = "home"
+        st.rerun()
+
+
 BOSS_WIN_KEYS = {
     ("1", "normal"): "boss_wins",
     ("1", "elite"): "elite_boss_wins",
@@ -2064,12 +2074,19 @@ def battle_presentation_state(result, real_elapsed):
     return simulated_elapsed, active_skill, presentation_duration
 
 
-def render_battle_scene(event, boss_type, active_skill=None):
+@st.cache_data(show_spinner=False)
+def boss_image_data_uri(filename):
+    image_path = Path(__file__).parent / "assets" / "bosses" / filename
+    return "data:image/png;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
+
+
+def render_battle_scene(event, chapter_id, boss_type, active_skill=None):
     hero_attacking = event["text"].startswith("勇者") and active_skill is None
     boss_attacking = ("BOSS第" in event["text"] or "BOSS發動" in event["text"]) and active_skill is None
     hero_class = "fighter hero hero-attack" if hero_attacking else "fighter hero"
     boss_class = "fighter boss boss-attack" if boss_attacking else "fighter boss"
-    boss_icon = "🐉" if boss_type == "elite" else "👹"
+    boss_config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
+    boss_image = boss_image_data_uri(boss_config["image"])
     skill_overlay = ""
     if active_skill:
         skill_overlay = (
@@ -2083,6 +2100,7 @@ def render_battle_scene(event, boss_type, active_skill=None):
           overflow:hidden;border-radius:22px;background:linear-gradient(#dff3ff 0 62%,#c7e5ad 62%);
           border:2px solid #d8e1ea;display:flex;align-items:flex-end;justify-content:space-between;}}
         .fighter {{font-size:88px;line-height:1;text-align:center;filter:drop-shadow(0 8px 5px #0003);}}
+        .boss-portrait {{width:150px;height:150px;border-radius:22px;object-fit:cover;border:3px solid #fff;}}
         .fighter span {{display:block;margin-top:10px;font-size:20px;font-weight:700;color:#313442;}}
         .hero-attack {{animation:heroStrike .5s ease-in-out;}}
         .boss-attack {{animation:bossStrike .5s ease-in-out;}}
@@ -2097,7 +2115,7 @@ def render_battle_scene(event, boss_type, active_skill=None):
         </style>
         <div class="battle-arena">
           <div class="{hero_class}">🦸<span>勇者</span></div>
-          <div class="{boss_class}">{boss_icon}<span>{'菁英 BOSS' if boss_type == 'elite' else '一般 BOSS'}</span></div>
+          <div class="{boss_class}"><img class="boss-portrait" src="{boss_image}" alt="{boss_config['name']}"><span>{boss_config['name']}</span></div>
           {skill_overlay}
         </div>
         """,
@@ -2111,8 +2129,9 @@ def render_chapter_boss_card(chapter_id, boss_type, unlocked):
     is_elite = boss_type == "elite"
     label = "菁英 BOSS" if is_elite else "一般 BOSS"
     with st.container(border=True):
-        info_col, button_col = st.columns([4, 1.35], vertical_alignment="center")
-        info_col.markdown(f"### {'🐲' if is_elite else '🐉'} {label}｜{config['name']}")
+        image_col, info_col, button_col = st.columns([0.75, 4, 1.35], vertical_alignment="center")
+        image_col.image(Path(__file__).parent / "assets" / "bosses" / config["image"], width=72)
+        info_col.markdown(f"### {label}｜{config['name']}")
         info_col.write(
             f"**HP：{config['hp']}**　｜　"
             f"**攻擊：每 {config['interval']:g} 秒造成 {config['damage']} 傷害**"
@@ -2583,19 +2602,42 @@ elif st.session_state.screen == "home":
 elif st.session_state.screen == "character_stats":
     profile = get_profile()
     st.subheader("🧙 角色能力")
-    render_stats(profile)
+    st.markdown(
+        """
+        <style>
+        @media (max-width:768px) and (orientation:portrait) {
+          .st-key-mobile_stats [data-testid="stHorizontalBlock"] {display:flex !important;flex-wrap:nowrap !important;gap:.15rem !important;}
+          .st-key-mobile_stats [data-testid="stColumn"] {min-width:0 !important;width:20% !important;max-width:20% !important;flex:0 0 20% !important;padding:0 !important;}
+          .st-key-mobile_stats [data-testid="stMetricLabel"] {font-size:.68rem !important;}
+          .st-key-mobile_stats [data-testid="stMetricValue"] {font-size:1.05rem !important;line-height:1.2 !important;white-space:nowrap !important;}
+          .st-key-mobile_equipment [data-testid="stHorizontalBlock"] {display:flex !important;flex-wrap:nowrap !important;gap:.2rem !important;align-items:center !important;}
+          .st-key-mobile_equipment [data-testid="stColumn"] {min-width:0 !important;padding:0 !important;}
+          .st-key-mobile_equipment [data-testid="stColumn"]:nth-child(1) {flex:1 1 auto !important;width:auto !important;}
+          .st-key-mobile_equipment [data-testid="stColumn"]:nth-child(2) {flex:0 0 24% !important;width:24% !important;}
+          .st-key-mobile_equipment button {padding:.25rem .1rem !important;font-size:.72rem !important;min-height:2rem !important;}
+          .st-key-mobile_equipment p {font-size:.72rem !important;line-height:1.15 !important;}
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.container(key="mobile_stats"):
+        render_stats(profile)
     st.divider()
     st.subheader("⚔️ 目前裝備")
-    for slot, label in SLOT_NAMES.items():
-        uid = profile["equipment"].get(slot)
-        item = find_item(profile, uid) if uid else None
-        cols = st.columns([2, 6, 1])
-        cols[0].write(f"**{SLOT_ICONS[slot]} {label}**")
-        cols[1].write(item_text(item) if item else "— 尚未裝備 —")
-        if item and cols[2].button("卸下", key=f"stats_off_{slot}"):
-            profile["equipment"][slot] = None
-            save_profile(profile)
-            st.rerun()
+    with st.container(key="mobile_equipment"):
+        for slot, label in SLOT_NAMES.items():
+            uid = profile["equipment"].get(slot)
+            item = find_item(profile, uid) if uid else None
+            cols = st.columns([5, 1], vertical_alignment="center")
+            cols[0].write(f"**{SLOT_ICONS[slot]} {label}**")
+            if item and cols[1].button("卸下", key=f"stats_off_{slot}", use_container_width=True):
+                profile["equipment"][slot] = None
+                save_profile(profile)
+                st.rerun()
+            st.write(item_text(item) if item else "— 尚未裝備 —")
+            st.divider()
+    render_bottom_home_button("character_stats")
 
 elif st.session_state.screen == "menu":
     profile = get_profile()
@@ -2683,6 +2725,7 @@ elif st.session_state.screen == "menu":
         st.session_state.active_player = None
         st.session_state.screen = "login"
         st.rerun()
+    render_bottom_home_button("stages")
 
 elif st.session_state.screen == "sweep_result":
     profile = get_profile()
@@ -2857,6 +2900,7 @@ elif st.session_state.screen == "daily_tasks":
                     st.rerun()
         if len(special_tasks) < len(CHAPTERS):
             st.caption("完成並領取目前章節的特殊任務後，才會顯示下一章特殊任務。")
+    render_bottom_home_button("tasks")
 
 elif st.session_state.screen == "rankings":
     scroll_page_to_top("scroll_ranking_to_top")
@@ -2897,6 +2941,7 @@ elif st.session_state.screen == "rankings":
         "各榜顯示前10名；若自己不在前10名，會額外顯示自己的實際名次。"
         "排行榜只公開大頭貼、勇者名稱、稱號與遊戲數值，不顯示正式姓名或學生代碼。"
     )
+    render_bottom_home_button("rankings")
 
 elif st.session_state.screen == "economy":
     scroll_page_to_top("scroll_economy_to_top")
@@ -3088,6 +3133,7 @@ elif st.session_state.screen == "economy":
             save_profile(profile)
             st.session_state.forge_result_uid = result_item["uid"]
             st.rerun()
+    render_bottom_home_button("economy")
 
 elif st.session_state.screen == "inventory":
     scroll_page_to_top("scroll_inventory_to_top")
@@ -3111,6 +3157,21 @@ elif st.session_state.screen == "inventory":
             key="backpack_tabs", default="⚔️ 裝備",
         )
         with gear_tab:
+            st.markdown(
+                """
+                <style>
+                [class*="st-key-gear_grid_"] [data-testid="stColumn"] {
+                  border:1px solid #d9dee7;border-radius:8px;padding:.25rem !important;min-height:5rem;
+                }
+                @media (max-width:768px) and (orientation:portrait) {
+                  [class*="st-key-gear_grid_"] [data-testid="stHorizontalBlock"] {display:flex !important;flex-wrap:nowrap !important;gap:.12rem !important;}
+                  [class*="st-key-gear_grid_"] [data-testid="stColumn"] {min-width:0 !important;width:20% !important;max-width:20% !important;flex:0 0 calc(20% - .1rem) !important;padding:.18rem !important;min-height:4.8rem;overflow:hidden !important;}
+                  [class*="st-key-gear_grid_"] button {padding:.35rem .06rem !important;font-size:.6rem !important;line-height:1.12 !important;white-space:normal !important;min-height:4.15rem !important;overflow:hidden !important;}
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
             equipped_uids = {uid for uid in profile["equipment"].values() if uid}
             backpack_items = [
                 item for item in profile["inventory"] if item["uid"] not in equipped_uids
@@ -3121,42 +3182,51 @@ elif st.session_state.screen == "inventory":
             if not sorted_items:
                 st.info("完成單元後可以取得裝備。")
             for start in range(0, len(sorted_items), 5):
-                grid_cols = st.columns(5)
-                for col, item in zip(grid_cols, sorted_items[start:start + 5]):
-                    equipped = profile["equipment"].get(item["slot"]) == item["uid"]
-                    label = f"{SLOT_ICONS[item['slot']]} {item['name']}\n{'⭐' * item['stars']}　×1"
-                    with col.popover(label, use_container_width=True):
-                        render_item_comparison(profile, item)
-                        if equipped:
-                            st.success("目前使用中")
-                            if st.button("卸下", key=f"grid_off_{item['uid']}", use_container_width=True):
-                                profile["equipment"][item["slot"]] = None
-                                save_profile(profile)
-                                st.session_state.inventory_default_tab = "背包"
-                                st.session_state.inventory_tab_version += 1
-                                st.rerun()
-                        else:
+                with st.container(key=f"gear_grid_{start // 5}"):
+                    grid_cols = st.columns(5)
+                    row_items = sorted_items[start:start + 5]
+                    for col_index, col in enumerate(grid_cols):
+                        if col_index >= len(row_items):
+                            col.markdown("&nbsp;", unsafe_allow_html=True)
+                            continue
+                        item = row_items[col_index]
+                        equipped = profile["equipment"].get(item["slot"]) == item["uid"]
+                        label = f"{SLOT_ICONS[item['slot']]} {item['name']}\n{'⭐' * item['stars']}"
+                        with col.popover(label, use_container_width=True):
+                            render_item_comparison(profile, item)
                             if st.button("裝備", key=f"grid_equip_{item['uid']}", use_container_width=True):
                                 profile["equipment"][item["slot"]] = item["uid"]
                                 save_profile(profile)
-                                st.session_state.inventory_default_tab = "背包"
-                                st.session_state.inventory_tab_version += 1
                                 st.rerun()
-                        if item["stars"] in (1, 2, 3) and not equipped:
-                            coin_gain = item["stars"] * 100
-                            stone_text = "＋1顆融煉石" if item["stars"] == 3 else ""
-                            st.warning(f"分解不可復原：{coin_gain}金幣{stone_text}")
-                            if st.button("確認分解", key=f"grid_break_{item['uid']}", use_container_width=True):
-                                profile["coins"] += coin_gain
-                                profile["smelting_stones"] += 1 if item["stars"] == 3 else 0
-                                remove_inventory_items(profile, [item["uid"]])
-                                save_profile(profile)
-                                st.session_state.inventory_default_tab = "背包"
-                                st.session_state.inventory_tab_version += 1
-                                st.rerun()
-                        elif item["stars"] >= 4:
-                            st.caption("四星以上裝備目前不能分解。")
+                            if item["stars"] in (1, 2, 3):
+                                coin_gain = item["stars"] * 100
+                                stone_text = "＋1顆融煉石" if item["stars"] == 3 else ""
+                                st.warning(f"分解不可復原：{coin_gain}金幣{stone_text}")
+                                if st.button("確認分解", key=f"grid_break_{item['uid']}", use_container_width=True):
+                                    profile["coins"] += coin_gain
+                                    profile["smelting_stones"] += 1 if item["stars"] == 3 else 0
+                                    remove_inventory_items(profile, [item["uid"]])
+                                    save_profile(profile)
+                                    st.rerun()
+                            elif item["stars"] >= 4:
+                                st.caption("四星以上裝備目前不能分解。")
         with consumable_tab:
+            st.markdown(
+                """
+                <style>
+                .st-key-mobile_consumables [data-testid="stColumn"] {
+                  border:1px solid #d9dee7;border-radius:8px;padding:.35rem !important;min-height:5rem;
+                }
+                @media (max-width:768px) and (orientation:portrait) {
+                  .st-key-mobile_consumables [data-testid="stHorizontalBlock"] {display:flex !important;flex-wrap:nowrap !important;gap:.12rem !important;}
+                  .st-key-mobile_consumables [data-testid="stColumn"] {min-width:0 !important;width:20% !important;max-width:20% !important;flex:0 0 calc(20% - .1rem) !important;padding:.12rem !important;min-height:4.3rem;}
+                  .st-key-mobile_consumables [data-testid="stMetricLabel"] {font-size:.58rem !important;line-height:1.05 !important;white-space:normal !important;}
+                  .st-key-mobile_consumables [data-testid="stMetricValue"] {font-size:1rem !important;line-height:1.1 !important;}
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
             consumables = [
                 ("🎫", "擊殺券", profile["sweep_tickets"]),
                 ("💎", "融煉石", profile["smelting_stones"]),
@@ -3164,9 +3234,10 @@ elif st.session_state.screen == "inventory":
                 ("🔷", "基礎詞條融煉石", profile["basic_affix_smelting_stones"]),
                 ("🔶", "進階詞條融煉石", profile["advanced_affix_smelting_stones"]),
             ]
-            cols = st.columns(5)
-            for col, (icon, name, count) in zip(cols, consumables):
-                col.metric(f"{icon} {name}", count)
+            with st.container(key="mobile_consumables"):
+                cols = st.columns(5)
+                for col, (icon, name, count) in zip(cols, consumables):
+                    col.metric(f"{icon} {name}", count)
             st.caption("擊殺券請在章節單元旁使用；融煉石請前往裝備融煉工坊使用。")
         with title_tab:
             if not profile["titles"]:
@@ -3268,6 +3339,7 @@ elif st.session_state.screen == "inventory":
                         st.session_state.screen = "boss_ready"
                         st.rerun()
             st.caption("四星固定值不隨章節倍率變動，但都高於首次登場章節可掉落的同部位三星固定值。")
+    render_bottom_home_button(f"inventory_{inventory_view}")
 
 elif st.session_state.screen == "quiz":
     unit = UNITS[st.session_state.selected_unit]
@@ -3374,6 +3446,10 @@ elif st.session_state.screen == "boss_ready":
     has_cleared = boss_has_been_cleared(profile, chapter_id, boss_type)
     boss_label = "菁英BOSS" if boss_type == "elite" else "一般BOSS"
     st.subheader(f"🐉 {CHAPTERS[chapter_id]['number']}{boss_label}：{config['name']}")
+    st.image(
+        Path(__file__).parent / "assets" / "bosses" / config["image"],
+        width=320, caption=config["name"],
+    )
     render_stats(profile)
     st.write(f"BOSS HP：{config['hp']}｜每{config['interval']:g}秒攻擊{config['damage']}")
     if config.get("critical_rate"):
@@ -3426,7 +3502,10 @@ elif st.session_state.screen == "boss_watch":
         render_health_bar(
             "BOSS HP", event["boss_hp"], result["events"][0]["boss_hp"], "#e53935"
         )
-        render_battle_scene(event, st.session_state.selected_boss_type, active_skill)
+        render_battle_scene(
+            event, st.session_state.selected_chapter,
+            st.session_state.selected_boss_type, active_skill,
+        )
         if active_skill:
             st.error(f"🔥 {active_skill['text']}（技能演出期間計時暫停）")
         else:
