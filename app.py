@@ -1415,7 +1415,7 @@ elif st.session_state.screen == "bootstrap":
 active_chapter_id = st.session_state.get("selected_chapter", "1")
 if active_chapter_id not in CHAPTERS:
     active_chapter_id = "1"
-if st.session_state.screen in {"menu", "inventory", "quiz", "quiz_result", "boss_ready", "boss_watch", "boss_result"}:
+if st.session_state.screen in {"menu", "inventory", "rankings", "quiz", "quiz_result", "boss_ready", "boss_watch", "boss_result"}:
     active_chapter = CHAPTERS[active_chapter_id]
     st.title(f"⚔️ 數學冒險：{active_chapter['number']}－{active_chapter['name']}")
 else:
@@ -1682,9 +1682,12 @@ elif st.session_state.screen == "menu":
         else:
             cols[2].button("🔒 尚未解鎖", disabled=True, key=f"locked_{unit_id}", use_container_width=True)
     st.divider()
-    a, b, c = st.columns(3)
+    a, rank_col, b, c = st.columns(4)
     if a.button("🎒 裝備與物品欄", use_container_width=True):
         st.session_state.screen = "inventory"
+        st.rerun()
+    if rank_col.button("🏆 查看排行榜", use_container_width=True):
+        st.session_state.screen = "rankings"
         st.rerun()
     if chapter_id == "1":
         boss_unlocked = all(profile["unit_best_stars"][uid] == 3 for uid in chapter_unit_ids("1"))
@@ -1737,6 +1740,28 @@ elif st.session_state.screen == "menu":
         st.session_state.active_player = None
         st.session_state.screen = "login"
         st.rerun()
+
+elif st.session_state.screen == "rankings":
+    chapter_id = st.session_state.selected_chapter
+    title_col, back_col = st.columns([4, 1])
+    title_col.subheader(f"🏆 {CHAPTERS[chapter_id]['number']} BOSS排行榜")
+    if back_col.button("返回章節", use_container_width=True):
+        st.session_state.screen = "menu"
+        st.rerun()
+    normal_tab, elite_tab = st.tabs(["🐉 一般BOSS", "🐲 菁英BOSS"])
+    with normal_tab:
+        normal_rows = ranking_rows("normal", chapter_id)
+        if normal_rows:
+            render_ranking(normal_rows)
+        else:
+            st.info("目前還沒有人完成本章一般BOSS，成為第一位上榜的勇者吧！")
+    with elite_tab:
+        elite_rows = ranking_rows("elite", chapter_id)
+        if elite_rows:
+            render_ranking(elite_rows)
+        else:
+            st.info("目前還沒有人完成本章菁英BOSS。")
+    st.caption("排行榜只公開大頭貼、勇者名稱、等級、通關時間與日期，不顯示正式姓名或學生代碼。")
 
 elif st.session_state.screen == "inventory":
     profile = get_profile()
