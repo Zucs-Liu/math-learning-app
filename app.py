@@ -460,6 +460,7 @@ def init_db():
     return True
 
 
+@st.cache_data(ttl=10, show_spinner=False)
 def setting_get(key):
     with db_connection() as db:
         row = db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
@@ -473,6 +474,7 @@ def setting_set(key, value):
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (key, value),
         )
+    setting_get.clear()
 
 
 def pin_digest(pin, salt_hex):
@@ -699,6 +701,12 @@ def verify_student(code, pin):
 
 def get_profile():
     code = st.session_state.active_player
+    cached = st.session_state.get("_profile_cache")
+    if (
+        cached and cached.get("code") == code
+        and time.time() - cached.get("loaded_at", 0) < 5
+    ):
+        return cached["profile"]
     with db_connection() as db:
         row = db.execute("SELECT hero_name, profile_json FROM players WHERE student_code=?", (code,)).fetchone()
     if not row:
@@ -728,6 +736,9 @@ def get_profile():
         migrated = sync_achievement_item(profile, unit_key, maker) or migrated
     if migrated or normalized_changed:
         save_profile(profile)
+    st.session_state._profile_cache = {
+        "code": code, "profile": profile, "loaded_at": time.time(),
+    }
     return profile
 
 
@@ -737,6 +748,11 @@ def save_profile(profile):
             "UPDATE players SET hero_name=?, profile_json=? WHERE student_code=?",
             (profile["name"], json.dumps(profile, ensure_ascii=False), st.session_state.active_player),
         )
+    st.session_state._profile_cache = {
+        "code": st.session_state.active_player,
+        "profile": profile,
+        "loaded_at": time.time(),
+    }
 
 
 def avatar_from_upload(uploaded_file):
@@ -868,8 +884,8 @@ def student_ranking_rows(rows, limit=10):
     return top_rows
 
 
-def character_ranking_rows(ranking_type):
-    """公開角色能力排行榜；不包含老師角色與正式姓名。"""
+def character_ranking_tables():
+    """一次讀取與計算全部學生能力，再建立四種排序。"""
     with db_connection() as db:
         rows = db.execute(
             "SELECT student_code, hero_name, profile_json FROM players "
@@ -898,20 +914,24 @@ def character_ranking_rows(ranking_type):
         "defense": lambda row: (-row["防禦"], -row["等級"], row["玩家"]),
         "speed": lambda row: (-row["攻速／秒"], -row["等級"], row["玩家"]),
     }
-    prepared.sort(key=sort_keys[ranking_type])
     visible_columns = {
         "level": ("頭像", "玩家", "等級", "EXP"),
         "attack": ("頭像", "玩家", "等級", "攻擊"),
         "defense": ("頭像", "玩家", "等級", "防禦"),
         "speed": ("頭像", "玩家", "等級", "攻速／秒"),
-    }[ranking_type]
-    result = []
-    for rank, row in enumerate(prepared, 1):
-        result.append({
-            "名次": rank, "自己": row["自己"],
-            **{column: row[column] for column in visible_columns},
-        })
-    return result
+    }
+    tables = {}
+    for ranking_type, sort_key in sort_keys.items():
+        ordered = sorted(prepared, key=sort_key)
+        columns = visible_columns[ranking_type]
+        tables[ranking_type] = [
+            {
+                "名次": rank, "自己": row["自己"],
+                **{column: row[column] for column in columns},
+            }
+            for rank, row in enumerate(ordered, 1)
+        ]
+    return tables
 
 
 def student_rows():
@@ -1067,19 +1087,32 @@ def special_task_definitions(code, profile=None):
         "3": ("chapter3_rankings", "chapter3_elite_rankings"),
     }
     clear_times = {}
+    union_parts = []
+    parameters = []
+    for chapter_id, (normal_table, elite_table) in table_by_chapter.items():
+        for boss_type, table in (("normal", normal_table), ("elite", elite_table)):
+            union_parts.append(
+                f"SELECT '{chapter_id}' AS chapter_id, '{boss_type}' AS boss_type, "
+                f"clear_time FROM {table} WHERE student_code=?"
+            )
+            parameters.append(code)
     with db_connection() as db:
-        for chapter_id, (normal_table, elite_table) in table_by_chapter.items():
-            for boss_type, table in (("normal", normal_table), ("elite", elite_table)):
-                row = db.execute(
-                    f"SELECT clear_time FROM {table} WHERE student_code=?", (code,)
-                ).fetchone()
-                ranking_time = row["clear_time"] if row else None
-                profile_time = (
-                    profile.get("boss_best_times", {}).get(f"{chapter_id}_{boss_type}")
-                    if profile else None
-                )
-                available_times = [value for value in (ranking_time, profile_time) if value is not None]
-                clear_times[(chapter_id, boss_type)] = min(available_times) if available_times else None
+        ranking_rows_result = db.execute(
+            " UNION ALL ".join(union_parts), tuple(parameters)
+        ).fetchall()
+    ranking_times = {
+        (str(row["chapter_id"]), row["boss_type"]): row["clear_time"]
+        for row in ranking_rows_result
+    }
+    for chapter_id in CHAPTERS:
+        for boss_type in ("normal", "elite"):
+            ranking_time = ranking_times.get((chapter_id, boss_type))
+            profile_time = (
+                profile.get("boss_best_times", {}).get(f"{chapter_id}_{boss_type}")
+                if profile else None
+            )
+            available_times = [value for value in (ranking_time, profile_time) if value is not None]
+            clear_times[(chapter_id, boss_type)] = min(available_times) if available_times else None
     tasks = []
     for chapter_id in CHAPTERS:
         for boss_type, boss_label in (("normal", "普通BOSS"), ("elite", "菁英BOSS")):
@@ -2972,10 +3005,11 @@ elif st.session_state.screen == "rankings":
         (defense_tab, "defense", "依目前穿戴裝備計算防禦力。"),
         (speed_tab, "speed", "依目前穿戴裝備計算每秒攻擊次數。"),
     ]
+    character_tables = character_ranking_tables()
     for tab, ranking_type, description in ranking_specs:
         with tab:
             st.caption(description)
-            render_ranking(student_ranking_rows(character_ranking_rows(ranking_type)))
+            render_ranking(student_ranking_rows(character_tables[ranking_type]))
     st.caption(
         "各榜顯示前10名；若自己不在前10名，會額外顯示自己的實際名次。"
         "排行榜只公開大頭貼、勇者名稱、稱號與遊戲數值，不顯示正式姓名或學生代碼。"
