@@ -1559,6 +1559,31 @@ elif st.session_state.screen == "admin_panel":
                 st.rerun()
             detail_profile = student_learning_detail(selected_code)
             if detail_profile:
+                detail_stats = player_stats(detail_profile)
+                st.write("### 角色等級與能力值")
+                stat_cols = st.columns(6)
+                stat_cols[0].metric("等級", f"Lv{detail_profile['level']}")
+                next_exp = detail_profile["level"] * 100 if detail_profile["level"] < 20 else None
+                stat_cols[1].metric(
+                    "EXP", f"{detail_profile['exp']} / {next_exp}" if next_exp else "MAX"
+                )
+                stat_cols[2].metric("HP", f"{detail_stats['hp']:.1f}")
+                stat_cols[3].metric("攻擊", f"{detail_stats['attack']:.1f}")
+                stat_cols[4].metric("防禦", f"{detail_stats['defense']:.1f}")
+                stat_cols[5].metric("攻速", f"{detail_stats['attack_speed']:.2f}/秒")
+                special_stats = [
+                    ("BOSS初始血量降低", detail_stats["boss_hp_reduction"]),
+                    ("第一擊額外扣血", detail_stats["first_hit_percent"]),
+                    ("對BOSS傷害", detail_stats["boss_damage_pct"]),
+                    ("傷害減免", detail_stats["damage_reduction_pct"]),
+                    ("暴擊率", detail_stats["critical_rate"]),
+                    ("暴擊傷害", detail_stats["critical_damage"]),
+                    ("開場護盾", detail_stats["shield_pct"]),
+                    ("BOSS攻速降低", detail_stats["boss_attack_slow_pct"]),
+                ]
+                active_specials = [f"{name} {value:.0%}" for name, value in special_stats if value]
+                st.caption("特殊能力：" + ("｜".join(active_specials) if active_specials else "目前無"))
+
                 st.write("### 學習與通關進度")
                 progress_rows = []
                 for unit_id, unit in UNITS.items():
@@ -1586,6 +1611,36 @@ elif st.session_state.screen == "admin_panel":
                         "裝備": item_text(equipped) if equipped else "尚未裝備",
                     })
                 st.dataframe(equipment_rows, hide_index=True, use_container_width=True)
+
+                st.write(f"### 完整物品欄（{len(detail_profile['inventory'])}件）")
+                star_counts = {
+                    stars: sum(1 for item in detail_profile["inventory"] if item.get("stars") == stars)
+                    for stars in range(1, 6)
+                }
+                st.caption("｜".join(
+                    f"{'⭐' * stars}：{count}件" for stars, count in star_counts.items() if count
+                ) or "目前沒有物品")
+                inventory_rows = []
+                sorted_inventory = sorted(
+                    detail_profile["inventory"],
+                    key=lambda item: (-item.get("stars", 0), list(SLOT_NAMES).index(item["slot"])),
+                )
+                for item in sorted_inventory:
+                    source_id = item_chapter_id(item)
+                    source = CHAPTERS[source_id]["number"] if source_id in CHAPTERS else "成就／BOSS"
+                    inventory_rows.append({
+                        "穿戴": "✅" if detail_profile["equipment"].get(item["slot"]) == item["uid"] else "",
+                        "部位": f"{SLOT_ICONS[item['slot']]} {SLOT_NAMES[item['slot']]}",
+                        "裝備名稱": item["name"],
+                        "星級": "⭐" * item["stars"],
+                        "固定能力": fixed_text(item),
+                        "附屬能力": f"{AFFIX_NAMES[item['affix_stat']]} +{item['affix_value']:.0%}",
+                        "來源": source,
+                    })
+                if inventory_rows:
+                    st.dataframe(inventory_rows, hide_index=True, use_container_width=True)
+                else:
+                    st.info("目前物品欄是空的。")
 
                 st.write("### 作答明細")
                 errors_only = st.toggle("只顯示答錯題目", value=True, key=f"errors_{selected_code}")
