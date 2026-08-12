@@ -2503,13 +2503,25 @@ elif st.session_state.screen == "home":
     st.markdown(
         """
         <style>
-        @media (max-width: 640px) {
+        @media (max-width: 768px) and (orientation: portrait) {
+          .st-key-home_nav_row_1,
+          .st-key-home_nav_row_2 {width:100% !important;max-width:100% !important;overflow:hidden !important;}
           .st-key-home_nav_row_1 [data-testid="stHorizontalBlock"],
-          .st-key-home_nav_row_2 [data-testid="stHorizontalBlock"] {display:flex !important;flex-wrap:nowrap !important;gap:.25rem !important;}
-          .st-key-home_nav_row_1 [data-testid="column"],
-          .st-key-home_nav_row_2 [data-testid="column"] {min-width:0 !important;width:25% !important;flex:1 1 25% !important;}
+          .st-key-home_nav_row_2 [data-testid="stHorizontalBlock"] {
+            display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;
+            width:100% !important;max-width:100% !important;gap:.2rem !important;
+          }
+          .st-key-home_nav_row_1 [data-testid="stColumn"],
+          .st-key-home_nav_row_2 [data-testid="stColumn"] {
+            min-width:0 !important;width:calc(25% - .15rem) !important;
+            max-width:calc(25% - .15rem) !important;flex:0 0 calc(25% - .15rem) !important;
+            padding:0 !important;
+          }
           .st-key-home_nav_row_1 button,
-          .st-key-home_nav_row_2 button {padding:.45rem .12rem !important;font-size:.78rem !important;white-space:normal !important;min-height:3.2rem;}
+          .st-key-home_nav_row_2 button {
+            width:100% !important;padding:.35rem .05rem !important;font-size:.72rem !important;
+            line-height:1.15 !important;white-space:normal !important;min-height:2.8rem !important;
+          }
         }
         </style>
         """,
