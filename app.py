@@ -852,6 +852,52 @@ def student_ranking_rows(rows, limit=10):
     return top_rows
 
 
+def character_ranking_rows(ranking_type):
+    """公開角色能力排行榜；不包含老師角色與正式姓名。"""
+    with db_connection() as db:
+        rows = db.execute(
+            "SELECT student_code, hero_name, profile_json FROM players "
+            "WHERE student_code <> '__TEACHER__'"
+        ).fetchall()
+    prepared = []
+    for row in rows:
+        profile = normalize_profile(json.loads(row["profile_json"]), row["hero_name"])
+        stats = player_stats(profile)
+        public_name = profile["name"]
+        if profile.get("equipped_title"):
+            public_name = f"「{profile['equipped_title']}」{public_name}"
+        base = {
+            "_student_code": row["student_code"],
+            "自己": "👤 你" if row["student_code"] == st.session_state.active_player else "",
+            "頭像": profile.get("avatar_data"), "玩家": public_name,
+            "等級": profile["level"], "EXP": profile["exp"],
+            "攻擊": round(stats["attack"], 1),
+            "防禦": round(stats["defense"], 1),
+            "攻速／秒": round(stats["attack_speed"], 2),
+        }
+        prepared.append(base)
+    sort_keys = {
+        "level": lambda row: (-row["等級"], -row["EXP"], row["玩家"]),
+        "attack": lambda row: (-row["攻擊"], -row["等級"], row["玩家"]),
+        "defense": lambda row: (-row["防禦"], -row["等級"], row["玩家"]),
+        "speed": lambda row: (-row["攻速／秒"], -row["等級"], row["玩家"]),
+    }
+    prepared.sort(key=sort_keys[ranking_type])
+    visible_columns = {
+        "level": ("頭像", "玩家", "等級", "EXP"),
+        "attack": ("頭像", "玩家", "等級", "攻擊"),
+        "defense": ("頭像", "玩家", "等級", "防禦"),
+        "speed": ("頭像", "玩家", "等級", "攻速／秒"),
+    }[ranking_type]
+    result = []
+    for rank, row in enumerate(prepared, 1):
+        result.append({
+            "名次": rank, "自己": row["自己"],
+            **{column: row[column] for column in visible_columns},
+        })
+    return result
+
+
 def student_rows():
     with db_connection() as db:
         rows = [dict(row) for row in db.execute(
@@ -2309,26 +2355,47 @@ elif st.session_state.screen == "daily_tasks":
 
 elif st.session_state.screen == "rankings":
     scroll_page_to_top("scroll_ranking_to_top")
-    chapter_id = st.session_state.selected_chapter
     title_col, back_col = st.columns([4, 1])
-    title_col.subheader(f"🏆 {CHAPTERS[chapter_id]['number']} BOSS排行榜")
+    title_col.subheader("🏆 勇者排行榜")
     if back_col.button("返回章節", use_container_width=True):
         st.session_state.screen = "menu"
         st.rerun()
-    normal_tab, elite_tab = st.tabs(["🐉 一般BOSS", "🐲 菁英BOSS"])
-    with normal_tab:
-        normal_rows = ranking_rows("normal", chapter_id)
-        if normal_rows:
-            render_ranking(student_ranking_rows(normal_rows))
+    boss_tab, level_tab, attack_tab, defense_tab, speed_tab = st.tabs(
+        ["🐉 BOSS排行", "⭐ 等級排行", "⚔️ 攻擊排行", "🛡️ 防禦排行", "💨 攻速排行"],
+        key="student_ranking_tabs", default="🐉 BOSS排行",
+    )
+    with boss_tab:
+        boss_options = [
+            (chapter_id, boss_type) for chapter_id in CHAPTERS
+            for boss_type in ("normal", "elite")
+        ]
+        selected_boss = st.selectbox(
+            "選擇章節BOSS", boss_options,
+            index=boss_options.index((st.session_state.selected_chapter, "normal")),
+            format_func=lambda value: (
+                f"{CHAPTERS[value[0]]['number']}｜"
+                f"{'一般BOSS' if value[1] == 'normal' else '菁英BOSS'}"
+            ),
+        )
+        boss_rows = ranking_rows(selected_boss[1], selected_boss[0])
+        if boss_rows:
+            render_ranking(student_ranking_rows(boss_rows))
         else:
-            st.info("目前還沒有人完成本章一般BOSS，成為第一位上榜的勇者吧！")
-    with elite_tab:
-        elite_rows = ranking_rows("elite", chapter_id)
-        if elite_rows:
-            render_ranking(student_ranking_rows(elite_rows))
-        else:
-            st.info("目前還沒有人完成本章菁英BOSS。")
-    st.caption("排行榜只公開大頭貼、勇者名稱、等級、通關時間與日期，不顯示正式姓名或學生代碼。")
+            st.info("目前還沒有勇者完成這個BOSS。")
+    ranking_specs = [
+        (level_tab, "level", "等級相同時，以目前EXP較多者優先。"),
+        (attack_tab, "attack", "依目前穿戴裝備計算攻擊力。"),
+        (defense_tab, "defense", "依目前穿戴裝備計算防禦力。"),
+        (speed_tab, "speed", "依目前穿戴裝備計算每秒攻擊次數。"),
+    ]
+    for tab, ranking_type, description in ranking_specs:
+        with tab:
+            st.caption(description)
+            render_ranking(student_ranking_rows(character_ranking_rows(ranking_type)))
+    st.caption(
+        "各榜顯示前10名；若自己不在前10名，會額外顯示自己的實際名次。"
+        "排行榜只公開大頭貼、勇者名稱、稱號與遊戲數值，不顯示正式姓名或學生代碼。"
+    )
 
 elif st.session_state.screen == "economy":
     scroll_page_to_top("scroll_economy_to_top")
