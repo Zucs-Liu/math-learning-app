@@ -54,6 +54,8 @@ BOSS_CONFIGS = {
     "1_elite": {"name": "整數霸主", "hp": 900, "damage": 45, "interval": 2.5, "exp": 150},
     "2_normal": {"name": "乘除巨像", "hp": 800, "damage": 36, "interval": 3.0, "exp": 150},
     "2_elite": {"name": "乘除霸主", "hp": 1200, "damage": 54, "interval": 2.5, "exp": 200},
+    "3_normal": {"name": "小數暴擊獸", "hp": 1050, "damage": 45, "interval": 3.0, "exp": 200, "critical_rate": 0.20},
+    "3_elite": {"name": "烈焰小數龍", "hp": 1550, "damage": 62, "interval": 2.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 20},
 }
 BOSS_MAX_HP = 400
 BOSS_DAMAGE = 30
@@ -133,6 +135,7 @@ SLOT_ICONS = {
 CHAPTERS = {
     "1": {"number": "第一章", "name": "整數加減法", "multiplier": 1.00},
     "2": {"number": "第二章", "name": "整數的乘除法", "multiplier": 1.15},
+    "3": {"number": "第三章", "name": "小數的加減法", "multiplier": 1.30},
 }
 
 UNITS = {
@@ -170,6 +173,16 @@ UNITS = {
         "name": "三位數除以一位數（整除）",
         "slots": ["belt", "shield"],
         "description": "例如：864÷8、735÷7",
+    },
+    "3-1": {
+        "name": "一位小數加減一位小數",
+        "slots": ["helmet", "armor", "gloves", "weapon", "boots"],
+        "description": "例如：8.7－0.6、12.4＋3.5",
+    },
+    "3-2": {
+        "name": "一位小數加減二位小數",
+        "slots": ["necklace", "ring", "belt", "shield"],
+        "description": "例如：12.6＋3.56、18.4－2.75",
     },
 }
 
@@ -387,6 +400,16 @@ def init_db():
                 clear_time REAL NOT NULL, achieved_at TEXT NOT NULL,
                 FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS chapter3_rankings (
+                student_code TEXT PRIMARY KEY, hero_name TEXT NOT NULL, level INTEGER NOT NULL,
+                clear_time REAL NOT NULL, achieved_at TEXT NOT NULL,
+                FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS chapter3_elite_rankings (
+                student_code TEXT PRIMARY KEY, hero_name TEXT NOT NULL, level INTEGER NOT NULL,
+                clear_time REAL NOT NULL, achieved_at TEXT NOT NULL,
+                FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
+            );
             CREATE TABLE IF NOT EXISTS attempts (
                 id {"BIGSERIAL PRIMARY KEY" if USE_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
                 student_code TEXT NOT NULL,
@@ -404,8 +427,8 @@ def init_db():
                 student_code TEXT NOT NULL,
                 unit_id TEXT NOT NULL,
                 question_text TEXT NOT NULL,
-                submitted_answer INTEGER NOT NULL,
-                correct_answer INTEGER NOT NULL,
+                submitted_answer REAL NOT NULL,
+                correct_answer REAL NOT NULL,
                 is_correct INTEGER NOT NULL,
                 combo_after INTEGER NOT NULL,
                 elapsed_seconds REAL NOT NULL DEFAULT 0,
@@ -419,6 +442,8 @@ def init_db():
             db.execute("ALTER TABLE attempts ADD COLUMN IF NOT EXISTS elapsed_seconds REAL NOT NULL DEFAULT 0")
             db.execute("ALTER TABLE attempts ADD COLUMN IF NOT EXISTS average_seconds REAL NOT NULL DEFAULT 0")
             db.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS real_name TEXT NOT NULL DEFAULT ''")
+            db.execute("ALTER TABLE question_logs ALTER COLUMN submitted_answer TYPE DOUBLE PRECISION USING submitted_answer::DOUBLE PRECISION")
+            db.execute("ALTER TABLE question_logs ALTER COLUMN correct_answer TYPE DOUBLE PRECISION USING correct_answer::DOUBLE PRECISION")
         else:
             attempt_columns = {
                 row["name"] for row in db.execute("PRAGMA table_info(attempts)").fetchall()
@@ -514,6 +539,10 @@ def new_profile(name):
         "chapter2_elite_boss_exp_claimed": False,
         "chapter2_elite_boss_wins": 0,
         "chapter2_elite_reward_claimed": False,
+        "chapter3_boss_exp_claimed": False,
+        "chapter3_boss_wins": 0,
+        "chapter3_elite_boss_exp_claimed": False,
+        "chapter3_elite_boss_wins": 0,
     }
 
 
@@ -758,6 +787,7 @@ def save_best_ranking(profile, clear_time, boss_type="normal", chapter_id="1"):
     table = {
         ("1", "normal"): "rankings", ("1", "elite"): "elite_rankings",
         ("2", "normal"): "chapter2_rankings", ("2", "elite"): "chapter2_elite_rankings",
+        ("3", "normal"): "chapter3_rankings", ("3", "elite"): "chapter3_elite_rankings",
     }[(chapter_id, boss_type)]
     with db_connection() as db:
         row = db.execute(f"SELECT clear_time FROM {table} WHERE student_code=?", (code,)).fetchone()
@@ -775,6 +805,7 @@ def ranking_rows(boss_type="normal", chapter_id="1", include_private_identity=Fa
     table = {
         ("1", "normal"): "rankings", ("1", "elite"): "elite_rankings",
         ("2", "normal"): "chapter2_rankings", ("2", "elite"): "chapter2_elite_rankings",
+        ("3", "normal"): "chapter3_rankings", ("3", "elite"): "chapter3_elite_rankings",
     }[(chapter_id, boss_type)]
     with db_connection() as db:
         rows = db.execute(
@@ -784,16 +815,19 @@ def ranking_rows(boss_type="normal", chapter_id="1", include_private_identity=Fa
             "JOIN players p ON p.student_code=r.student_code ORDER BY r.clear_time ASC"
         ).fetchall()
     result = []
-    for row in rows:
+    for rank, row in enumerate(rows, 1):
         profile = json.loads(row["profile_json"])
         public_name = row["玩家"]
         if profile.get("equipped_title"):
             public_name = f"「{profile['equipped_title']}」{public_name}"
         ranking_row = {
+            "名次": rank,
+            "自己": "👤 你" if row["學生代碼"] == st.session_state.active_player else "",
             "頭像": profile.get("avatar_data"), "玩家": public_name, "等級": row["等級"],
             "通關秒數": row["通關秒數"], "日期": taipei_time_text(row["日期"]),
         }
         if include_private_identity:
+            ranking_row.pop("自己", None)
             ranking_row = {
                 "學生代碼": row["學生代碼"], "正式姓名": row["正式姓名"], **ranking_row
             }
@@ -803,10 +837,19 @@ def ranking_rows(boss_type="normal", chapter_id="1", include_private_identity=Fa
 
 def render_ranking(rows):
     st.dataframe(
-        [{"名次": index, **row} for index, row in enumerate(rows, 1)],
+        rows,
         hide_index=True, use_container_width=True,
         column_config={"頭像": st.column_config.ImageColumn("頭像", width="small")},
     )
+
+
+def student_ranking_rows(rows, limit=10):
+    """學生看前10名；若本人不在前10名，於下方額外保留本人實際名次。"""
+    top_rows = rows[:limit]
+    own_row = next((row for row in rows if row.get("自己")), None)
+    if own_row and own_row not in top_rows:
+        return [*top_rows, own_row]
+    return top_rows
 
 
 def student_rows():
@@ -1293,12 +1336,25 @@ def unit_unlocked(profile, unit_id):
     chapter_id = unit_id.split("-")[0]
     if chapter_id == "2" and profile.get("boss_wins", 0) <= 0 and st.session_state.active_player != "__TEACHER__":
         return False
+    if chapter_id == "3" and profile.get("chapter2_boss_wins", 0) <= 0 and st.session_state.active_player != "__TEACHER__":
+        return False
     order = chapter_unit_ids(chapter_id)
     index = order.index(unit_id)
     return index == 0 or profile["unit_best_stars"][order[index - 1]] > 0
 
 
 def make_question(unit_id):
+    if unit_id in ("3-1", "3-2"):
+        add = random.choice([True, False])
+        a = random.randint(10, 199) / 10
+        b = random.randint(1, 99) / 10 if unit_id == "3-1" else random.randint(1, 999) / 100
+        if not add and b > a:
+            a, b = b, a
+        answer = a + b if add else a - b
+        symbol = "＋" if add else "－"
+        a_text = f"{a:.1f}"
+        b_text = f"{b:.1f}" if unit_id == "3-1" else f"{b:.2f}"
+        return {"text": f"{a_text} {symbol} {b_text} ＝ ?", "answer": round(answer, 2)}
     if unit_id == "2-1":
         a, b = random.randint(10, 99), random.randint(2, 9)
         return {"text": f"{a} × {b} ＝ ?", "answer": a * b}
@@ -1431,9 +1487,9 @@ def submit_quiz_answer():
         return
     question_text = st.session_state.question["text"]
     correct_answer = st.session_state.question["answer"]
-    submitted_answer = int(answer)
+    submitted_answer = float(answer)
     st.session_state.attempts += 1
-    is_correct = submitted_answer == correct_answer
+    is_correct = math.isclose(submitted_answer, float(correct_answer), abs_tol=1e-9)
     if is_correct:
         st.session_state.correct += 1
         st.session_state.combo += 1
@@ -1530,7 +1586,9 @@ def simulate_battle(stats, boss_type="normal"):
     elite_first_hit = stats["first_hit_percent"] if boss_type == "elite" else 0.0
     boss_max = config["hp"] * (1 - elite_boss_reduction)
     boss_hp = boss_max
-    player_hp = stats["hp"] * (1 + stats["shield_pct"])
+    core_hp = stats["hp"]
+    shield_hp = stats["hp"] * stats["shield_pct"]
+    player_hp = core_hp + shield_hp
     hero_interval = 1 / stats["attack_speed"]
     boss_interval = config["interval"] * (1 + elite_boss_slow)
     received = (
@@ -1538,11 +1596,13 @@ def simulate_battle(stats, boss_type="normal"):
         * (1 - stats["damage_reduction_pct"])
     )
     critical_every = round(1 / stats["critical_rate"]) if stats["critical_rate"] > 0 else None
+    skill_interval = config.get("skill_interval")
+    next_skill = skill_interval if skill_interval else float("inf")
     next_hero, next_boss = 0.0, boss_interval
     hero_hits = boss_hits = 0
     events = [{"time": 0.0, "boss_hp": boss_hp, "player_hp": player_hp, "text": "戰鬥開始"}]
     for _ in range(10000):
-        if next_hero <= next_boss:
+        if next_hero <= next_boss and next_hero <= next_skill:
             now = next_hero
             hero_hits += 1
             is_critical = bool(critical_every and hero_hits % critical_every == 0)
@@ -1556,14 +1616,32 @@ def simulate_battle(stats, boss_type="normal"):
             if boss_hp <= 0:
                 return {"victory": True, "duration": now, "events": events}
             next_hero += hero_interval
-        else:
+        elif next_boss <= next_skill:
             now = next_boss
             boss_hits += 1
-            player_hp = max(0.0, player_hp - received)
-            events.append({"time": now, "boss_hp": boss_hp, "player_hp": player_hp, "text": f"BOSS第{boss_hits}擊，造成{received:.1f}傷害"})
-            if player_hp <= 0:
+            boss_critical = bool(config.get("critical_rate") and boss_hits % round(1 / config["critical_rate"]) == 0)
+            hit_damage = received * (1.5 if boss_critical else 1.0)
+            shield_absorbed = min(shield_hp, hit_damage)
+            shield_hp -= shield_absorbed
+            core_hp = max(0.0, core_hp - (hit_damage - shield_absorbed))
+            player_hp = core_hp + shield_hp
+            critical_text = "，暴擊！" if boss_critical else ""
+            events.append({"time": now, "boss_hp": boss_hp, "player_hp": player_hp, "text": f"BOSS第{boss_hits}擊{critical_text}造成{hit_damage:.1f}傷害"})
+            if core_hp <= 0:
                 return {"victory": False, "duration": now, "events": events}
             next_boss += boss_interval
+        else:
+            now = next_skill
+            true_damage = config.get("true_damage", 0)
+            core_hp = max(0.0, core_hp - true_damage)
+            player_hp = core_hp + shield_hp
+            events.append({
+                "time": now, "boss_hp": boss_hp, "player_hp": player_hp,
+                "text": f"BOSS施放技能「{config.get('skill')}」，造成{true_damage:g}真實傷害！",
+            })
+            if core_hp <= 0:
+                return {"victory": False, "duration": now, "events": events}
+            next_skill += skill_interval
     raise RuntimeError("戰鬥計算超出限制")
 
 
@@ -1583,6 +1661,8 @@ def finish_battle(result):
             ("1", "elite"): ("elite_boss_wins", "elite_boss_exp_claimed"),
             ("2", "normal"): ("chapter2_boss_wins", "chapter2_boss_exp_claimed"),
             ("2", "elite"): ("chapter2_elite_boss_wins", "chapter2_elite_boss_exp_claimed"),
+            ("3", "normal"): ("chapter3_boss_wins", "chapter3_boss_exp_claimed"),
+            ("3", "elite"): ("chapter3_elite_boss_wins", "chapter3_elite_boss_exp_claimed"),
         }
         wins_key, exp_key = key_map[(chapter_id, boss_type)]
         profile[wins_key] += 1
@@ -1592,13 +1672,13 @@ def finish_battle(result):
             if levels_gained:
                 level_up_to = profile["level"]
             profile[exp_key] = True
-        reward_claimed_key = "elite_reward_claimed" if chapter_id == "1" else "chapter2_elite_reward_claimed"
-        if boss_type == "elite" and not profile[reward_claimed_key]:
+        reward_claimed_key = {"1": "elite_reward_claimed", "2": "chapter2_elite_reward_claimed"}.get(chapter_id)
+        if boss_type == "elite" and reward_claimed_key and not profile[reward_claimed_key]:
             reward = make_elite_reward() if chapter_id == "1" else make_chapter2_elite_reward()
             profile["inventory"].append(reward)
             profile[reward_claimed_key] = True
             reward_item_uid = reward["uid"]
-        if boss_type == "elite":
+        if boss_type == "elite" and chapter_id in ("1", "2"):
             earned_title = "好像有點勇哦" if chapter_id == "1" else "別小看我！"
             if earned_title not in profile["titles"]:
                 profile["titles"].append(earned_title)
@@ -1903,6 +1983,8 @@ elif st.session_state.screen == "admin_panel":
                     f"第一章菁英BOSS：{detail_profile.get('elite_boss_wins', 0)}次",
                     f"第二章一般BOSS：{detail_profile.get('chapter2_boss_wins', 0)}次",
                     f"第二章菁英BOSS：{detail_profile.get('chapter2_elite_boss_wins', 0)}次",
+                    f"第三章一般BOSS：{detail_profile.get('chapter3_boss_wins', 0)}次",
+                    f"第三章菁英BOSS：{detail_profile.get('chapter3_elite_boss_wins', 0)}次",
                 ]
                 st.caption("｜".join(boss_progress))
 
@@ -1990,6 +2072,18 @@ elif st.session_state.screen == "admin_panel":
             render_ranking(chapter2_elite_rows)
         else:
             st.info("目前尚無第二章菁英BOSS通關紀錄。")
+        chapter3_rows = ranking_rows("normal", "3", include_private_identity=True)
+        st.write("### 第三章一般BOSS最佳排名")
+        if chapter3_rows:
+            render_ranking(chapter3_rows)
+        else:
+            st.info("目前尚無第三章一般BOSS通關紀錄。")
+        chapter3_elite_rows = ranking_rows("elite", "3", include_private_identity=True)
+        st.write("### 第三章菁英BOSS最佳排名")
+        if chapter3_elite_rows:
+            render_ranking(chapter3_elite_rows)
+        else:
+            st.info("目前尚無第三章菁英BOSS通關紀錄。")
         with db_connection() as db:
             attempts = [dict(row) for row in db.execute(
                 "SELECT p.student_code AS 學生代碼, p.real_name AS 正式姓名, "
@@ -2118,7 +2212,7 @@ elif st.session_state.screen == "menu":
             st.success("三星全裝收藏家已完成：100 EXP＋★★★★ 九星守護項鍊｜菁英BOSS血量降低13%｜HP +25%")
         if profile["elite_reward_claimed"]:
             st.success("菁英征服成就已完成：★★★★ 收藏家王冠｜固定：HP +25｜詞條：防禦力 +25%")
-    else:
+    elif chapter_id == "2":
         boss_unlocked = all(profile["unit_best_stars"][uid] == 3 for uid in chapter_unit_ids("2"))
         if b.button("🐉 挑戰一般BOSS", disabled=not boss_unlocked, use_container_width=True):
             st.session_state.selected_boss_type = "normal"
@@ -2141,6 +2235,23 @@ elif st.session_state.screen == "menu":
             st.success("第二章三星全裝收藏已完成：★★★★ 乘除疾風戰靴｜固定：攻擊速度 +0.13/秒｜詞條：攻擊速度 +25%")
         if profile["chapter2_elite_reward_claimed"]:
             st.success("第二章菁英征服已完成：★★★★ 乘除霸主盾｜固定：防禦力 +7｜詞條：HP +25%")
+    else:
+        boss_unlocked = all(profile["unit_best_stars"][uid] == 3 for uid in chapter_unit_ids("3"))
+        if b.button("🐉 挑戰一般BOSS", disabled=not boss_unlocked, use_container_width=True):
+            st.session_state.selected_boss_type = "normal"
+            st.session_state.scroll_boss_to_top = True
+            st.session_state.screen = "boss_ready"
+            st.rerun()
+        elite_unlocked = profile.get("chapter3_boss_wins", 0) > 0
+        if c.button("🐲 挑戰菁英BOSS", disabled=not elite_unlocked, use_container_width=True):
+            st.session_state.selected_boss_type = "elite"
+            st.session_state.scroll_boss_to_top = True
+            st.session_state.screen = "boss_ready"
+            st.rerun()
+        if not boss_unlocked:
+            st.caption("第三章兩個單元都達成三星後，解鎖一般BOSS。")
+        elif not elite_unlocked:
+            st.caption("首次擊敗第三章一般BOSS後，解鎖菁英BOSS。")
     if st.session_state.active_player == "__TEACHER__":
         if st.button("返回老師管理後台"):
             st.session_state.active_player = None
@@ -2208,13 +2319,13 @@ elif st.session_state.screen == "rankings":
     with normal_tab:
         normal_rows = ranking_rows("normal", chapter_id)
         if normal_rows:
-            render_ranking(normal_rows)
+            render_ranking(student_ranking_rows(normal_rows))
         else:
             st.info("目前還沒有人完成本章一般BOSS，成為第一位上榜的勇者吧！")
     with elite_tab:
         elite_rows = ranking_rows("elite", chapter_id)
         if elite_rows:
-            render_ranking(elite_rows)
+            render_ranking(student_ranking_rows(elite_rows))
         else:
             st.info("目前還沒有人完成本章菁英BOSS。")
     st.caption("排行榜只公開大頭貼、勇者名稱、等級、通關時間與日期，不顯示正式姓名或學生代碼。")
@@ -2565,6 +2676,7 @@ elif st.session_state.screen == "inventory":
                     ("chapter-2-collection", "乘除疾風戰靴", "boots", "收集第二章九部位三星", "collection"),
                     ("chapter-2-elite", "乘除霸主盾", "shield", "首次擊敗第二章菁英BOSS", "elite"),
                 ],
+                "3": [],
             }
             owned_four_slots = collected_achievement_slots(profile, 4)
             st.write(f"#### 全系列四星部位 {len(owned_four_slots)}/9")
@@ -2574,6 +2686,8 @@ elif st.session_state.screen == "inventory":
                 st.caption(f"尚缺部位：{'、'.join(missing)}。四星九部位集滿前，成就裝備不會重複部位。")
             else:
                 st.success("四星九部位已全部收藏！下一件成就裝備開始進入五星輪替。")
+            if not four_star_specs[gallery_chapter]:
+                st.info("第三章四星成就裝備尚未開放；目前可先收集九部位三星裝備並測試BOSS難度。")
             reward_cols = st.columns(3)
             for col, (unit_key, name, slot, requirement, action) in zip(reward_cols, four_star_specs[gallery_chapter]):
                 owned_item = achievement_item(profile, unit_key)
@@ -2620,7 +2734,10 @@ elif st.session_state.screen == "quiz":
         st.markdown(f"## {st.session_state.question['text']}")
         with st.form("answer_form"):
             st.number_input(
-                "你的答案", value=None, step=1, key="answer_input",
+                "你的答案", value=None,
+                step=0.01 if st.session_state.selected_unit.startswith("3-") else 1.0,
+                format="%.2f" if st.session_state.selected_unit.startswith("3-") else "%.0f",
+                key="answer_input",
                 placeholder="輸入後按 Enter",
             )
             st.form_submit_button(
@@ -2706,6 +2823,13 @@ elif st.session_state.screen == "boss_ready":
     st.subheader(f"🐉 {CHAPTERS[chapter_id]['number']}{boss_label}：{config['name']}")
     render_stats(profile)
     st.write(f"BOSS HP：{config['hp']}｜每{config['interval']:g}秒攻擊{config['damage']}")
+    if config.get("critical_rate"):
+        st.warning(f"⚠️ BOSS特殊能力：暴擊率 {config['critical_rate']:.0%}；每第5次攻擊必定暴擊，造成1.5倍傷害。")
+    if config.get("skill"):
+        st.error(
+            f"🔥 BOSS技能「{config['skill']}」：每{config['skill_interval']:g}秒造成"
+            f"{config['true_damage']:g}真實傷害，無法被防禦或減傷詞條抵消。"
+        )
     st.info(f"預估{'獲勝' if result['victory'] else '失敗'}，約 {result['duration']:.2f} 秒結束。")
     if boss_type == "elite" and not result["victory"]:
         collected_count = len(collected_three_star_slots(profile, chapter_id))
@@ -2773,7 +2897,7 @@ elif st.session_state.screen == "boss_result":
     ranking = ranking_rows(boss_type, result.get("chapter_id", "1"))
     if ranking:
         st.write(f"### {boss_label}最佳排名")
-        render_ranking(ranking)
+        render_ranking(student_ranking_rows(ranking))
     if st.button("返回章節", type="primary"):
         st.session_state.screen = "menu"
         st.rerun()
