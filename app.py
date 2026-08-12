@@ -2105,6 +2105,42 @@ def render_battle_scene(event, boss_type, active_skill=None):
     )
 
 
+def render_chapter_boss_card(chapter_id, boss_type, unlocked):
+    """在章節單元下方顯示 BOSS 能力與挑戰入口。"""
+    config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
+    is_elite = boss_type == "elite"
+    label = "菁英 BOSS" if is_elite else "一般 BOSS"
+    with st.container(border=True):
+        info_col, button_col = st.columns([4, 1.35], vertical_alignment="center")
+        info_col.markdown(f"### {'🐲' if is_elite else '🐉'} {label}｜{config['name']}")
+        info_col.write(
+            f"**HP：{config['hp']}**　｜　"
+            f"**攻擊：每 {config['interval']:g} 秒造成 {config['damage']} 傷害**"
+        )
+        abilities = []
+        if config.get("critical_rate"):
+            abilities.append(
+                f"暴擊率 {config['critical_rate']:.0%}（每第 5 次攻擊必定暴擊，造成 1.5 倍傷害）"
+            )
+        if config.get("skill"):
+            abilities.append(
+                f"技能「{config['skill']}」：每 {config['skill_interval']:g} 秒造成 "
+                f"{config['true_damage']:g} 真實傷害"
+            )
+        info_col.write("**能力／技能：**" + ("；".join(abilities) if abilities else "無"))
+        if button_col.button(
+            "開始挑戰" if unlocked else "尚未解鎖",
+            key=f"chapter_boss_{chapter_id}_{boss_type}",
+            disabled=not unlocked,
+            type="primary" if unlocked else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state.selected_boss_type = boss_type
+            st.session_state.scroll_boss_to_top = True
+            st.session_state.screen = "boss_ready"
+            st.rerun()
+
+
 init_db()
 if USE_POSTGRES and not ADMIN_PIN_SECRET:
     st.error("公開版尚未設定 ADMIN_PIN，已停止登入以保護老師後台。")
@@ -2118,11 +2154,22 @@ elif st.session_state.screen == "bootstrap":
 active_chapter_id = st.session_state.get("selected_chapter", "1")
 if active_chapter_id not in CHAPTERS:
     active_chapter_id = "1"
-if st.session_state.screen in {"menu", "inventory", "rankings", "quiz", "quiz_result", "boss_ready", "boss_watch", "boss_result"}:
+if st.session_state.screen in {"menu", "quiz", "quiz_result", "boss_ready", "boss_watch", "boss_result"}:
     active_chapter = CHAPTERS[active_chapter_id]
     st.title(f"⚔️ 數學冒險：{active_chapter['number']}－{active_chapter['name']}")
 else:
     st.title("⚔️ 數學冒險")
+
+home_return_screens = {
+    "character_stats", "menu", "inventory", "rankings", "economy", "daily_tasks",
+    "quiz", "quiz_result", "sweep_result", "boss_ready", "boss_result",
+}
+if st.session_state.get("active_player") and st.session_state.screen in home_return_screens:
+    if st.button("← 回到首頁", key=f"home_return_{st.session_state.screen}"):
+        st.session_state.shop_purchase_uid = None
+        st.session_state.forge_result_uid = None
+        st.session_state.screen = "home"
+        st.rerun()
 
 if st.session_state.screen == "bootstrap":
     st.subheader("首次設定：建立老師管理PIN")
@@ -2151,7 +2198,7 @@ elif st.session_state.screen == "login":
                 valid, result = verify_student(code, pin)
                 if valid:
                     st.session_state.active_player = result
-                    st.session_state.screen = "menu"
+                    st.session_state.screen = "home"
                     st.rerun()
                 else:
                     st.error(result)
@@ -2211,7 +2258,7 @@ elif st.session_state.screen == "admin_panel":
         teacher_name_error = validate_hero_name(teacher_hero_name)
         if not teacher_name_error:
             st.session_state.active_player = ensure_teacher_profile(teacher_hero_name)
-            st.session_state.screen = "menu"
+            st.session_state.screen = "home"
             st.rerun()
         else:
             st.warning(teacher_name_error)
@@ -2256,9 +2303,20 @@ elif st.session_state.screen == "admin_panel":
                 "正式姓名（僅老師可見）", value=selected_row["正式姓名"],
                 max_chars=30, key=f"real_name_{selected_code}",
             ).strip()
-            if st.button("儲存正式姓名", disabled=not corrected_name):
+            save_name_col, confirm_col, delete_col = st.columns([1.25, 1.35, 1])
+            if save_name_col.button("儲存正式姓名", disabled=not corrected_name, use_container_width=True):
                 update_student_real_name(selected_code, corrected_name)
                 st.success("正式姓名已更新。")
+                st.rerun()
+            confirm_delete = confirm_col.checkbox(
+                "確認刪除人物與紀錄", key=f"confirm_delete_{selected_code}"
+            )
+            if delete_col.button(
+                "刪除學生", disabled=not confirm_delete, use_container_width=True,
+                key=f"delete_student_{selected_code}",
+            ):
+                delete_student(selected_code)
+                st.success(f"已刪除 {selected_code}。")
                 st.rerun()
             detail_profile = student_learning_detail(selected_code)
             if detail_profile:
@@ -2366,15 +2424,9 @@ elif st.session_state.screen == "admin_panel":
                     st.dataframe(question_rows, hide_index=True, use_container_width=True)
                 else:
                     st.info("目前沒有符合條件的題目紀錄；新版上線前的作答無法回溯題目與答案。")
-            col1, col2 = st.columns(2)
-            if col1.button("重設為新的6位PIN", use_container_width=True):
+            if st.button("重設為新的6位PIN", use_container_width=True):
                 new_pin = reset_student_pin(selected_code)
                 st.success(f"{selected_code} 的新PIN：{new_pin}（請立即記下）")
-            confirm_delete = col2.checkbox("確認刪除人物與紀錄")
-            if col2.button("刪除學生", disabled=not confirm_delete, use_container_width=True):
-                delete_student(selected_code)
-                st.success(f"已刪除 {selected_code}。")
-                st.rerun()
         else:
             st.info("目前尚未建立學生帳號。")
     with progress_tab:
@@ -2433,6 +2485,106 @@ elif st.session_state.screen == "admin_panel":
         st.session_state.screen = "login"
         st.rerun()
 
+elif st.session_state.screen == "home":
+    profile = get_profile()
+    if sync_daily_tasks(profile):
+        save_profile(profile)
+    if profile.get("retro_reward_notice"):
+        st.success("🎁 補發獎勵：" + "；".join(profile["retro_reward_notice"]) + "。可到背包查看。")
+        profile["retro_reward_notice"] = []
+        save_profile(profile)
+
+    name_col, money_col = st.columns([4, 2], vertical_alignment="center")
+    title_prefix = f"「{profile['equipped_title']}」" if profile.get("equipped_title") else ""
+    name_col.subheader(f"{title_prefix}{profile['name']}")
+    money_col.markdown(f"### 金幣 🪙 {profile.get('coins', 0)}")
+    render_avatar_editor(profile)
+
+    st.markdown(
+        """
+        <style>
+        @media (max-width: 640px) {
+          .st-key-home_nav_row_1 [data-testid="stHorizontalBlock"],
+          .st-key-home_nav_row_2 [data-testid="stHorizontalBlock"] {display:flex !important;flex-wrap:nowrap !important;gap:.25rem !important;}
+          .st-key-home_nav_row_1 [data-testid="column"],
+          .st-key-home_nav_row_2 [data-testid="column"] {min-width:0 !important;width:25% !important;flex:1 1 25% !important;}
+          .st-key-home_nav_row_1 button,
+          .st-key-home_nav_row_2 button {padding:.45rem .12rem !important;font-size:.78rem !important;white-space:normal !important;min-height:3.2rem;}
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.container(key="home_nav_row_1"):
+        nav1 = st.columns(4)
+    with st.container(key="home_nav_row_2"):
+        nav2 = st.columns(4)
+
+    if nav1[0].button("🧙 角色能力", use_container_width=True):
+        st.session_state.screen = "character_stats"
+        st.rerun()
+    if nav1[1].button("🗺️ 關卡", use_container_width=True):
+        st.session_state.screen = "menu"
+        st.rerun()
+    if nav1[2].button("🎒 背包", use_container_width=True):
+        st.session_state.inventory_view = "backpack"
+        st.session_state.inventory_default_tab = "背包"
+        st.session_state.inventory_tab_version += 1
+        st.session_state.scroll_inventory_to_top = True
+        st.session_state.screen = "inventory"
+        st.rerun()
+    if nav1[3].button("📖 圖鑑", use_container_width=True):
+        st.session_state.inventory_view = "gallery"
+        st.session_state.inventory_default_tab = "圖鑑收集"
+        st.session_state.inventory_tab_version += 1
+        st.session_state.scroll_inventory_to_top = True
+        st.session_state.screen = "inventory"
+        st.rerun()
+    if nav2[0].button("🏪 商店", use_container_width=True):
+        st.session_state.economy_mode = "shop"
+        st.session_state.scroll_economy_to_top = True
+        st.session_state.screen = "economy"
+        st.rerun()
+    if nav2[1].button("🔥 融煉", use_container_width=True):
+        st.session_state.economy_mode = "forge"
+        st.session_state.scroll_economy_to_top = True
+        st.session_state.screen = "economy"
+        st.rerun()
+    if nav2[2].button("🏆 排行榜", use_container_width=True):
+        st.session_state.scroll_ranking_to_top = True
+        st.session_state.screen = "rankings"
+        st.rerun()
+    if nav2[3].button("📋 任務", use_container_width=True):
+        st.session_state.screen = "daily_tasks"
+        st.rerun()
+
+    if st.session_state.active_player == "__TEACHER__":
+        if st.button("返回老師管理後台"):
+            st.session_state.active_player = None
+            st.session_state.screen = "admin_panel"
+            st.rerun()
+    elif st.button("登出學生帳號"):
+        st.session_state.active_player = None
+        st.session_state.screen = "login"
+        st.rerun()
+
+elif st.session_state.screen == "character_stats":
+    profile = get_profile()
+    st.subheader("🧙 角色能力")
+    render_stats(profile)
+    st.divider()
+    st.subheader("⚔️ 目前裝備")
+    for slot, label in SLOT_NAMES.items():
+        uid = profile["equipment"].get(slot)
+        item = find_item(profile, uid) if uid else None
+        cols = st.columns([2, 6, 1])
+        cols[0].write(f"**{SLOT_ICONS[slot]} {label}**")
+        cols[1].write(item_text(item) if item else "— 尚未裝備 —")
+        if item and cols[2].button("卸下", key=f"stats_off_{slot}"):
+            profile["equipment"][slot] = None
+            save_profile(profile)
+            st.rerun()
+
 elif st.session_state.screen == "menu":
     profile = get_profile()
     if sync_daily_tasks(profile):
@@ -2441,14 +2593,6 @@ elif st.session_state.screen == "menu":
         st.success("🎁 補發獎勵：" + "；".join(profile["retro_reward_notice"]) + "。可到背包的消耗道具與成就稱號查看。")
         profile["retro_reward_notice"] = []
         save_profile(profile)
-    name_col, money_col = st.columns([4, 2])
-    title_prefix = f"「{profile['equipped_title']}」" if profile.get("equipped_title") else ""
-    name_col.subheader(f"🧙 {title_prefix}{profile['name']}")
-    money_col.markdown(
-        f"### 🪙 {profile.get('coins', 0)}　💎 {profile.get('smelting_stones', 0)}"
-    )
-    render_avatar_editor(profile)
-    render_stats(profile)
     chapter_id = st.selectbox(
         "選擇章節",
         options=list(CHAPTERS),
@@ -2492,66 +2636,17 @@ elif st.session_state.screen == "menu":
         else:
             cols[2].button("🔒 尚未解鎖", disabled=True, key=f"locked_{unit_id}", use_container_width=True)
             cols[3].button("🎫 尚未通關", disabled=True, key=f"sweep_locked_{unit_id}", use_container_width=True)
-    st.divider()
-    a, rank_col, b, c = st.columns(4)
-    if a.button("🎒 裝備與物品欄", use_container_width=True):
-        st.session_state.scroll_inventory_to_top = True
-        st.session_state.screen = "inventory"
-        st.rerun()
-    if rank_col.button("🏆 查看排行榜", use_container_width=True):
-        st.session_state.scroll_ranking_to_top = True
-        st.session_state.screen = "rankings"
-        st.rerun()
-    economy_a, economy_b, task_col, economy_space = st.columns(4)
-    if economy_a.button("🏪 商店兌換", use_container_width=True):
-        st.session_state.economy_tab = "shop"
-        st.session_state.economy_mode = "shop"
-        st.session_state.scroll_economy_to_top = True
-        st.session_state.screen = "economy"
-        st.rerun()
-    if economy_b.button("🔥 裝備融煉", use_container_width=True):
-        st.session_state.economy_tab = "forge"
-        st.session_state.economy_mode = "forge"
-        st.session_state.scroll_economy_to_top = True
-        st.session_state.screen = "economy"
-        st.rerun()
-    permanent_claimable = any(
-        task["complete"](profile) and task["id"] not in profile["claimed_permanent_tasks"]
-        for task in visible_permanent_tasks(profile)
-    )
-    special_claimable = any(
-        task["complete"] and task["id"] not in profile["claimed_special_tasks"]
-        for task in visible_special_tasks(profile, st.session_state.active_player)
-    )
-    task_label = (
-        "🔴 📋 任務列表"
-        if (
-            not profile.get("daily_login_claimed")
-            or (profile.get("daily_practice_count", 0) >= 2 and not profile.get("daily_practice_claimed"))
-            or permanent_claimable or special_claimable
-        )
-        else "📋 任務列表"
-    )
-    if task_col.button(task_label, use_container_width=True):
-        st.session_state.screen = "daily_tasks"
-        st.rerun()
+    boss_unlocked = all(profile["unit_best_stars"][uid] == 3 for uid in current_unit_ids)
+    normal_win_keys = {"1": "boss_wins", "2": "chapter2_boss_wins", "3": "chapter3_boss_wins"}
+    elite_unlocked = profile.get(normal_win_keys[chapter_id], 0) > 0
+    st.write("### 章節 BOSS")
+    render_chapter_boss_card(chapter_id, "normal", boss_unlocked)
+    if not boss_unlocked:
+        st.caption("本章所有單元都達成三星後，解鎖一般 BOSS。")
+    render_chapter_boss_card(chapter_id, "elite", elite_unlocked)
+    if not elite_unlocked:
+        st.caption("首次擊敗本章一般 BOSS 後，解鎖菁英 BOSS；挑戰失敗時可以繼續刷單元強化裝備。")
     if chapter_id == "1":
-        boss_unlocked = all(profile["unit_best_stars"][uid] == 3 for uid in chapter_unit_ids("1"))
-        if b.button("🐉 挑戰一般BOSS", disabled=not boss_unlocked, use_container_width=True):
-            st.session_state.selected_boss_type = "normal"
-            st.session_state.scroll_boss_to_top = True
-            st.session_state.screen = "boss_ready"
-            st.rerun()
-        elite_unlocked = profile.get("boss_wins", 0) > 0
-        if c.button("🐲 挑戰菁英BOSS", disabled=not elite_unlocked, use_container_width=True):
-            st.session_state.selected_boss_type = "elite"
-            st.session_state.scroll_boss_to_top = True
-            st.session_state.screen = "boss_ready"
-            st.rerun()
-        if not boss_unlocked:
-            st.caption("第一章三個單元都達成三星後，解鎖一般BOSS。")
-        elif not elite_unlocked:
-            st.caption("首次擊敗第一章一般BOSS後，解鎖菁英BOSS；若挑戰失敗，可以繼續刷單元強化裝備。")
         if profile["chapter_reward_claimed"]:
             st.success("第一章滿星成就已完成：★★★★ 整數勇者之劍｜固定：攻擊力 +8｜詞條：攻擊力 +25%")
         if profile["collection_reward_claimed"]:
@@ -2559,22 +2654,6 @@ elif st.session_state.screen == "menu":
         if profile["elite_reward_claimed"]:
             st.success("菁英征服成就已完成：★★★★ 收藏家王冠｜固定：HP +25｜詞條：防禦力 +25%")
     elif chapter_id == "2":
-        boss_unlocked = all(profile["unit_best_stars"][uid] == 3 for uid in chapter_unit_ids("2"))
-        if b.button("🐉 挑戰一般BOSS", disabled=not boss_unlocked, use_container_width=True):
-            st.session_state.selected_boss_type = "normal"
-            st.session_state.scroll_boss_to_top = True
-            st.session_state.screen = "boss_ready"
-            st.rerun()
-        elite_unlocked = profile.get("chapter2_boss_wins", 0) > 0
-        if c.button("🐲 挑戰菁英BOSS", disabled=not elite_unlocked, use_container_width=True):
-            st.session_state.selected_boss_type = "elite"
-            st.session_state.scroll_boss_to_top = True
-            st.session_state.screen = "boss_ready"
-            st.rerun()
-        if not boss_unlocked:
-            st.caption("第二章四個單元都達成三星後，解鎖一般BOSS。")
-        elif not elite_unlocked:
-            st.caption("首次擊敗第二章一般BOSS後，解鎖菁英BOSS；若挑戰失敗，可以繼續刷單元強化裝備。")
         if profile["chapter2_reward_claimed"]:
             st.success("第二章滿星成就已完成：★★★★ 乘除勇者手甲｜固定：攻擊力 +6｜詞條：攻擊力 +25%")
         if profile["chapter2_collection_reward_claimed"]:
@@ -2582,22 +2661,7 @@ elif st.session_state.screen == "menu":
         if profile["chapter2_elite_reward_claimed"]:
             st.success("第二章菁英征服已完成：★★★★ 乘除霸主盾｜固定：防禦力 +7｜詞條：HP +25%")
     else:
-        boss_unlocked = all(profile["unit_best_stars"][uid] == 3 for uid in chapter_unit_ids("3"))
-        if b.button("🐉 挑戰一般BOSS", disabled=not boss_unlocked, use_container_width=True):
-            st.session_state.selected_boss_type = "normal"
-            st.session_state.scroll_boss_to_top = True
-            st.session_state.screen = "boss_ready"
-            st.rerun()
-        elite_unlocked = profile.get("chapter3_boss_wins", 0) > 0
-        if c.button("🐲 挑戰菁英BOSS", disabled=not elite_unlocked, use_container_width=True):
-            st.session_state.selected_boss_type = "elite"
-            st.session_state.scroll_boss_to_top = True
-            st.session_state.screen = "boss_ready"
-            st.rerun()
-        if not boss_unlocked:
-            st.caption("第三章兩個單元都達成三星後，解鎖一般BOSS。")
-        elif not elite_unlocked:
-            st.caption("首次擊敗第三章一般BOSS後，解鎖菁英BOSS。")
+        pass
     if st.session_state.active_player == "__TEACHER__":
         if st.button("返回老師管理後台"):
             st.session_state.active_player = None
@@ -2637,11 +2701,7 @@ elif st.session_state.screen == "daily_tasks":
     profile = get_profile()
     if sync_daily_tasks(profile):
         save_profile(profile)
-    title_col, back_col = st.columns([4, 1])
-    title_col.subheader("📋 任務列表")
-    if back_col.button("返回章節", use_container_width=True):
-        st.session_state.screen = "menu"
-        st.rerun()
+    st.subheader("📋 任務列表")
     permanent_tasks = visible_permanent_tasks(profile)
     special_tasks = visible_special_tasks(profile, st.session_state.active_player)
     claimable_permanent = [
@@ -2788,11 +2848,7 @@ elif st.session_state.screen == "daily_tasks":
 
 elif st.session_state.screen == "rankings":
     scroll_page_to_top("scroll_ranking_to_top")
-    title_col, back_col = st.columns([4, 1])
-    title_col.subheader("🏆 勇者排行榜")
-    if back_col.button("返回章節", use_container_width=True):
-        st.session_state.screen = "menu"
-        st.rerun()
+    st.subheader("🏆 勇者排行榜")
     boss_tab, level_tab, attack_tab, defense_tab, speed_tab = st.tabs(
         ["🐉 BOSS排行", "⭐ 等級排行", "⚔️ 攻擊排行", "🛡️ 防禦排行", "💨 攻速排行"],
         key="student_ranking_tabs", default="🐉 BOSS排行",
@@ -2836,17 +2892,11 @@ elif st.session_state.screen == "economy":
     changed = ensure_shop(profile)
     if changed:
         save_profile(profile)
-    title_col, resource_col, back_col = st.columns([3, 2, 1])
+    title_col, resource_col = st.columns([3, 2])
     title_col.subheader("🏪 商店與融煉工坊")
     resource_col.markdown(
         f"### 🪙 {profile.get('coins', 0)}　💎 {profile.get('smelting_stones', 0)}"
     )
-    if back_col.button("返回章節", use_container_width=True):
-        st.session_state.shop_purchase_uid = None
-        st.session_state.forge_result_uid = None
-        st.session_state.screen = "menu"
-        st.rerun()
-
     mode = st.radio(
         "選擇功能", ["shop", "forge"], horizontal=True,
         format_func=lambda value: "🏪 商店兌換" if value == "shop" else "🔥 裝備融煉",
@@ -3030,19 +3080,9 @@ elif st.session_state.screen == "economy":
 elif st.session_state.screen == "inventory":
     scroll_page_to_top("scroll_inventory_to_top")
     profile = get_profile()
-    title_col, back_col = st.columns([4, 1])
-    title_col.subheader("🎒 裝備與物品欄")
-    if back_col.button("返回章節", use_container_width=True):
-        st.session_state.screen = "menu"
-        st.rerun()
-    render_stats(profile)
-    st.divider()
-    tab1, tab2, tab3 = st.tabs(
-        ["目前裝備", "背包", "圖鑑收集"],
-        key=f"inventory_tabs_{st.session_state.inventory_tab_version}",
-        default=st.session_state.inventory_default_tab,
-    )
-    with tab1:
+    inventory_view = st.session_state.get("inventory_view", "backpack")
+    st.subheader("🎒 背包" if inventory_view == "backpack" else "📖 圖鑑收集")
+    if inventory_view == "equipment":
         for slot, label in SLOT_NAMES.items():
             uid = profile["equipment"].get(slot)
             item = find_item(profile, uid) if uid else None
@@ -3053,7 +3093,7 @@ elif st.session_state.screen == "inventory":
                 profile["equipment"][slot] = None
                 save_profile(profile)
                 st.rerun()
-    with tab2:
+    if inventory_view == "backpack":
         gear_tab, consumable_tab, title_tab, future_tab = st.tabs(
             ["⚔️ 裝備", "🧪 消耗道具", "🏅 成就稱號", "🔒 待開放"],
             key="backpack_tabs", default="⚔️ 裝備",
@@ -3134,7 +3174,7 @@ elif st.session_state.screen == "inventory":
             st.caption("佩戴後會顯示在角色名稱前方，其他學生也能在排行榜看到。")
         with future_tab:
             st.info("此分類保留給後續開放的道具與功能。")
-    with tab3:
+    if inventory_view == "gallery":
         gallery_chapter = st.selectbox(
             "選擇圖鑑章節", list(CHAPTERS),
             format_func=lambda cid: f"{CHAPTERS[cid]['number']}：{CHAPTERS[cid]['name']}",
