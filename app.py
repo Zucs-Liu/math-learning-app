@@ -1465,7 +1465,7 @@ elif st.session_state.screen == "admin_panel":
             attempts = [dict(row) for row in db.execute(
                 "SELECT p.hero_name AS 勇者, a.unit_id AS 單元, a.stars AS 星級, "
                 "a.max_combo AS 最高連擊, a.correct_count AS 答對題數, "
-                "ROUND(a.average_seconds, 1) AS 平均每題秒數, a.finished_at AS 完成時間 "
+                "ROUND(CAST(a.average_seconds AS NUMERIC), 1) AS 平均每題秒數, a.finished_at AS 完成時間 "
                 "FROM attempts a JOIN players p ON p.student_code=a.student_code ORDER BY a.id DESC LIMIT 200"
             ).fetchall()]
         st.write("### 最近200筆答題紀錄")
