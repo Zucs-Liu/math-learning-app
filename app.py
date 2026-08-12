@@ -519,6 +519,9 @@ def new_profile(name):
         "retro_reward_notice": [],
         "daily_login_period": None,
         "daily_login_claimed": False,
+        "daily_practice_period": None,
+        "daily_practice_count": 0,
+        "daily_practice_claimed": False,
         "claimed_permanent_tasks": [],
         "claimed_special_tasks": [],
         "task_rewards_initialized": False,
@@ -983,13 +986,32 @@ def current_daily_period():
     return now.strftime("%Y-%m-%d")
 
 
+def current_midnight_period():
+    return datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d")
+
+
+def highest_unlocked_chapter(profile):
+    if profile.get("chapter2_boss_wins", 0) > 0:
+        return "3"
+    if profile.get("boss_wins", 0) > 0:
+        return "2"
+    return "1"
+
+
 def sync_daily_tasks(profile):
+    changed = False
     period = current_daily_period()
     if profile.get("daily_login_period") != period:
         profile["daily_login_period"] = period
         profile["daily_login_claimed"] = False
-        return True
-    return False
+        changed = True
+    practice_period = current_midnight_period()
+    if profile.get("daily_practice_period") != practice_period:
+        profile["daily_practice_period"] = practice_period
+        profile["daily_practice_count"] = 0
+        profile["daily_practice_claimed"] = False
+        changed = True
+    return changed
 
 
 def award_unit_ticket(profile, unit_id):
@@ -1742,7 +1764,10 @@ def process_rewards():
     if st.session_state.result_processed:
         return
     profile = get_profile()
+    sync_daily_tasks(profile)
     unit_id = st.session_state.selected_unit
+    if unit_id.startswith(f"{highest_unlocked_chapter(profile)}-"):
+        profile["daily_practice_count"] = min(2, profile.get("daily_practice_count", 0) + 1)
     old_best = profile["unit_best_stars"][unit_id]
     new_best = max(old_best, st.session_state.stars)
     exp_gain = EXP_BY_STARS[new_best] - EXP_BY_STARS[old_best]
@@ -1997,6 +2022,83 @@ def render_health_bar(label, current, maximum, color):
         f"""
         <div style="width:100%;height:24px;background:#e9edf2;border-radius:12px;overflow:hidden;">
           <div style="width:{ratio * 100:.2f}%;height:100%;background:{color};border-radius:12px;"></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+BOSS_WIN_KEYS = {
+    ("1", "normal"): "boss_wins",
+    ("1", "elite"): "elite_boss_wins",
+    ("2", "normal"): "chapter2_boss_wins",
+    ("2", "elite"): "chapter2_elite_boss_wins",
+    ("3", "normal"): "chapter3_boss_wins",
+    ("3", "elite"): "chapter3_elite_boss_wins",
+}
+SKILL_CINEMATIC_SECONDS = 1.5
+
+
+def boss_has_been_cleared(profile, chapter_id, boss_type):
+    """是否曾經成功擊敗這一章、這一類 BOSS。"""
+    return int(profile.get(BOSS_WIN_KEYS[(chapter_id, boss_type)], 0) or 0) > 0
+
+
+def battle_presentation_state(result, real_elapsed):
+    """把技能演出插入戰鬥時間軸；演出期間模擬時間暫停。"""
+    skill_events = [event for event in result["events"] if "施放技能" in event["text"]]
+    paused_seconds = 0.0
+    active_skill = None
+    simulated_elapsed = real_elapsed
+    for event in skill_events:
+        cinematic_start = event["time"] + paused_seconds
+        if real_elapsed < cinematic_start:
+            break
+        if real_elapsed < cinematic_start + SKILL_CINEMATIC_SECONDS:
+            active_skill = event
+            simulated_elapsed = event["time"]
+            break
+        paused_seconds += SKILL_CINEMATIC_SECONDS
+        simulated_elapsed = real_elapsed - paused_seconds
+    presentation_duration = result["duration"] + len(skill_events) * SKILL_CINEMATIC_SECONDS
+    return simulated_elapsed, active_skill, presentation_duration
+
+
+def render_battle_scene(event, boss_type, active_skill=None):
+    hero_attacking = event["text"].startswith("勇者") and active_skill is None
+    boss_attacking = ("BOSS第" in event["text"] or "BOSS發動" in event["text"]) and active_skill is None
+    hero_class = "fighter hero hero-attack" if hero_attacking else "fighter hero"
+    boss_class = "fighter boss boss-attack" if boss_attacking else "fighter boss"
+    boss_icon = "🐉" if boss_type == "elite" else "👹"
+    skill_overlay = ""
+    if active_skill:
+        skill_overlay = (
+            '<div class="skill-cinematic"><div class="skill-flame">🔥</div>'
+            f'<strong>{active_skill["text"]}</strong><div>戰鬥計時暫停</div></div>'
+        )
+    st.markdown(
+        f"""
+        <style>
+        .battle-arena {{position:relative;height:250px;margin:14px 0 18px;padding:24px;
+          overflow:hidden;border-radius:22px;background:linear-gradient(#dff3ff 0 62%,#c7e5ad 62%);
+          border:2px solid #d8e1ea;display:flex;align-items:flex-end;justify-content:space-between;}}
+        .fighter {{font-size:88px;line-height:1;text-align:center;filter:drop-shadow(0 8px 5px #0003);}}
+        .fighter span {{display:block;margin-top:10px;font-size:20px;font-weight:700;color:#313442;}}
+        .hero-attack {{animation:heroStrike .5s ease-in-out;}}
+        .boss-attack {{animation:bossStrike .5s ease-in-out;}}
+        .skill-cinematic {{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;
+          align-items:center;justify-content:center;color:white;font-size:26px;text-align:center;
+          background:radial-gradient(circle,#ff7a18dd,#8b0000ee);animation:skillFlash .55s ease-in-out infinite alternate;}}
+        .skill-flame {{font-size:82px;animation:flameGrow .5s ease-in-out infinite alternate;}}
+        @keyframes heroStrike {{50%{{transform:translateX(110px) rotate(-8deg) scale(1.12);}}}}
+        @keyframes bossStrike {{50%{{transform:translateX(-110px) rotate(8deg) scale(1.12);}}}}
+        @keyframes skillFlash {{to{{filter:brightness(1.35);}}}}
+        @keyframes flameGrow {{to{{transform:scale(1.35) rotate(8deg);}}}}
+        </style>
+        <div class="battle-arena">
+          <div class="{hero_class}">🦸<span>勇者</span></div>
+          <div class="{boss_class}">{boss_icon}<span>{'菁英 BOSS' if boss_type == 'elite' else '一般 BOSS'}</span></div>
+          {skill_overlay}
         </div>
         """,
         unsafe_allow_html=True,
@@ -2423,7 +2525,11 @@ elif st.session_state.screen == "menu":
     )
     task_label = (
         "🔴 📋 任務列表"
-        if not profile.get("daily_login_claimed") or permanent_claimable or special_claimable
+        if (
+            not profile.get("daily_login_claimed")
+            or (profile.get("daily_practice_count", 0) >= 2 and not profile.get("daily_practice_claimed"))
+            or permanent_claimable or special_claimable
+        )
         else "📋 任務列表"
     )
     if task_col.button(task_label, use_container_width=True):
@@ -2547,12 +2653,17 @@ elif st.session_state.screen == "daily_tasks":
         if task["complete"] and task["id"] not in profile["claimed_special_tasks"]
     ]
     has_any_claimable = (
-        not profile.get("daily_login_claimed") or claimable_permanent or claimable_special
+        not profile.get("daily_login_claimed")
+        or (profile.get("daily_practice_count", 0) >= 2 and not profile.get("daily_practice_claimed"))
+        or claimable_permanent or claimable_special
     )
     if st.button("🎁 一鍵領取所有已完成任務", type="primary", disabled=not has_any_claimable, use_container_width=True):
         if not profile.get("daily_login_claimed"):
             profile["coins"] += 200
             profile["daily_login_claimed"] = True
+        if profile.get("daily_practice_count", 0) >= 2 and not profile.get("daily_practice_claimed"):
+            profile["sweep_tickets"] += 3
+            profile["daily_practice_claimed"] = True
         for task in claimable_permanent:
             grant_task_reward(profile, task)
             profile["claimed_permanent_tasks"].append(task["id"])
@@ -2567,7 +2678,7 @@ elif st.session_state.screen == "daily_tasks":
         key="mission_tabs", default="📅 每日任務",
     )
     with daily_tab:
-        st.caption("每日任務於台灣時間上午8:00重置。")
+        st.caption("每日登入於台灣時間上午8:00重置；單元練習任務於每日凌晨0:00重置。")
         task_left, task_right = st.columns([3, 2])
         task_left.write("**每日登入一次**")
         task_left.caption("獎勵：200金幣")
@@ -2578,6 +2689,30 @@ elif st.session_state.screen == "daily_tasks":
             profile["daily_login_claimed"] = True
             save_profile(profile)
             st.rerun()
+
+        practice_chapter = highest_unlocked_chapter(profile)
+        practice_count = min(2, profile.get("daily_practice_count", 0))
+        practice_left, practice_right = st.columns([3, 2])
+        practice_left.write(
+            f"**完成目前最高進度章節任意單元2次（{CHAPTERS[practice_chapter]['number']}）**"
+        )
+        practice_left.caption(f"目前進度：{practice_count}/2｜獎勵：3張擊殺券")
+        if profile.get("daily_practice_claimed"):
+            practice_right.success("✅ 已完成並領取")
+        elif practice_count >= 2:
+            if practice_right.button("領取3張擊殺券", type="primary", use_container_width=True):
+                profile["sweep_tickets"] += 3
+                profile["daily_practice_claimed"] = True
+                save_profile(profile)
+                st.rerun()
+        else:
+            target_unit = next(
+                (uid for uid in chapter_unit_ids(practice_chapter) if unit_unlocked(profile, uid)),
+                chapter_unit_ids(practice_chapter)[0],
+            )
+            if practice_right.button("進行中｜前往挑戰", use_container_width=True):
+                start_quiz(target_unit)
+                st.rerun()
 
     with permanent_tab:
         claimed = set(profile["claimed_permanent_tasks"])
@@ -3184,6 +3319,7 @@ elif st.session_state.screen == "boss_ready":
     chapter_id = st.session_state.selected_chapter
     config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
     result = simulate_battle(stats, boss_type)
+    has_cleared = boss_has_been_cleared(profile, chapter_id, boss_type)
     boss_label = "菁英BOSS" if boss_type == "elite" else "一般BOSS"
     st.subheader(f"🐉 {CHAPTERS[chapter_id]['number']}{boss_label}：{config['name']}")
     render_stats(profile)
@@ -3195,8 +3331,11 @@ elif st.session_state.screen == "boss_ready":
             f"🔥 BOSS技能「{config['skill']}」：每{config['skill_interval']:g}秒造成"
             f"{config['true_damage']:g}真實傷害，無法被防禦或減傷詞條抵消。"
         )
-    st.info(f"預估{'獲勝' if result['victory'] else '失敗'}，約 {result['duration']:.2f} 秒結束。")
-    if boss_type == "elite" and not result["victory"]:
+    if has_cleared:
+        st.info(f"預估{'獲勝' if result['victory'] else '失敗'}，約 {result['duration']:.2f} 秒結束。")
+    else:
+        st.info("🔒 首次通關前不顯示勝負與通關時間。請根據雙方能力自行估算；本次必須完整觀看戰鬥。")
+    if has_cleared and boss_type == "elite" and not result["victory"]:
         collected_count = len(collected_three_star_slots(profile, chapter_id))
         st.warning(f"目前本章三星部位 {collected_count}/9。建議回單元補齊缺少部位、改善詞條或提升等級後再挑戰。")
     x, y = st.columns(2)
@@ -3206,10 +3345,13 @@ elif st.session_state.screen == "boss_ready":
         st.session_state.battle_recorded = False
         st.session_state.screen = "boss_watch"
         st.rerun()
-    if y.button("略過並立即結算", use_container_width=True):
-        st.session_state.battle_recorded = False
-        finish_battle(result)
-        st.rerun()
+    if has_cleared:
+        if y.button("略過並立即結算", use_container_width=True):
+            st.session_state.battle_recorded = False
+            finish_battle(result)
+            st.rerun()
+    else:
+        y.button("首次通關前不可略過", disabled=True, use_container_width=True)
     if st.button("返回章節"):
         st.session_state.screen = "menu"
         st.rerun()
@@ -3219,7 +3361,8 @@ elif st.session_state.screen == "boss_watch":
     def battle_panel():
         result = st.session_state.battle_events
         elapsed = time.time() - st.session_state.battle_started_at
-        visible = [e for e in result["events"] if e["time"] <= elapsed]
+        simulated_elapsed, active_skill, presentation_duration = battle_presentation_state(result, elapsed)
+        visible = [e for e in result["events"] if e["time"] <= simulated_elapsed]
         event = visible[-1]
         st.subheader("⚔️ 戰鬥進行中")
         a, b = st.columns(2)
@@ -3231,8 +3374,13 @@ elif st.session_state.screen == "boss_watch":
         render_health_bar(
             "BOSS HP", event["boss_hp"], result["events"][0]["boss_hp"], "#e53935"
         )
-        st.write(event["text"])
-        if elapsed >= result["duration"]:
+        render_battle_scene(event, st.session_state.selected_boss_type, active_skill)
+        if active_skill:
+            st.error(f"🔥 {active_skill['text']}（技能演出期間計時暫停）")
+        else:
+            st.write(event["text"])
+        st.caption(f"戰鬥時間：{min(simulated_elapsed, result['duration']):.2f} 秒")
+        if elapsed >= presentation_duration:
             finish_battle(result)
             st.rerun()
     battle_panel()
