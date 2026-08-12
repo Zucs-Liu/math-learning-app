@@ -50,16 +50,16 @@ st.markdown(
 
 MAX_QUESTIONS = 20
 BOSS_CONFIGS = {
-    "1_normal": {"name": "荒野魔狼", "image": "wild-wolf.webp", "hp": 600, "damage": 30, "interval": 3.0, "exp": 100},
-    "1_elite": {"name": "血月狼人", "image": "blood-moon-werewolf.webp", "hp": 900, "damage": 45, "interval": 2.5, "exp": 150},
-    "2_normal": {"name": "刺甲蜘蛛", "image": "thorn-armor-spider.webp", "hp": 800, "damage": 36, "interval": 3.0, "exp": 150},
-    "2_elite": {"name": "魅惑影蛛", "image": "charming-shadow-spider.webp", "hp": 1200, "damage": 54, "interval": 2.5, "exp": 200},
-    "3_normal": {"name": "深淵魔龍", "image": "abyss-dragon.webp", "hp": 1050, "damage": 45, "interval": 3.0, "exp": 200, "critical_rate": 0.20},
-    "3_elite": {"name": "烈焰龍王", "image": "flame-dragon-king.webp", "hp": 1550, "damage": 62, "interval": 2.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 20},
+    "1_normal": {"name": "荒野魔狼", "image": "wild-wolf.webp", "hp": 600, "damage": 30, "interval": 2.0, "exp": 100},
+    "1_elite": {"name": "血月狼人", "image": "blood-moon-werewolf.webp", "hp": 900, "damage": 45, "interval": 1.5, "exp": 150},
+    "2_normal": {"name": "刺甲蜘蛛", "image": "thorn-armor-spider.webp", "hp": 800, "damage": 36, "interval": 2.0, "exp": 150},
+    "2_elite": {"name": "魅惑影蛛", "image": "charming-shadow-spider.webp", "hp": 1200, "damage": 54, "interval": 1.5, "exp": 200},
+    "3_normal": {"name": "深淵魔龍", "image": "abyss-dragon.webp", "hp": 1050, "damage": 45, "interval": 2.0, "exp": 200, "critical_rate": 0.20},
+    "3_elite": {"name": "烈焰龍王", "image": "flame-dragon-king.webp", "hp": 1550, "damage": 62, "interval": 1.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 20},
 }
 BOSS_MAX_HP = 400
 BOSS_DAMAGE = 30
-BOSS_ATTACK_INTERVAL = 3.0
+BOSS_ATTACK_INTERVAL = 2.0
 BOSS_EXP = 100
 DB_FILE = Path("game.db")
 
@@ -271,6 +271,7 @@ DEFAULT_STATE = {
     "scroll_inventory_to_top": False,
     "scroll_ranking_to_top": False,
     "scroll_boss_to_top": False,
+    "scroll_battle_to_top": False,
     "sweep_result_uid": None,
     "inventory_default_tab": "目前裝備",
     "inventory_tab_version": 0,
@@ -507,6 +508,7 @@ def new_profile(name):
         "data_version": 2,
         "name": name,
         "avatar_data": None,
+        "gender": None,
         "level": 1,
         "exp": 0,
         "coins": 0,
@@ -767,12 +769,35 @@ def avatar_from_upload(uploaded_file):
     return "data:image/png;base64," + base64.b64encode(output.getvalue()).decode("ascii")
 
 
+@st.cache_data(show_spinner=False)
+def built_in_avatar_data(index):
+    image_path = Path(__file__).parent / "assets" / "avatars" / f"avatar-{index:02d}.webp"
+    if not image_path.exists():
+        return None
+    return "data:image/webp;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
+
+
 def render_avatar_editor(profile):
-    avatar_col, upload_col = st.columns([1, 5])
+    avatar_col, gender_col, upload_col = st.columns([1, 2, 4], vertical_alignment="top")
     if profile.get("avatar_data"):
         avatar_col.image(profile["avatar_data"], width=96)
     else:
         avatar_col.markdown("## 🧙")
+    if profile.get("gender") in {"male", "female"}:
+        gender_col.write(f"**角色性別：{'男性' if profile['gender'] == 'male' else '女性'}**")
+        gender_col.caption("性別已確定，無法再次更改。")
+    else:
+        gender_col.warning("性別只能設定一次，並會決定後續 BOSS 戰鬥中的勇者圖片。")
+        selected_gender = gender_col.radio(
+            "選擇角色性別", ["male", "female"], horizontal=True,
+            format_func=lambda value: "男性" if value == "male" else "女性",
+            key="one_time_gender",
+        )
+        if gender_col.button("確認性別（設定後不能更改）", type="primary", use_container_width=True):
+            profile["gender"] = selected_gender
+            save_profile(profile)
+            st.success("角色性別已設定，後續 BOSS 戰鬥會使用對應的勇者圖片。")
+            st.rerun()
     uploaded = upload_col.file_uploader(
         "上傳或更換大頭貼", type=["png", "jpg", "jpeg", "webp"],
         key="avatar_upload", help="圖片只會公開作為遊戲大頭貼；正式姓名不會顯示在排行榜。",
@@ -785,6 +810,19 @@ def render_avatar_editor(profile):
             st.rerun()
         except Exception as error:
             st.error(f"無法處理圖片：{error}")
+    with st.expander("選擇內建 Q 版大頭貼（20款）"):
+        st.caption("內建大頭貼可以隨時更換，也可以改用自己上傳的圖片。")
+        for row_start in range(1, 21, 5):
+            columns = st.columns(5)
+            for column, index in zip(columns, range(row_start, row_start + 5)):
+                avatar_data = built_in_avatar_data(index)
+                if avatar_data:
+                    column.image(avatar_data, use_container_width=True)
+                if column.button("使用", key=f"use_builtin_avatar_{index}", use_container_width=True):
+                    profile["avatar_data"] = avatar_data
+                    save_profile(profile)
+                    st.success(f"已套用內建大頭貼 {index}。")
+                    st.rerun()
 
 
 def log_attempt(unit_id):
@@ -1694,23 +1732,54 @@ def scroll_page_to_top(state_key):
         <script>
         const scrollTop = () => {
             const doc = parent.window.document;
-            const main = doc.querySelector('.stMain')
-                || doc.querySelector('[data-testid="stMain"]')
-                || doc.querySelector('[data-testid="stAppViewContainer"]');
-            if (main) main.scrollTo({top: 0, left: 0, behavior: 'auto'});
+            const selectors = [
+                '.stMain',
+                'section.main',
+                '[data-testid="stMain"]',
+                '[data-testid="stAppViewContainer"]',
+                '[data-testid="stApp"]',
+                '.main'
+            ];
+            selectors.forEach(selector => {
+                doc.querySelectorAll(selector).forEach(node => {
+                    node.scrollTop = 0;
+                    node.scrollLeft = 0;
+                    if (node.scrollTo) node.scrollTo({top: 0, left: 0, behavior: 'instant'});
+                });
+            });
+            const block = doc.querySelector('[data-testid="stMainBlockContainer"]');
+            if (block) block.scrollIntoView({block: 'start', inline: 'nearest', behavior: 'instant'});
             doc.documentElement.scrollTop = 0;
+            doc.documentElement.scrollLeft = 0;
             doc.body.scrollTop = 0;
+            doc.body.scrollLeft = 0;
             parent.window.scrollTo(0, 0);
-            if (window.frameElement) {
-                window.frameElement.scrollIntoView({block: 'start', behavior: 'auto'});
-            }
         };
-        [0, 50, 150, 300, 600].forEach(delay => setTimeout(scrollTop, delay));
+        [0, 50, 150, 300, 600, 1000, 1600].forEach(delay => setTimeout(scrollTop, delay));
         </script>
         """,
-        height=0,
+        height=1,
+        scrolling=False,
     )
     st.session_state[state_key] = False
+
+
+def force_top_before_navigation():
+    """在按鈕切換 screen 前立即重設手機瀏覽器的捲動位置。"""
+    components.html(
+        """
+        <script>
+        const doc = parent.window.document;
+        doc.querySelectorAll('.stMain, section.main, [data-testid="stMain"], [data-testid="stAppViewContainer"]')
+          .forEach(node => { node.scrollTop = 0; node.scrollLeft = 0; });
+        doc.documentElement.scrollTop = 0;
+        doc.body.scrollTop = 0;
+        parent.window.scrollTo(0, 0);
+        </script>
+        """,
+        height=1,
+        scrolling=False,
+    )
 
 
 def stars_for_combo(combo):
@@ -1981,7 +2050,7 @@ def finish_battle(result):
     st.session_state.screen = "boss_result"
 
 
-def render_stats(profile):
+def render_stats(profile, show_exp=True):
     stats = player_stats(profile)
     breakdown = stats["breakdown"]
     base = breakdown["base"]
@@ -2040,11 +2109,12 @@ def render_stats(profile):
         st.caption(f"排行榜採固定暴擊：目前每第 {critical_every} 擊必定暴擊，不使用隨機判定。")
     elif stats["critical_damage"]:
         st.caption("目前暴擊率為0%，因此暴擊傷害詞條暫時不會生效；需要先取得暴擊率。")
-    if profile["level"] < 20:
-        st.progress(profile["exp"] / (profile["level"] * 100))
-        st.caption(f"EXP：{profile['exp']} / {profile['level'] * 100}")
-    else:
-        st.caption("已達最高等級 Lv20")
+    if show_exp:
+        if profile["level"] < 20:
+            st.progress(profile["exp"] / (profile["level"] * 100))
+            st.caption(f"EXP：{profile['exp']} / {profile['level'] * 100}")
+        else:
+            st.caption("已達最高等級 Lv20")
 
 
 def render_health_bar(label, current, maximum, color):
@@ -2116,14 +2186,15 @@ def boss_image_data_uri(filename):
 
 
 @st.cache_data(show_spinner=False)
-def hero_image_data_uri():
-    image_path = Path(__file__).parent / "assets" / "heroes" / "blue-silver-hero.webp"
+def hero_image_data_uri(gender="male"):
+    filename = "blue-silver-hero-female.webp" if gender == "female" else "blue-silver-hero.webp"
+    image_path = Path(__file__).parent / "assets" / "heroes" / filename
     if not image_path.exists():
         return ""
     return "data:image/webp;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
 
 
-def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_skill=None):
+def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_skill=None, gender="male"):
     hero_attacking = event["text"].startswith("勇者") and active_skill is None
     boss_attacking = ("BOSS第" in event["text"] or "BOSS發動" in event["text"]) and active_skill is None
     hero_class = "fighter hero hero-attack" if hero_attacking else "fighter hero"
@@ -2134,7 +2205,7 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
     boss_claws = '<div class="claw-hit boss-claw"><i></i><i></i><i></i></div>' if boss_hit else ""
     boss_config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
     boss_image = boss_image_data_uri(boss_config["image"])
-    hero_image = hero_image_data_uri()
+    hero_image = hero_image_data_uri(gender)
     hero_visual = (
         f'<img class="hero-portrait" src="{hero_image}" alt="勇者">'
         if hero_image else '<div class="hero-fallback">🦸</div>'
@@ -2226,6 +2297,7 @@ def render_chapter_boss_card(chapter_id, boss_type, unlocked):
             type="primary" if unlocked else "secondary",
             use_container_width=True,
         ):
+            force_top_before_navigation()
             st.session_state.selected_boss_type = boss_type
             st.session_state.scroll_boss_to_top = True
             st.session_state.screen = "boss_ready"
@@ -2245,11 +2317,12 @@ elif st.session_state.screen == "bootstrap":
 active_chapter_id = st.session_state.get("selected_chapter", "1")
 if active_chapter_id not in CHAPTERS:
     active_chapter_id = "1"
-if st.session_state.screen in {"menu", "quiz", "quiz_result", "boss_ready", "boss_watch", "boss_result"}:
-    active_chapter = CHAPTERS[active_chapter_id]
-    st.title(f"⚔️ 數學冒險：{active_chapter['number']}－{active_chapter['name']}")
-else:
-    st.title("⚔️ 數學冒險")
+if st.session_state.screen not in {"boss_ready", "boss_watch"}:
+    if st.session_state.screen in {"menu", "quiz", "quiz_result", "boss_result"}:
+        active_chapter = CHAPTERS[active_chapter_id]
+        st.title(f"⚔️ 數學冒險：{active_chapter['number']}－{active_chapter['name']}")
+    else:
+        st.title("⚔️ 數學冒險")
 
 home_return_screens = {
     "character_stats", "menu", "inventory", "rankings", "economy", "daily_tasks",
@@ -2596,20 +2669,24 @@ elif st.session_state.screen == "home":
         <style>
         @media (max-width: 768px) and (orientation: portrait) {
           .st-key-home_nav_row_1,
-          .st-key-home_nav_row_2 {width:100% !important;max-width:100% !important;overflow:hidden !important;}
+          .st-key-home_nav_row_2,
+          .st-key-home_nav_row_3 {width:100% !important;max-width:100% !important;overflow:hidden !important;}
           .st-key-home_nav_row_1 [data-testid="stHorizontalBlock"],
-          .st-key-home_nav_row_2 [data-testid="stHorizontalBlock"] {
+          .st-key-home_nav_row_2 [data-testid="stHorizontalBlock"],
+          .st-key-home_nav_row_3 [data-testid="stHorizontalBlock"] {
             display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;
             width:100% !important;max-width:100% !important;gap:.2rem !important;
           }
           .st-key-home_nav_row_1 [data-testid="stColumn"],
-          .st-key-home_nav_row_2 [data-testid="stColumn"] {
+          .st-key-home_nav_row_2 [data-testid="stColumn"],
+          .st-key-home_nav_row_3 [data-testid="stColumn"] {
             min-width:0 !important;width:calc(25% - .15rem) !important;
             max-width:calc(25% - .15rem) !important;flex:0 0 calc(25% - .15rem) !important;
             padding:0 !important;
           }
           .st-key-home_nav_row_1 button,
-          .st-key-home_nav_row_2 button {
+          .st-key-home_nav_row_2 button,
+          .st-key-home_nav_row_3 button {
             width:100% !important;padding:.35rem .05rem !important;font-size:.72rem !important;
             line-height:1.15 !important;white-space:normal !important;min-height:2.8rem !important;
           }
@@ -2622,6 +2699,8 @@ elif st.session_state.screen == "home":
         nav1 = st.columns(4)
     with st.container(key="home_nav_row_2"):
         nav2 = st.columns(4)
+    with st.container(key="home_nav_row_3"):
+        nav3 = st.columns(4)
 
     if nav1[0].button("🧙 角色能力", use_container_width=True):
         st.session_state.screen = "character_stats"
@@ -2660,6 +2739,7 @@ elif st.session_state.screen == "home":
     if nav2[3].button("📋 任務", use_container_width=True):
         st.session_state.screen = "daily_tasks"
         st.rerun()
+    nav3[0].button("🥚 寵物召喚｜尚未開放", disabled=True, use_container_width=True)
 
     if st.session_state.active_player == "__TEACHER__":
         if st.button("返回老師管理後台"):
@@ -3518,13 +3598,42 @@ elif st.session_state.screen == "boss_ready":
     result = simulate_battle(stats, boss_type)
     has_cleared = boss_has_been_cleared(profile, chapter_id, boss_type)
     boss_label = "菁英BOSS" if boss_type == "elite" else "一般BOSS"
+    title_prefix = f"「{profile['equipped_title']}」" if profile.get("equipped_title") else ""
+    st.subheader(f"🧙 {title_prefix}{profile['name']}")
+    st.markdown(
+        """
+        <style>
+        @media (max-width:768px) and (orientation:portrait) {
+          .st-key-boss_mobile_stats [data-testid="stHorizontalBlock"] {
+            display:flex !important;flex-direction:row !important;
+            flex-wrap:nowrap !important;gap:.12rem !important;width:100% !important;
+          }
+          .st-key-boss_mobile_stats [data-testid="stColumn"] {
+            min-width:0 !important;width:20% !important;max-width:20% !important;
+            flex:0 0 20% !important;padding:0 !important;
+          }
+          .st-key-boss_mobile_stats [data-testid="stMetricLabel"] {
+            font-size:.64rem !important;line-height:1.05 !important;
+          }
+          .st-key-boss_mobile_stats [data-testid="stMetricValue"] {
+            font-size:1rem !important;line-height:1.15 !important;white-space:nowrap !important;
+          }
+          .st-key-boss_mobile_stats [data-testid="stMetric"] {padding:.12rem !important;}
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.container(key="boss_mobile_stats"):
+        render_stats(profile, show_exp=False)
+    st.divider()
     st.subheader(f"🐉 {CHAPTERS[chapter_id]['number']}{boss_label}：{config['name']}")
     boss_image_path = Path(__file__).parent / "assets" / "bosses" / config["image"]
     if boss_image_path.exists():
         st.image(boss_image_path, width=320, caption=config["name"])
     else:
         st.warning("BOSS 圖片素材尚未安裝，目前暫時使用預設圖示。")
-    render_stats(profile)
+    st.write("### BOSS 能力與技能")
     st.write(f"BOSS HP：{config['hp']}｜每{config['interval']:g}秒攻擊{config['damage']}")
     if config.get("critical_rate"):
         st.warning(f"⚠️ BOSS特殊能力：暴擊率 {config['critical_rate']:.0%}；每第5次攻擊必定暴擊，造成1.5倍傷害。")
@@ -3540,25 +3649,36 @@ elif st.session_state.screen == "boss_ready":
     if has_cleared and boss_type == "elite" and not result["victory"]:
         collected_count = len(collected_three_star_slots(profile, chapter_id))
         st.warning(f"目前本章三星部位 {collected_count}/9。建議回單元補齊缺少部位、改善詞條或提升等級後再挑戰。")
-    x, y = st.columns(2)
-    if x.button("觀看戰鬥", type="primary", use_container_width=True):
+    if st.button("⚔️ 開始並觀看戰鬥", type="primary", use_container_width=True):
+        force_top_before_navigation()
         st.session_state.battle_events = result
         st.session_state.battle_started_at = time.time()
         st.session_state.battle_recorded = False
+        st.session_state.scroll_battle_to_top = True
         st.session_state.screen = "boss_watch"
         st.rerun()
-    if has_cleared:
-        if y.button("略過並立即結算", use_container_width=True):
-            st.session_state.battle_recorded = False
-            finish_battle(result)
-            st.rerun()
-    else:
-        y.button("首次通關前不可略過", disabled=True, use_container_width=True)
+    st.caption("所有 BOSS 挑戰都必須觀看完整戰鬥；通關時間會自動記錄至排行榜。")
     if st.button("返回章節"):
         st.session_state.screen = "menu"
         st.rerun()
 
 elif st.session_state.screen == "boss_watch":
+    st.markdown(
+        """
+        <style>
+        header[data-testid="stHeader"],
+        [data-testid="stToolbar"],
+        [data-testid="stDecoration"],
+        footer { display: none !important; }
+        [data-testid="stMainBlockContainer"] {
+            padding-top: 0.35rem !important;
+            padding-bottom: 0.35rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    scroll_page_to_top("scroll_battle_to_top")
     @st.fragment(run_every=0.35)
     def battle_panel():
         result = st.session_state.battle_events
@@ -3566,25 +3686,23 @@ elif st.session_state.screen == "boss_watch":
         simulated_elapsed, active_skill, presentation_duration = battle_presentation_state(result, elapsed)
         visible = [e for e in result["events"] if e["time"] <= simulated_elapsed]
         event = visible[-1]
-        st.subheader("⚔️ 戰鬥進行中")
-        a, b = st.columns(2)
-        a.metric("勇者HP", f"{event['player_hp']:.1f}")
-        b.metric("BOSS HP", f"{event['boss_hp']:.1f}")
+        profile = get_profile()
+        config = BOSS_CONFIGS[
+            f"{st.session_state.selected_chapter}_{st.session_state.selected_boss_type}"
+        ]
+        title_prefix = f"「{profile['equipped_title']}」" if profile.get("equipped_title") else ""
         render_health_bar(
-            "勇者 HP", event["player_hp"], result["events"][0]["player_hp"], "#2185d0"
+            f"{title_prefix}{profile['name']}",
+            event["player_hp"], result["events"][0]["player_hp"], "#2185d0"
         )
         render_health_bar(
-            "BOSS HP", event["boss_hp"], result["events"][0]["boss_hp"], "#e53935"
+            config["name"], event["boss_hp"], result["events"][0]["boss_hp"], "#e53935"
         )
         render_battle_scene(
             event, st.session_state.selected_chapter,
             st.session_state.selected_boss_type, len(visible), active_skill,
+            profile.get("gender") or "male",
         )
-        if active_skill:
-            st.error(f"🔥 {active_skill['text']}（技能演出期間計時暫停）")
-        else:
-            st.write(event["text"])
-        st.caption(f"戰鬥時間：{min(simulated_elapsed, result['duration']):.2f} 秒")
         if elapsed >= presentation_duration:
             finish_battle(result)
             st.rerun()
