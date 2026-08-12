@@ -231,6 +231,7 @@ DEFAULT_STATE = {
     "battle_result": None,
     "battle_recorded": False,
     "selected_boss_type": "normal",
+    "answer_history": [],
 }
 
 for key, value in DEFAULT_STATE.items():
@@ -367,6 +368,19 @@ def init_db():
                 elapsed_seconds REAL NOT NULL DEFAULT 0,
                 average_seconds REAL NOT NULL DEFAULT 0,
                 finished_at TEXT NOT NULL,
+                FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS question_logs (
+                id {"BIGSERIAL PRIMARY KEY" if USE_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
+                student_code TEXT NOT NULL,
+                unit_id TEXT NOT NULL,
+                question_text TEXT NOT NULL,
+                submitted_answer INTEGER NOT NULL,
+                correct_answer INTEGER NOT NULL,
+                is_correct INTEGER NOT NULL,
+                combo_after INTEGER NOT NULL,
+                elapsed_seconds REAL NOT NULL DEFAULT 0,
+                answered_at TEXT NOT NULL,
                 FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
             );
             """
@@ -651,6 +665,16 @@ def log_attempt(unit_id):
              st.session_state.quiz_elapsed / st.session_state.attempts if st.session_state.attempts else 0,
              database_timestamp()),
         )
+        for answer_row in st.session_state.answer_history:
+            db.execute(
+                "INSERT INTO question_logs(student_code, unit_id, question_text, submitted_answer, "
+                "correct_answer, is_correct, combo_after, elapsed_seconds, answered_at) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (st.session_state.active_player, unit_id, answer_row["question_text"],
+                 answer_row["submitted_answer"], answer_row["correct_answer"],
+                 1 if answer_row["is_correct"] else 0, answer_row["combo_after"],
+                 answer_row["elapsed_seconds"], answer_row["answered_at"]),
+            )
 
 
 def save_best_ranking(profile, clear_time, boss_type="normal", chapter_id="1"):
@@ -731,6 +755,32 @@ def reset_student_pin(code):
 def update_student_real_name(code, real_name):
     with db_connection() as db:
         db.execute("UPDATE players SET real_name=? WHERE student_code=?", (real_name, code))
+
+
+def student_learning_detail(code):
+    with db_connection() as db:
+        row = db.execute(
+            "SELECT hero_name, real_name, profile_json FROM players WHERE student_code=?", (code,)
+        ).fetchone()
+    if not row:
+        return None
+    return normalize_profile(json.loads(row["profile_json"]), row["hero_name"])
+
+
+def student_question_rows(code, errors_only=False, limit=200):
+    condition = "AND is_correct=0" if errors_only else ""
+    with db_connection() as db:
+        rows = [dict(row) for row in db.execute(
+            "SELECT unit_id AS 單元, question_text AS 題目, submitted_answer AS 學生答案, "
+            "correct_answer AS 正確答案, is_correct AS 是否答對, combo_after AS 作答後連擊, "
+            f"elapsed_seconds AS 回合累計秒數, answered_at AS 作答時間 FROM question_logs "
+            f"WHERE student_code=? {condition} ORDER BY id DESC LIMIT {int(limit)}",
+            (code,),
+        ).fetchall()]
+    for row in rows:
+        row["是否答對"] = "✅" if row["是否答對"] else "❌"
+        row["作答時間"] = taipei_time_text(row["作答時間"])
+    return rows
 
 
 def delete_student(code):
@@ -1085,6 +1135,7 @@ def start_quiz(unit_id):
     st.session_state.collection_reward_new = False
     st.session_state.collection_level_up_to = None
     st.session_state.extra_reward_messages = []
+    st.session_state.answer_history = []
     st.session_state.screen = "quiz"
 
 
@@ -1102,8 +1153,12 @@ def submit_quiz_answer():
     answer = st.session_state.answer_input
     if answer is None:
         return
+    question_text = st.session_state.question["text"]
+    correct_answer = st.session_state.question["answer"]
+    submitted_answer = int(answer)
     st.session_state.attempts += 1
-    if int(answer) == st.session_state.question["answer"]:
+    is_correct = submitted_answer == correct_answer
+    if is_correct:
         st.session_state.correct += 1
         st.session_state.combo += 1
         st.session_state.max_combo = max(st.session_state.max_combo, st.session_state.combo)
@@ -1111,6 +1166,15 @@ def submit_quiz_answer():
     else:
         st.session_state.message = f"❌ 答案是{st.session_state.question['answer']}，連擊中斷。"
         st.session_state.combo = 0
+    st.session_state.answer_history.append({
+        "question_text": question_text,
+        "submitted_answer": submitted_answer,
+        "correct_answer": correct_answer,
+        "is_correct": is_correct,
+        "combo_after": st.session_state.combo,
+        "elapsed_seconds": round(time.time() - st.session_state.quiz_started_at, 2),
+        "answered_at": database_timestamp(),
+    })
     st.session_state.answer_input = None
     if st.session_state.max_combo > 10 or st.session_state.attempts >= MAX_QUESTIONS:
         finish_quiz()
@@ -1493,6 +1557,43 @@ elif st.session_state.screen == "admin_panel":
                 update_student_real_name(selected_code, corrected_name)
                 st.success("正式姓名已更新。")
                 st.rerun()
+            detail_profile = student_learning_detail(selected_code)
+            if detail_profile:
+                st.write("### 學習與通關進度")
+                progress_rows = []
+                for unit_id, unit in UNITS.items():
+                    stars = detail_profile["unit_best_stars"].get(unit_id, 0)
+                    progress_rows.append({
+                        "單元": unit_id, "名稱": unit["name"],
+                        "最高星級": "⭐" * stars if stars else "尚未通關",
+                    })
+                st.dataframe(progress_rows, hide_index=True, use_container_width=True)
+                boss_progress = [
+                    f"第一章一般BOSS：{detail_profile.get('boss_wins', 0)}次",
+                    f"第一章菁英BOSS：{detail_profile.get('elite_boss_wins', 0)}次",
+                    f"第二章一般BOSS：{detail_profile.get('chapter2_boss_wins', 0)}次",
+                    f"第二章菁英BOSS：{detail_profile.get('chapter2_elite_boss_wins', 0)}次",
+                ]
+                st.caption("｜".join(boss_progress))
+
+                st.write("### 目前穿戴裝備")
+                equipment_rows = []
+                for slot, slot_name in SLOT_NAMES.items():
+                    uid = detail_profile["equipment"].get(slot)
+                    equipped = find_item(detail_profile, uid) if uid else None
+                    equipment_rows.append({
+                        "部位": f"{SLOT_ICONS[slot]} {slot_name}",
+                        "裝備": item_text(equipped) if equipped else "尚未裝備",
+                    })
+                st.dataframe(equipment_rows, hide_index=True, use_container_width=True)
+
+                st.write("### 作答明細")
+                errors_only = st.toggle("只顯示答錯題目", value=True, key=f"errors_{selected_code}")
+                question_rows = student_question_rows(selected_code, errors_only=errors_only)
+                if question_rows:
+                    st.dataframe(question_rows, hide_index=True, use_container_width=True)
+                else:
+                    st.info("目前沒有符合條件的題目紀錄；新版上線前的作答無法回溯題目與答案。")
             col1, col2 = st.columns(2)
             if col1.button("重設為新的6位PIN", use_container_width=True):
                 new_pin = reset_student_pin(selected_code)
