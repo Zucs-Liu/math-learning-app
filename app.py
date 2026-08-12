@@ -519,6 +519,10 @@ def new_profile(name):
         "retro_reward_notice": [],
         "daily_login_period": None,
         "daily_login_claimed": False,
+        "claimed_permanent_tasks": [],
+        "claimed_special_tasks": [],
+        "task_rewards_initialized": False,
+        "elite_special_tasks_migrated": False,
         "shop": {"generated_at": None, "items": []},
         "inventory": [],
         "collection_catalog": [],
@@ -626,6 +630,8 @@ def create_student(real_name, hero_name, pin):
         number = int(row["value"]) + 1 if row else 1
         code = sequential_student_code(number)
         profile = new_profile(hero_name)
+        profile["task_rewards_initialized"] = True
+        profile["elite_special_tasks_migrated"] = True
         db.execute(
             "INSERT INTO players(student_code, hero_name, real_name, pin_salt, pin_hash, profile_json, created_at) "
             "VALUES(?, ?, ?, ?, ?, ?, ?)",
@@ -653,6 +659,8 @@ def ensure_teacher_profile(hero_name="老師測試勇者"):
         else:
             salt, digest = make_pin_hash(secrets.token_hex(16))
             profile = new_profile(hero_name)
+            profile["task_rewards_initialized"] = True
+            profile["elite_special_tasks_migrated"] = True
             db.execute(
                 "INSERT INTO players(student_code, hero_name, pin_salt, pin_hash, profile_json, created_at) "
                 "VALUES(?, ?, ?, ?, ?, ?)",
@@ -694,8 +702,12 @@ def get_profile():
         st.session_state.screen = "login"
         st.rerun()
     raw_profile = json.loads(row["profile_json"])
+    original_profile_json = json.dumps(raw_profile, ensure_ascii=False, sort_keys=True)
     profile = normalize_profile(raw_profile, row["hero_name"])
-    normalized_changed = profile != raw_profile
+    retroactively_grant_tasks(profile, code)
+    normalized_changed = (
+        json.dumps(profile, ensure_ascii=False, sort_keys=True) != original_profile_json
+    )
     if profile.get("collection_reward_claimed") and not achievement_item(profile, "chapter-1-collection"):
         profile["inventory"].append(make_collection_reward())
         profile["collection_item_claimed"] = True
@@ -985,6 +997,143 @@ def award_unit_ticket(profile, unit_id):
         profile["sweep_tickets"] += 1
         return True
     return False
+
+
+def permanent_task_definitions():
+    tasks = []
+    boss_keys = {
+        "1": ("boss_wins", "elite_boss_wins"),
+        "2": ("chapter2_boss_wins", "chapter2_elite_boss_wins"),
+        "3": ("chapter3_boss_wins", "chapter3_elite_boss_wins"),
+    }
+    for chapter_id in CHAPTERS:
+        for unit_id in chapter_unit_ids(chapter_id):
+            tasks.append({
+                "id": f"unit_{unit_id}", "chapter": chapter_id,
+                "name": f"通過{unit_id}單元：{UNITS[unit_id]['name']}",
+                "reward_text": "100金幣", "coins": 100,
+                "complete": lambda profile, uid=unit_id: profile["unit_best_stars"].get(uid, 0) > 0,
+            })
+        normal_key, elite_key = boss_keys[chapter_id]
+        tasks.extend([
+            {
+                "id": f"boss_{chapter_id}_normal", "chapter": chapter_id,
+                "name": f"通過{CHAPTERS[chapter_id]['number']}普通BOSS",
+                "reward_text": "300金幣＋1顆部位融煉石", "coins": 300,
+                "stone_key": "slot_smelting_stones",
+                "complete": lambda profile, key=normal_key: profile.get(key, 0) > 0,
+            },
+            {
+                "id": f"boss_{chapter_id}_elite", "chapter": chapter_id,
+                "name": f"通過{CHAPTERS[chapter_id]['number']}菁英BOSS",
+                "reward_text": "300金幣＋1顆基礎詞條融煉石", "coins": 300,
+                "stone_key": "basic_affix_smelting_stones",
+                "complete": lambda profile, key=elite_key: profile.get(key, 0) > 0,
+            },
+        ])
+    return tasks
+
+
+def special_task_definitions(code):
+    table_by_chapter = {
+        "1": ("rankings", "elite_rankings"),
+        "2": ("chapter2_rankings", "chapter2_elite_rankings"),
+        "3": ("chapter3_rankings", "chapter3_elite_rankings"),
+    }
+    clear_times = {}
+    with db_connection() as db:
+        for chapter_id, (normal_table, elite_table) in table_by_chapter.items():
+            for boss_type, table in (("normal", normal_table), ("elite", elite_table)):
+                row = db.execute(
+                    f"SELECT clear_time FROM {table} WHERE student_code=?", (code,)
+                ).fetchone()
+                clear_times[(chapter_id, boss_type)] = row["clear_time"] if row else None
+    tasks = []
+    for chapter_id in CHAPTERS:
+        for boss_type, boss_label in (("normal", "普通BOSS"), ("elite", "菁英BOSS")):
+            clear_time = clear_times[(chapter_id, boss_type)]
+            tasks.append({
+                "id": f"speed_{chapter_id}_{boss_type}", "chapter": chapter_id,
+                "boss_type": boss_type,
+                "name": f"10秒內通過{CHAPTERS[chapter_id]['number']}{boss_label}",
+                "reward_text": "300金幣＋1顆進階詞條融煉石", "coins": 300,
+                "stone_key": "advanced_affix_smelting_stones",
+                "complete": clear_time is not None and clear_time <= 10,
+            })
+    return tasks
+
+
+def grant_task_reward(profile, task):
+    profile["coins"] += task.get("coins", 0)
+    if task.get("stone_key"):
+        profile[task["stone_key"]] += 1
+
+
+def visible_permanent_tasks(profile):
+    claimed = set(profile["claimed_permanent_tasks"])
+    all_tasks = permanent_task_definitions()
+    visible = []
+    for chapter_id in CHAPTERS:
+        if int(chapter_id) > 1:
+            previous = str(int(chapter_id) - 1)
+            previous_ids = {task["id"] for task in all_tasks if task["chapter"] == previous}
+            if not previous_ids.issubset(claimed):
+                break
+        visible.extend(task for task in all_tasks if task["chapter"] == chapter_id)
+    return visible
+
+
+def visible_special_tasks(profile, code):
+    claimed = set(profile["claimed_special_tasks"])
+    result = []
+    for task in special_task_definitions(code):
+        chapter_id = task["chapter"]
+        if task["boss_type"] == "elite" and f"speed_{chapter_id}_normal" not in claimed:
+            continue
+        if int(chapter_id) > 1 and f"speed_{int(chapter_id) - 1}_elite" not in claimed:
+            break
+        result.append(task)
+    return result
+
+
+def retroactively_grant_tasks(profile, code):
+    messages = []
+    # 相容上一版普通BOSS特殊任務ID，避免更新後被要求重領。
+    claimed_special = set(profile["claimed_special_tasks"])
+    for chapter_id in CHAPTERS:
+        legacy_id = f"speed_{chapter_id}"
+        if legacy_id in claimed_special:
+            claimed_special.remove(legacy_id)
+            claimed_special.add(f"speed_{chapter_id}_normal")
+    profile["claimed_special_tasks"] = sorted(claimed_special)
+
+    if not profile.get("task_rewards_initialized"):
+        for task in permanent_task_definitions():
+            if task["complete"](profile) and task["id"] not in profile["claimed_permanent_tasks"]:
+                grant_task_reward(profile, task)
+                profile["claimed_permanent_tasks"].append(task["id"])
+                messages.append(f"{task['name']}：{task['reward_text']}")
+        for task in special_task_definitions(code):
+            if task["complete"] and task["id"] not in profile["claimed_special_tasks"]:
+                grant_task_reward(profile, task)
+                profile["claimed_special_tasks"].append(task["id"])
+                messages.append(f"{task['name']}：{task['reward_text']}")
+        profile["task_rewards_initialized"] = True
+        profile["elite_special_tasks_migrated"] = True
+    elif not profile.get("elite_special_tasks_migrated"):
+        # 已使用舊版任務系統的玩家，只補發新增的菁英BOSS特殊任務。
+        for task in special_task_definitions(code):
+            if (
+                task["boss_type"] == "elite" and task["complete"]
+                and task["id"] not in profile["claimed_special_tasks"]
+            ):
+                grant_task_reward(profile, task)
+                profile["claimed_special_tasks"].append(task["id"])
+                messages.append(f"{task['name']}：{task['reward_text']}")
+        profile["elite_special_tasks_migrated"] = True
+    if messages:
+        profile["retro_reward_notice"].append("任務補發獎勵｜" + "；".join(messages))
+    return messages
 
 
 def item_signature(item):
@@ -2231,7 +2380,19 @@ elif st.session_state.screen == "menu":
         st.session_state.scroll_economy_to_top = True
         st.session_state.screen = "economy"
         st.rerun()
-    task_label = "🔴 📋 每日任務" if not profile.get("daily_login_claimed") else "📋 每日任務"
+    permanent_claimable = any(
+        task["complete"](profile) and task["id"] not in profile["claimed_permanent_tasks"]
+        for task in visible_permanent_tasks(profile)
+    )
+    special_claimable = any(
+        task["complete"] and task["id"] not in profile["claimed_special_tasks"]
+        for task in visible_special_tasks(profile, st.session_state.active_player)
+    )
+    task_label = (
+        "🔴 📋 任務列表"
+        if not profile.get("daily_login_claimed") or permanent_claimable or special_claimable
+        else "📋 任務列表"
+    )
     if task_col.button(task_label, use_container_width=True):
         st.session_state.screen = "daily_tasks"
         st.rerun()
@@ -2338,20 +2499,99 @@ elif st.session_state.screen == "daily_tasks":
     if sync_daily_tasks(profile):
         save_profile(profile)
     title_col, back_col = st.columns([4, 1])
-    title_col.subheader("📋 每日任務")
+    title_col.subheader("📋 任務列表")
     if back_col.button("返回章節", use_container_width=True):
         st.session_state.screen = "menu"
         st.rerun()
-    st.caption("每日任務於台灣時間上午8:00重置。")
-    task_left, task_right = st.columns([3, 2])
-    task_left.write("**每日登入一次**")
-    if profile.get("daily_login_claimed"):
-        task_right.success("✅ 已領取：200金幣")
-    elif task_right.button("領取200金幣", type="primary", use_container_width=True):
-        profile["coins"] += 200
-        profile["daily_login_claimed"] = True
+    permanent_tasks = visible_permanent_tasks(profile)
+    special_tasks = visible_special_tasks(profile, st.session_state.active_player)
+    claimable_permanent = [
+        task for task in permanent_tasks
+        if task["complete"](profile) and task["id"] not in profile["claimed_permanent_tasks"]
+    ]
+    claimable_special = [
+        task for task in special_tasks
+        if task["complete"] and task["id"] not in profile["claimed_special_tasks"]
+    ]
+    has_any_claimable = (
+        not profile.get("daily_login_claimed") or claimable_permanent or claimable_special
+    )
+    if st.button("🎁 一鍵領取所有已完成任務", type="primary", disabled=not has_any_claimable, use_container_width=True):
+        if not profile.get("daily_login_claimed"):
+            profile["coins"] += 200
+            profile["daily_login_claimed"] = True
+        for task in claimable_permanent:
+            grant_task_reward(profile, task)
+            profile["claimed_permanent_tasks"].append(task["id"])
+        for task in claimable_special:
+            grant_task_reward(profile, task)
+            profile["claimed_special_tasks"].append(task["id"])
         save_profile(profile)
         st.rerun()
+
+    daily_tab, permanent_tab, special_tab = st.tabs(
+        ["📅 每日任務", "🏆 永久任務", "✨ 特殊任務"],
+        key="mission_tabs", default="📅 每日任務",
+    )
+    with daily_tab:
+        st.caption("每日任務於台灣時間上午8:00重置。")
+        task_left, task_right = st.columns([3, 2])
+        task_left.write("**每日登入一次**")
+        task_left.caption("獎勵：200金幣")
+        if profile.get("daily_login_claimed"):
+            task_right.success("✅ 已完成並領取")
+        elif task_right.button("領取200金幣", type="primary", use_container_width=True):
+            profile["coins"] += 200
+            profile["daily_login_claimed"] = True
+            save_profile(profile)
+            st.rerun()
+
+    with permanent_tab:
+        claimed = set(profile["claimed_permanent_tasks"])
+        ordered = sorted(
+            permanent_tasks,
+            key=lambda task: (task["id"] in claimed, int(task["chapter"])),
+        )
+        for task in ordered:
+            completed = task["complete"](profile)
+            is_claimed = task["id"] in claimed
+            left, right = st.columns([3, 2])
+            left.write(f"**{task['name']}**")
+            left.caption(f"獎勵：{task['reward_text']}")
+            if is_claimed:
+                right.success("✅ 已完成並領取")
+            elif completed:
+                if right.button("領取獎勵", key=f"claim_perm_{task['id']}", type="primary", use_container_width=True):
+                    grant_task_reward(profile, task)
+                    profile["claimed_permanent_tasks"].append(task["id"])
+                    save_profile(profile)
+                    st.rerun()
+            else:
+                right.info("進行中")
+        highest_visible = max((int(task["chapter"]) for task in permanent_tasks), default=1)
+        if highest_visible < len(CHAPTERS):
+            st.caption("完成並領取本章全部永久任務後，才會顯示下一章永久任務。")
+
+    with special_tab:
+        claimed = set(profile["claimed_special_tasks"])
+        ordered = sorted(special_tasks, key=lambda task: task["id"] in claimed)
+        for task in ordered:
+            is_claimed = task["id"] in claimed
+            left, right = st.columns([3, 2])
+            left.write(f"**{task['name']}**")
+            left.caption(f"獎勵：{task['reward_text']}")
+            if is_claimed:
+                right.success("✅ 已完成並領取")
+            elif task["complete"]:
+                if right.button("領取獎勵", key=f"claim_special_{task['id']}", type="primary", use_container_width=True):
+                    grant_task_reward(profile, task)
+                    profile["claimed_special_tasks"].append(task["id"])
+                    save_profile(profile)
+                    st.rerun()
+            else:
+                right.info("進行中")
+        if len(special_tasks) < len(CHAPTERS):
+            st.caption("完成並領取目前章節的特殊任務後，才會顯示下一章特殊任務。")
 
 elif st.session_state.screen == "rankings":
     scroll_page_to_top("scroll_ranking_to_top")
