@@ -10,8 +10,9 @@ import secrets
 import sqlite3
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -54,7 +55,22 @@ def secret_value(key):
 DATABASE_URL = secret_value("DATABASE_URL")
 ADMIN_PIN_SECRET = secret_value("ADMIN_PIN")
 USE_POSTGRES = bool(DATABASE_URL)
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 EXP_BY_STARS = {0: 0, 1: 20, 2: 40, 3: 60}
+
+
+def database_timestamp():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def taipei_time_text(value):
+    if not value:
+        return ""
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        # 公開版早期紀錄由 UTC 伺服器寫入，但當時未附時區。
+        parsed = parsed.replace(tzinfo=timezone.utc if USE_POSTGRES else TAIPEI_TZ)
+    return parsed.astimezone(TAIPEI_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 SLOT_NAMES = {
     "helmet": "頭盔",
@@ -467,7 +483,7 @@ def create_student(real_name, hero_name, pin):
         db.execute(
             "INSERT INTO players(student_code, hero_name, real_name, pin_salt, pin_hash, profile_json, created_at) "
             "VALUES(?, ?, ?, ?, ?, ?, ?)",
-            (code, hero_name, real_name, salt, digest, json.dumps(profile, ensure_ascii=False), datetime.now().isoformat(timespec="seconds")),
+            (code, hero_name, real_name, salt, digest, json.dumps(profile, ensure_ascii=False), database_timestamp()),
         )
         db.execute(
             "INSERT INTO settings(key, value) VALUES('student_counter', ?) "
@@ -495,7 +511,7 @@ def ensure_teacher_profile(hero_name="老師測試勇者"):
                 "INSERT INTO players(student_code, hero_name, pin_salt, pin_hash, profile_json, created_at) "
                 "VALUES(?, ?, ?, ?, ?, ?)",
                 (code, hero_name, salt, digest, json.dumps(profile, ensure_ascii=False),
-                 datetime.now().isoformat(timespec="seconds")),
+                 database_timestamp()),
             )
     return code
 
@@ -601,7 +617,7 @@ def log_attempt(unit_id):
             (st.session_state.active_player, unit_id, st.session_state.stars,
              st.session_state.max_combo, st.session_state.correct, st.session_state.quiz_elapsed,
              st.session_state.quiz_elapsed / st.session_state.attempts if st.session_state.attempts else 0,
-             datetime.now().isoformat(timespec="seconds")),
+             database_timestamp()),
         )
 
 
@@ -609,7 +625,7 @@ def save_best_ranking(profile, clear_time, boss_type="normal", chapter_id="1"):
     code = st.session_state.active_player
     if code == "__TEACHER__":
         return
-    now = datetime.now().isoformat(timespec="seconds")
+    now = database_timestamp()
     table = {
         ("1", "normal"): "rankings", ("1", "elite"): "elite_rankings",
         ("2", "normal"): "chapter2_rankings", ("2", "elite"): "chapter2_elite_rankings",
@@ -642,7 +658,7 @@ def ranking_rows(boss_type="normal", chapter_id="1"):
         profile = json.loads(row["profile_json"])
         result.append({
             "頭像": profile.get("avatar_data"), "玩家": row["玩家"], "等級": row["等級"],
-            "通關秒數": row["通關秒數"], "日期": row["日期"],
+            "通關秒數": row["通關秒數"], "日期": taipei_time_text(row["日期"]),
         })
     return result
 
@@ -657,10 +673,13 @@ def render_ranking(rows):
 
 def student_rows():
     with db_connection() as db:
-        return [dict(row) for row in db.execute(
+        rows = [dict(row) for row in db.execute(
             "SELECT student_code AS 學生代碼, real_name AS 正式姓名, hero_name AS 勇者名稱, created_at AS 建立時間 "
             "FROM players WHERE student_code <> '__TEACHER__' ORDER BY created_at"
         ).fetchall()]
+    for row in rows:
+        row["建立時間"] = taipei_time_text(row["建立時間"])
+    return rows
 
 
 def reset_student_pin(code):
@@ -1468,6 +1487,8 @@ elif st.session_state.screen == "admin_panel":
                 "ROUND(CAST(a.average_seconds AS NUMERIC), 1) AS 平均每題秒數, a.finished_at AS 完成時間 "
                 "FROM attempts a JOIN players p ON p.student_code=a.student_code ORDER BY a.id DESC LIMIT 200"
             ).fetchall()]
+        for attempt in attempts:
+            attempt["完成時間"] = taipei_time_text(attempt["完成時間"])
         st.write("### 最近200筆答題紀錄")
         if attempts:
             st.dataframe(attempts, hide_index=True, use_container_width=True)
