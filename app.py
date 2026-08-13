@@ -1185,6 +1185,12 @@ def student_rows():
     return rows
 
 
+def toggle_admin_progress_chapter(chapter_id):
+    """老師後台章節排名手風琴；交由按鈕回呼避免額外重跑一次。"""
+    current = st.session_state.get("admin_progress_chapter")
+    st.session_state.admin_progress_chapter = None if current == chapter_id else chapter_id
+
+
 def submit_game_feedback(student_code, category, message):
     with db_connection() as db:
         db.execute(
@@ -3008,13 +3014,13 @@ elif st.session_state.screen == "admin_panel":
         for chapter_id, chapter in CHAPTERS.items():
             is_open = opened_chapter == chapter_id
             chapter_label = f"{'▼' if is_open else '▶'} {chapter['number']}｜{chapter['name']} BOSS"
-            if st.button(
+            st.button(
                 chapter_label,
                 key=f"admin_progress_toggle_{chapter_id}",
                 use_container_width=True,
-            ):
-                st.session_state.admin_progress_chapter = None if is_open else chapter_id
-                st.rerun()
+                on_click=toggle_admin_progress_chapter,
+                args=(chapter_id,),
+            )
             if is_open:
                 for boss_type, boss_label in (("normal", "一般BOSS"), ("elite", "菁英BOSS")):
                     boss_name = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]["name"]
