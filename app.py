@@ -1,4 +1,5 @@
 import base64
+import html
 import io
 import json
 import hashlib
@@ -1362,6 +1363,49 @@ def set_announcement_active(announcement_id, is_active):
 def delete_announcement(announcement_id):
     with db_connection() as db:
         db.execute("DELETE FROM announcements WHERE id=?", (announcement_id,))
+
+
+def render_announcement_content(content):
+    """保留公告換行，並把編號行轉成醒目的分隔項目。"""
+    lines = [line.strip() for line in str(content).splitlines() if line.strip()]
+    items = []
+    for line in lines:
+        numbered = re.match(r"^\s*(\d+)\s*[\.、\)）]\s*(.+)$", line)
+        if numbered:
+            badge = html.escape(numbered.group(1))
+            text = html.escape(numbered.group(2))
+        else:
+            badge = "◆"
+            text = html.escape(line)
+        items.append(
+            '<div class="announcement-item">'
+            f'<div class="announcement-badge">{badge}</div>'
+            f'<div class="announcement-text">{text}</div>'
+            '</div>'
+        )
+    st.markdown(
+        """
+        <style>
+        .announcement-list {margin:.4rem 0 .2rem;}
+        .announcement-item {display:flex;align-items:flex-start;gap:.8rem;padding:.85rem .2rem;
+          border-bottom:1px solid #dfe3ea;}
+        .announcement-item:last-child {border-bottom:0;}
+        .announcement-badge {display:flex;align-items:center;justify-content:center;flex:0 0 2rem;
+          min-width:2rem;height:2rem;border-radius:50%;background:#ff4b4b;color:#fff;
+          font-size:1.05rem;font-weight:900;line-height:1;box-shadow:0 2px 7px #ff4b4b44;}
+        .announcement-text {padding-top:.15rem;font-size:1.05rem;line-height:1.65;
+          overflow-wrap:anywhere;white-space:pre-wrap;}
+        @media (max-width:600px) {
+          .announcement-item {gap:.55rem;padding:.7rem .05rem;}
+          .announcement-badge {flex-basis:1.75rem;min-width:1.75rem;height:1.75rem;font-size:.95rem;}
+          .announcement-text {font-size:.96rem;line-height:1.55;}
+        }
+        </style>
+        <div class="announcement-list">"""
+        + "".join(items)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def reset_student_pin(code):
@@ -3258,7 +3302,7 @@ elif st.session_state.screen == "admin_panel":
                 with st.expander(
                     f"{announcement['title']}｜{status}｜{announcement['created_at_text']}"
                 ):
-                    st.write(announcement["content"])
+                    render_announcement_content(announcement["content"])
                     action_col, confirm_col, delete_col = st.columns([1, 1.2, 1])
                     if action_col.button(
                         "停用" if announcement["is_active"] else "重新發布",
@@ -3528,7 +3572,7 @@ elif st.session_state.screen == "announcements":
             with st.container(border=True):
                 st.write(f"### {announcement['title']}")
                 st.caption(f"發布時間：{announcement['created_at_text']}")
-                st.write(announcement["content"])
+                render_announcement_content(announcement["content"])
     else:
         st.info("目前沒有新的公告事項。")
     render_bottom_home_button("announcements")
