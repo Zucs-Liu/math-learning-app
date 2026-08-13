@@ -955,15 +955,19 @@ def built_in_avatar_data(index):
 
 
 @st.cache_data(show_spinner=False)
-def login_background_data_uri():
-    image_path = Path(__file__).parent / "assets" / "login" / "heroes-vs-demon.webp"
+def login_background_data_uri(animated=True):
+    filename = "heroes-vs-demon-animated.webp" if animated else "heroes-vs-demon.webp"
+    image_path = Path(__file__).parent / "assets" / "login" / filename
     if not image_path.exists():
         return ""
     return "data:image/webp;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
 
 
 def apply_login_background():
-    background = login_background_data_uri()
+    background = login_background_data_uri(animated=True)
+    static_background = login_background_data_uri(animated=False)
+    if not background:
+        background = static_background
     if not background:
         return
     st.markdown(
@@ -1159,6 +1163,14 @@ def apply_login_background():
                 background: rgba(255,255,255,.90) !important;
                 border: 1px solid rgba(255,255,255,.82) !important;
                 box-shadow: 0 5px 18px rgba(0,0,0,.20);
+            }}
+        }}
+        @media (prefers-reduced-motion: reduce) {{
+            .stApp::before {{
+                background:
+                    linear-gradient(rgba(7,10,25,.10), rgba(7,10,25,.26)),
+                    url('{static_background or background}') center top / contain no-repeat,
+                    #090a18 !important;
             }}
         }}
         </style>
