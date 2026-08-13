@@ -655,6 +655,9 @@ def new_profile(name):
         "chapter3_boss_wins": 0,
         "chapter3_elite_boss_exp_claimed": False,
         "chapter3_elite_boss_wins": 0,
+        "chapter3_reward_claimed": False,
+        "chapter3_collection_reward_claimed": False,
+        "chapter3_elite_reward_claimed": False,
     }
 
 
@@ -683,6 +686,8 @@ def normalize_profile(profile, name):
         catalog.update(f"1:3:{slot}" for slot in SLOT_NAMES)
     if profile.get("chapter2_collection_reward_claimed"):
         catalog.update(f"2:3:{slot}" for slot in SLOT_NAMES)
+    if profile.get("chapter3_collection_reward_claimed"):
+        catalog.update(f"3:3:{slot}" for slot in SLOT_NAMES)
     achievement_history = (
         ("chapter_reward_claimed", "chapter-1", "weapon"),
         ("collection_item_claimed", "chapter-1-collection", "necklace"),
@@ -690,6 +695,9 @@ def normalize_profile(profile, name):
         ("chapter2_reward_claimed", "chapter-2", "gloves"),
         ("chapter2_collection_reward_claimed", "chapter-2-collection", "boots"),
         ("chapter2_elite_reward_claimed", "chapter-2-elite", "shield"),
+        ("chapter3_reward_claimed", "chapter-3", "armor"),
+        ("chapter3_collection_reward_claimed", "chapter-3-collection", "belt"),
+        ("chapter3_elite_reward_claimed", "chapter-3-elite", "ring"),
     )
     for claimed_key, unit_key, slot in achievement_history:
         if profile.get(claimed_key):
@@ -821,7 +829,12 @@ def get_profile():
         cached and cached.get("code") == code
         and time.time() - cached.get("loaded_at", 0) < PROFILE_CACHE_SECONDS
     ):
-        return cached["profile"]
+        cached_profile = cached["profile"]
+        if "chapter3_reward_claimed" not in cached_profile:
+            cached_profile = normalize_profile(cached_profile, cached_profile.get("name", "勇者"))
+            retroactively_grant_chapter3_rewards(cached_profile)
+            save_profile(cached_profile)
+        return cached_profile
     with db_connection() as db:
         row = db.execute("SELECT hero_name, profile_json FROM players WHERE student_code=?", (code,)).fetchone()
     if not row:
@@ -832,6 +845,7 @@ def get_profile():
     original_profile_json = json.dumps(raw_profile, ensure_ascii=False, sort_keys=True)
     profile = normalize_profile(raw_profile, row["hero_name"])
     retroactively_grant_tasks(profile, code)
+    retroactively_grant_chapter3_rewards(profile)
     normalized_changed = (
         json.dumps(profile, ensure_ascii=False, sort_keys=True) != original_profile_json
     )
@@ -847,6 +861,9 @@ def get_profile():
         ("chapter-2", make_chapter2_reward),
         ("chapter-2-collection", make_chapter2_collection_reward),
         ("chapter-2-elite", make_chapter2_elite_reward),
+        ("chapter-3", make_chapter3_reward),
+        ("chapter-3-collection", make_chapter3_collection_reward),
+        ("chapter-3-elite", make_chapter3_elite_reward),
     ):
         migrated = sync_achievement_item(profile, unit_key, maker) or migrated
     if migrated or normalized_changed:
@@ -1884,6 +1901,72 @@ def make_chapter2_elite_reward():
     }
 
 
+def make_chapter3_reward():
+    return {
+        "uid": uuid.uuid4().hex, "unit": "chapter-3", "slot": "armor",
+        "stars": 4, "name": "龍鱗守護鎧", "fixed_stat": "defense",
+        "fixed_value": fixed_value_for("3", "armor", 4)[1],
+        "affix_stat": "defense_pct", "affix_value": 0.25,
+        "achievement": True,
+    }
+
+
+def make_chapter3_collection_reward():
+    return {
+        "uid": uuid.uuid4().hex, "unit": "chapter-3-collection", "slot": "belt",
+        "stars": 4, "name": "龍心腰帶", "fixed_stat": "hp",
+        "fixed_value": fixed_value_for("3", "belt", 4)[1],
+        "affix_stat": "hp_pct", "affix_value": 0.25,
+        "achievement": True,
+    }
+
+
+def make_chapter3_elite_reward():
+    return {
+        "uid": uuid.uuid4().hex, "unit": "chapter-3-elite", "slot": "ring",
+        "stars": 4, "name": "烈焰龍王戒", "fixed_stat": "first_hit_percent",
+        "fixed_value": fixed_value_for("3", "ring", 4)[1],
+        "affix_stat": "boss_damage_pct", "affix_value": 0.25,
+        "achievement": True,
+    }
+
+
+def retroactively_grant_chapter3_rewards(profile):
+    """依既有第三章進度補發新開放的三件四星裝備。"""
+    changed = False
+    if (
+        all(profile["unit_best_stars"].get(uid, 0) == 3 for uid in chapter_unit_ids("3"))
+        and not profile.get("chapter3_reward_claimed")
+    ):
+        reward = make_chapter3_reward()
+        profile["inventory"].append(reward)
+        profile["chapter3_reward_claimed"] = True
+        profile["retro_reward_notice"].append(f"第三章滿星補發：{item_text(reward)}")
+        changed = True
+    if (
+        has_full_three_star_set(profile, "3")
+        and not profile.get("chapter3_collection_reward_claimed")
+    ):
+        reward = make_chapter3_collection_reward()
+        profile["inventory"].append(reward)
+        profile["chapter3_collection_reward_claimed"] = True
+        add_exp(profile, 100)
+        profile["retro_reward_notice"].append(
+            f"第三章九部位收藏補發100 EXP與：{item_text(reward)}"
+        )
+        changed = True
+    if (
+        profile.get("chapter3_elite_boss_wins", 0) > 0
+        and not profile.get("chapter3_elite_reward_claimed")
+    ):
+        reward = make_chapter3_elite_reward()
+        profile["inventory"].append(reward)
+        profile["chapter3_elite_reward_claimed"] = True
+        profile["retro_reward_notice"].append(f"第三章菁英BOSS補發：{item_text(reward)}")
+        changed = True
+    return changed
+
+
 def item_chapter_id(item):
     if item.get("chapter"):
         return str(item["chapter"])
@@ -2421,6 +2504,24 @@ def process_rewards():
         st.session_state.extra_reward_messages.append(
             f"第二章九部位收藏完成，獲得100 EXP與：{item_text(reward)}"
         )
+    if (
+        all(profile["unit_best_stars"][uid] == 3 for uid in chapter_unit_ids("3"))
+        and not profile["chapter3_reward_claimed"]
+    ):
+        reward = make_chapter3_reward()
+        profile["inventory"].append(reward)
+        profile["chapter3_reward_claimed"] = True
+        st.session_state.extra_reward_messages.append(f"第三章滿星獎勵：{item_text(reward)}")
+    if has_full_three_star_set(profile, "3") and not profile["chapter3_collection_reward_claimed"]:
+        collection_levels = add_exp(profile, 100)
+        reward = make_chapter3_collection_reward()
+        profile["inventory"].append(reward)
+        profile["chapter3_collection_reward_claimed"] = True
+        if collection_levels:
+            st.session_state.collection_level_up_to = profile["level"]
+        st.session_state.extra_reward_messages.append(
+            f"第三章九部位收藏完成，獲得100 EXP與：{item_text(reward)}"
+        )
     st.session_state.earned_exp = exp_gain
     st.session_state.result_processed = True
     save_profile(profile)
@@ -2522,9 +2623,17 @@ def finish_battle(result):
             if levels_gained:
                 level_up_to = profile["level"]
             profile[exp_key] = True
-        reward_claimed_key = {"1": "elite_reward_claimed", "2": "chapter2_elite_reward_claimed"}.get(chapter_id)
+        reward_claimed_key = {
+            "1": "elite_reward_claimed",
+            "2": "chapter2_elite_reward_claimed",
+            "3": "chapter3_elite_reward_claimed",
+        }.get(chapter_id)
         if boss_type == "elite" and reward_claimed_key and not profile[reward_claimed_key]:
-            reward = make_elite_reward() if chapter_id == "1" else make_chapter2_elite_reward()
+            reward = {
+                "1": make_elite_reward,
+                "2": make_chapter2_elite_reward,
+                "3": make_chapter3_elite_reward,
+            }[chapter_id]()
             profile["inventory"].append(reward)
             profile[reward_claimed_key] = True
             reward_item_uid = reward["uid"]
@@ -3802,7 +3911,12 @@ elif st.session_state.screen == "menu":
         if profile["chapter2_elite_reward_claimed"]:
             st.success("第二章菁英征服已完成：★★★★ 乘除霸主盾｜固定：防禦力 +7｜詞條：HP +25%")
     else:
-        pass
+        if profile["chapter3_reward_claimed"]:
+            st.success("第三章滿星成就已完成：★★★★ 龍鱗守護鎧｜固定：防禦力 +15｜詞條：防禦力 +25%")
+        if profile["chapter3_collection_reward_claimed"]:
+            st.success("第三章三星全裝收藏已完成：100 EXP＋★★★★ 龍心腰帶｜固定：HP +25｜詞條：HP +25%")
+        if profile["chapter3_elite_reward_claimed"]:
+            st.success("第三章菁英征服已完成：★★★★ 烈焰龍王戒｜第一擊額外扣除菁英BOSS血量17%｜對菁英BOSS傷害 +25%")
     if st.session_state.active_player == "__TEACHER__":
         if st.button("返回老師管理後台"):
             st.session_state.active_player = None
@@ -4437,7 +4551,11 @@ elif st.session_state.screen in {"backpack", "gallery"}:
                     ("chapter-2-collection", "乘除疾風戰靴", "boots", "收集第二章九部位三星", "collection"),
                     ("chapter-2-elite", "乘除霸主盾", "shield", "首次擊敗第二章菁英BOSS", "elite"),
                 ],
-                "3": [],
+                "3": [
+                    ("chapter-3", "龍鱗守護鎧", "armor", "完成第三章所有三星單元", "unit"),
+                    ("chapter-3-collection", "龍心腰帶", "belt", "收集第三章九部位三星", "collection"),
+                    ("chapter-3-elite", "烈焰龍王戒", "ring", "首次擊敗第三章菁英BOSS「烈焰龍王」", "elite"),
+                ],
             }
             owned_four_slots = collected_achievement_slots(profile, 4)
             st.write(f"#### 全系列四星部位 {len(owned_four_slots)}/9")
@@ -4466,11 +4584,11 @@ elif st.session_state.screen in {"backpack", "gallery"}:
                         start_quiz(target)
                         st.rerun()
                 else:
-                    elite_ready = (
-                        profile.get("boss_wins", 0) > 0
-                        if gallery_chapter == "1"
-                        else profile.get("chapter2_boss_wins", 0) > 0
-                    )
+                    elite_ready = profile.get({
+                        "1": "boss_wins",
+                        "2": "chapter2_boss_wins",
+                        "3": "chapter3_boss_wins",
+                    }[gallery_chapter], 0) > 0
                     if col.button("前往菁英BOSS", key=f"elite_go_{unit_key}", disabled=not elite_ready, use_container_width=True):
                         st.session_state.selected_chapter = gallery_chapter
                         st.session_state.selected_boss_type = "elite"
