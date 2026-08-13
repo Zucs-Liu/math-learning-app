@@ -2888,6 +2888,10 @@ elif st.session_state.screen == "character_stats":
     st.markdown(
         """
         <style>
+        /* 角色能力是獨立頁面，不顯示切頁時殘留的背包分頁與格子。 */
+        [data-testid="stTabs"],
+        [class*="st-key-gear_grid_"],
+        .st-key-mobile_consumables { display:none !important; }
         @media (max-width:768px) and (orientation:portrait) {
           .st-key-mobile_stats [data-testid="stHorizontalBlock"] {display:flex !important;flex-wrap:nowrap !important;gap:.15rem !important;}
           .st-key-mobile_stats [data-testid="stColumn"] {min-width:0 !important;width:20% !important;max-width:20% !important;flex:0 0 20% !important;padding:0 !important;}
@@ -2903,6 +2907,21 @@ elif st.session_state.screen == "character_stats":
         </style>
         """,
         unsafe_allow_html=True,
+    )
+    components.html(
+        """
+        <script>
+        const removeInventoryResidue = () => {
+            const doc = parent.document;
+            doc.querySelectorAll(
+                '[data-testid="stTabs"], [class*="st-key-gear_grid_"], .st-key-mobile_consumables'
+            ).forEach(node => node.remove());
+        };
+        [0, 50, 120, 250, 500, 900, 1400].forEach(delay => setTimeout(removeInventoryResidue, delay));
+        </script>
+        """,
+        height=0,
+        scrolling=False,
     )
     with st.container(key="mobile_stats"):
         render_stats(profile)
