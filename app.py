@@ -465,6 +465,7 @@ def init_db():
                 category TEXT NOT NULL,
                 message TEXT NOT NULL,
                 created_at TEXT NOT NULL,
+                replied_at TEXT,
                 FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
             );
             CREATE TABLE IF NOT EXISTS mailbox (
@@ -492,6 +493,7 @@ def init_db():
             db.execute("ALTER TABLE attempts ADD COLUMN IF NOT EXISTS elapsed_seconds REAL NOT NULL DEFAULT 0")
             db.execute("ALTER TABLE attempts ADD COLUMN IF NOT EXISTS average_seconds REAL NOT NULL DEFAULT 0")
             db.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS real_name TEXT NOT NULL DEFAULT ''")
+            db.execute("ALTER TABLE game_feedback ADD COLUMN IF NOT EXISTS replied_at TEXT")
             db.execute("ALTER TABLE question_logs ALTER COLUMN submitted_answer TYPE DOUBLE PRECISION USING submitted_answer::DOUBLE PRECISION")
             db.execute("ALTER TABLE question_logs ALTER COLUMN correct_answer TYPE DOUBLE PRECISION USING correct_answer::DOUBLE PRECISION")
         else:
@@ -507,6 +509,11 @@ def init_db():
             }
             if "real_name" not in player_columns:
                 db.execute("ALTER TABLE players ADD COLUMN real_name TEXT NOT NULL DEFAULT ''")
+            feedback_columns = {
+                row["name"] for row in db.execute("PRAGMA table_info(game_feedback)").fetchall()
+            }
+            if "replied_at" not in feedback_columns:
+                db.execute("ALTER TABLE game_feedback ADD COLUMN replied_at TEXT")
     return True
 
 
@@ -1300,13 +1307,28 @@ def game_feedback_rows():
     with db_connection() as db:
         rows = [dict(row) for row in db.execute(
             "SELECT f.id AS 編號, f.student_code AS 學生代碼, p.real_name AS 正式姓名, p.hero_name AS 勇者名稱, "
-            "f.category AS 問題分類, f.message AS 回饋內容, f.created_at AS 送出時間 "
+            "f.category AS 問題分類, f.message AS 回饋內容, f.created_at AS 送出時間, "
+            "f.replied_at AS 回覆時間 "
             "FROM game_feedback f JOIN players p ON p.student_code=f.student_code "
             "ORDER BY f.id DESC"
         ).fetchall()]
     for row in rows:
         row["送出時間"] = taipei_time_text(row["送出時間"])[:-3]
+        if row["回覆時間"]:
+            row["回覆時間"] = taipei_time_text(row["回覆時間"])[:-3]
+            row["回覆狀態"] = "✅ 已回覆"
+        else:
+            row["回覆時間"] = "—"
+            row["回覆狀態"] = "⏳ 未回覆"
     return rows
+
+
+def mark_feedback_replied(feedback_id):
+    with db_connection() as db:
+        db.execute(
+            "UPDATE game_feedback SET replied_at=? WHERE id=?",
+            (database_timestamp(), feedback_id),
+        )
 
 
 def announcement_rows(active_only=False):
@@ -3260,6 +3282,8 @@ elif st.session_state.screen == "admin_panel":
             st.info("目前尚未建立公告。")
     if admin_section == "遊戲反饋":
         st.write("### 學生遊戲反饋")
+        if st.session_state.get("admin_reply_notice"):
+            st.success(st.session_state.pop("admin_reply_notice"))
         feedback_rows = game_feedback_rows()
         if feedback_rows:
             feedback_counts = {}
@@ -3290,7 +3314,7 @@ elif st.session_state.screen == "admin_panel":
             st.caption(f"目前顯示 {len(visible_feedback)} 則回饋，最新回饋排在最上方。")
             st.dataframe(visible_feedback, hide_index=True, use_container_width=True)
             feedback_choices = {
-                f"#{row['編號']}｜{row['正式姓名']}｜{row['問題分類']}": row
+                f"#{row['編號']}｜{row['正式姓名']}｜{row['問題分類']}｜{row['回覆狀態']}": row
                 for row in visible_feedback
             }
             selected_feedback_label = st.selectbox(
@@ -3326,7 +3350,9 @@ elif st.session_state.screen == "admin_panel":
                         reply_message,
                         reward or None,
                     )
-                    st.success("回覆已寄到學生的勇者信箱。")
+                    mark_feedback_replied(selected_feedback["編號"])
+                    st.session_state.admin_reply_notice = "回覆已寄到學生的勇者信箱，該筆反饋已標示為已回覆。"
+                    st.rerun()
         else:
             st.info("目前還沒有學生送出遊戲反饋。")
     if st.button("登出管理後台"):
