@@ -1017,10 +1017,25 @@ def apply_login_background():
             background: rgba(255,255,255,.88);
             border: 1px solid rgba(255,255,255,.78);
             box-shadow: 0 5px 18px rgba(0,0,0,.18);
+            color: #171717 !important;
+        }}
+        [data-testid="stRadio"] > div label,
+        [data-testid="stCheckbox"] label,
+        [data-testid="stTabs"] [role="tab"] {{
+            color: #171717 !important;
+        }}
+        [data-testid="stRadio"] > div label:has(input:checked),
+        [data-testid="stCheckbox"] label:has(input:checked),
+        [data-testid="stTabs"] [role="tab"][aria-selected="true"] {{
+            color: #ff4b4b !important;
         }}
         [data-testid="stRadio"] {{
             width: fit-content !important;
             margin-left: 0 !important;
+            margin-right: auto !important;
+        }}
+        [data-testid="stCheckbox"] {{
+            margin-left: auto !important;
             margin-right: auto !important;
         }}
         [data-testid="stRadio"] > label {{
@@ -1057,6 +1072,17 @@ def apply_login_background():
             flex: 1 1 50%;
             justify-content: center;
         }}
+        [data-testid="stButton"] {{
+            width: fit-content !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }}
+        [data-testid="stButton"] button {{
+            width: auto !important;
+            min-width: max-content !important;
+            padding-left: 1.2rem !important;
+            padding-right: 1.2rem !important;
+        }}
         @media (max-width: 600px) {{
             .stApp::before {{
                 background:
@@ -1074,11 +1100,14 @@ def apply_login_background():
                 left: .35rem;
             }}
             [data-testid="stRadio"], [data-testid="stTabs"],
-            [data-testid="stCheckbox"],
-            [data-testid="stButton"] {{
+            [data-testid="stCheckbox"] {{
                 max-width: 390px;
                 margin-left: auto;
                 margin-right: auto;
+            }}
+            [data-testid="stCheckbox"] {{
+                max-width: max-content;
+                padding: .38rem .7rem;
             }}
             [data-testid="stTextInput"] {{
                 width: min(250px, 76vw) !important;
@@ -3437,7 +3466,7 @@ elif st.session_state.screen == "login":
             code = st.text_input("學生代碼", placeholder="例如 A001").strip().upper()
             pin = st.text_input("6位PIN", type="password", max_chars=6, key="login_pin")
             keep_signed_in = st.checkbox(
-                "5分鐘內保持登入（重新整理或切回手機網頁時自動恢復）",
+                "5分鐘保持登入",
                 value=True,
                 key="keep_student_signed_in",
             )
