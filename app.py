@@ -296,8 +296,6 @@ DEFAULT_STATE = {
     "scroll_boss_to_top": False,
     "scroll_battle_to_top": False,
     "sweep_result_uid": None,
-    "inventory_default_tab": "目前裝備",
-    "inventory_tab_version": 0,
 }
 
 for key, value in DEFAULT_STATE.items():
@@ -2422,6 +2420,10 @@ if not ADMIN_PIN_SECRET and setting_get("admin_pin_hash") is None:
     st.session_state.screen = "bootstrap"
 elif st.session_state.screen == "bootstrap":
     st.session_state.screen = "login"
+if st.session_state.screen == "inventory":
+    st.session_state.screen = (
+        "gallery" if st.session_state.get("inventory_view") == "gallery" else "backpack"
+    )
 
 active_chapter_id = st.session_state.get("selected_chapter", "1")
 if active_chapter_id not in CHAPTERS:
@@ -2434,7 +2436,7 @@ if st.session_state.screen not in {"boss_ready", "boss_watch"}:
         st.title("⚔️ 數學冒險")
 
 home_return_screens = {
-    "character_stats", "menu", "inventory", "rankings", "economy", "daily_tasks",
+    "character_stats", "menu", "backpack", "gallery", "rankings", "economy", "daily_tasks",
     "quiz", "quiz_result", "sweep_result", "boss_ready", "boss_result",
 }
 if st.session_state.get("active_player") and st.session_state.screen in home_return_screens:
@@ -2760,6 +2762,30 @@ elif st.session_state.screen == "admin_panel":
 
 elif st.session_state.screen == "home":
     scroll_page_to_top("scroll_home_after_avatar")
+    st.markdown('<div id="home-profile-start"></div>', unsafe_allow_html=True)
+    components.html(
+        """
+        <script>
+        const removeStaleHomeButtons = () => {
+            const doc = parent.document;
+            const marker = doc.getElementById('home-profile-start');
+            if (!marker) return;
+            const markerTop = marker.getBoundingClientRect().top;
+            doc.querySelectorAll('button').forEach(button => {
+                const rect = button.getBoundingClientRect();
+                if (rect.bottom > 0 && rect.top < markerTop - 2) {
+                    const row = button.closest('[data-testid="stHorizontalBlock"]');
+                    const element = row || button.closest('[data-testid="stElementContainer"]');
+                    if (element && !button.closest('header[data-testid="stHeader"]')) element.remove();
+                }
+            });
+        };
+        [0, 40, 100, 220, 450, 800, 1300].forEach(delay => setTimeout(removeStaleHomeButtons, delay));
+        </script>
+        """,
+        height=0,
+        scrolling=False,
+    )
     profile = get_profile()
     if sync_daily_tasks(profile):
         save_profile(profile)
@@ -2820,18 +2846,12 @@ elif st.session_state.screen == "home":
         st.session_state.screen = "menu"
         st.rerun()
     if nav1[2].button("🎒 背包", use_container_width=True):
-        st.session_state.inventory_view = "backpack"
-        st.session_state.inventory_default_tab = "背包"
-        st.session_state.inventory_tab_version += 1
         st.session_state.scroll_inventory_to_top = True
-        st.session_state.screen = "inventory"
+        st.session_state.screen = "backpack"
         st.rerun()
     if nav1[3].button("📖 圖鑑", use_container_width=True):
-        st.session_state.inventory_view = "gallery"
-        st.session_state.inventory_default_tab = "圖鑑收集"
-        st.session_state.inventory_tab_version += 1
         st.session_state.scroll_inventory_to_top = True
-        st.session_state.screen = "inventory"
+        st.session_state.screen = "gallery"
         st.rerun()
     if nav2[0].button("🏪 商店", use_container_width=True):
         st.session_state.economy_mode = "shop"
@@ -3409,22 +3429,11 @@ elif st.session_state.screen == "economy":
             st.rerun()
     render_bottom_home_button("economy")
 
-elif st.session_state.screen == "inventory":
+elif st.session_state.screen in {"backpack", "gallery"}:
     scroll_page_to_top("scroll_inventory_to_top")
     profile = get_profile()
-    inventory_view = st.session_state.get("inventory_view", "backpack")
+    inventory_view = st.session_state.screen
     st.subheader("🎒 背包" if inventory_view == "backpack" else "📖 圖鑑收集")
-    if inventory_view == "equipment":
-        for slot, label in SLOT_NAMES.items():
-            uid = profile["equipment"].get(slot)
-            item = find_item(profile, uid) if uid else None
-            cols = st.columns([2, 6, 1])
-            cols[0].write(f"**{label}**")
-            cols[1].write(item_text(item) if item else "— 尚未裝備 —")
-            if item and cols[2].button("卸下", key=f"off_{slot}"):
-                profile["equipment"][slot] = None
-                save_profile(profile)
-                st.rerun()
     if inventory_view == "backpack":
         gear_tab, consumable_tab, title_tab, future_tab = st.tabs(
             ["⚔️ 裝備", "🧪 消耗道具", "🏅 成就稱號", "🔒 待開放"],
@@ -3613,7 +3622,7 @@ elif st.session_state.screen == "inventory":
                         st.session_state.screen = "boss_ready"
                         st.rerun()
             st.caption("四星固定值不隨章節倍率變動，但都高於首次登場章節可掉落的同部位三星固定值。")
-    render_bottom_home_button(f"inventory_{inventory_view}")
+    render_bottom_home_button(inventory_view)
 
 elif st.session_state.screen == "quiz":
     unit = UNITS[st.session_state.selected_unit]
