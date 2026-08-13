@@ -478,6 +478,13 @@ def init_db():
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS announcements (
+                id {"BIGSERIAL PRIMARY KEY" if USE_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            );
             """
         )
         db.execute("INSERT OR IGNORE INTO settings(key, value) VALUES('registration_enabled', '1')")
@@ -661,12 +668,24 @@ def normalize_profile(profile, name):
     for unit_id in UNITS:
         profile["unit_best_stars"].setdefault(unit_id, 0)
     # 圖鑑記錄「曾經取得」，即使日後分解、融煉或販售也不會倒退。
+    sync_collection_catalog(profile)
+    # 已取得九部位收藏獎勵者，代表當時確實集滿該章三星，補齊舊存檔紀錄。
     catalog = set(profile.get("collection_catalog", []))
-    for item in profile["inventory"]:
-        if not item.get("achievement"):
-            chapter_id = item_chapter_id(item)
-            if chapter_id:
-                catalog.add(f"{chapter_id}:{item.get('stars', 0)}:{item['slot']}")
+    if profile.get("collection_reward_claimed"):
+        catalog.update(f"1:3:{slot}" for slot in SLOT_NAMES)
+    if profile.get("chapter2_collection_reward_claimed"):
+        catalog.update(f"2:3:{slot}" for slot in SLOT_NAMES)
+    achievement_history = (
+        ("chapter_reward_claimed", "chapter-1", "weapon"),
+        ("collection_item_claimed", "chapter-1-collection", "necklace"),
+        ("elite_reward_claimed", "chapter-1-elite", "helmet"),
+        ("chapter2_reward_claimed", "chapter-2", "gloves"),
+        ("chapter2_collection_reward_claimed", "chapter-2-collection", "boots"),
+        ("chapter2_elite_reward_claimed", "chapter-2-elite", "shield"),
+    )
+    for claimed_key, unit_key, slot in achievement_history:
+        if profile.get(claimed_key):
+            catalog.add(f"achievement:4:{unit_key}:{slot}")
     profile["collection_catalog"] = sorted(catalog)
     # 依歷史通關資料補發每個單元一張擊殺券。
     rewarded_units = set(profile.get("ticket_rewarded_units", []))
@@ -831,6 +850,8 @@ def get_profile():
 
 
 def save_profile(profile):
+    # 任何來源取得裝備後，在寫入存檔前立即登錄永久圖鑑。
+    sync_collection_catalog(profile)
     with db_connection() as db:
         db.execute(
             "UPDATE players SET hero_name=?, profile_json=? WHERE student_code=?",
@@ -1286,6 +1307,39 @@ def game_feedback_rows():
     for row in rows:
         row["送出時間"] = taipei_time_text(row["送出時間"])[:-3]
     return rows
+
+
+def announcement_rows(active_only=False):
+    sql = "SELECT id, title, content, is_active, created_at FROM announcements"
+    if active_only:
+        sql += " WHERE is_active=1"
+    sql += " ORDER BY id DESC"
+    with db_connection() as db:
+        rows = [dict(row) for row in db.execute(sql).fetchall()]
+    for row in rows:
+        row["created_at_text"] = taipei_time_text(row["created_at"])
+    return rows
+
+
+def create_announcement(title, content):
+    with db_connection() as db:
+        db.execute(
+            "INSERT INTO announcements(title, content, is_active, created_at) VALUES(?, ?, 1, ?)",
+            (title.strip(), content.strip(), database_timestamp()),
+        )
+
+
+def set_announcement_active(announcement_id, is_active):
+    with db_connection() as db:
+        db.execute(
+            "UPDATE announcements SET is_active=? WHERE id=?",
+            (1 if is_active else 0, announcement_id),
+        )
+
+
+def delete_announcement(announcement_id):
+    with db_connection() as db:
+        db.execute("DELETE FROM announcements WHERE id=?", (announcement_id,))
 
 
 def reset_student_pin(code):
@@ -1771,6 +1825,24 @@ def item_chapter_id(item):
     return unit.split("-")[0] if unit and unit[0].isdigit() else None
 
 
+def sync_collection_catalog(profile):
+    """把目前物品登錄為永久收藏；只增加紀錄，永不因移除物品而倒退。"""
+    catalog = set(profile.get("collection_catalog", []))
+    for item in profile.get("inventory", []):
+        stars = int(item.get("stars", 0) or 0)
+        slot = item.get("slot")
+        if not stars or not slot:
+            continue
+        if item.get("achievement"):
+            unit_key = str(item.get("unit", "achievement"))
+            catalog.add(f"achievement:{stars}:{unit_key}:{slot}")
+        else:
+            chapter_id = item_chapter_id(item)
+            if chapter_id:
+                catalog.add(f"{chapter_id}:{stars}:{slot}")
+    profile["collection_catalog"] = sorted(catalog)
+
+
 def collected_three_star_slots(profile, chapter_id="1"):
     prefix = f"{chapter_id}:3:"
     recorded = {
@@ -1797,11 +1869,25 @@ def achievement_item(profile, unit_key):
     return next((item for item in profile["inventory"] if item.get("unit") == unit_key), None)
 
 
+def achievement_was_collected(profile, unit_key, stars=4):
+    prefix = f"achievement:{stars}:{unit_key}:"
+    return any(
+        entry.startswith(prefix) for entry in profile.get("collection_catalog", [])
+    ) or achievement_item(profile, unit_key) is not None
+
+
 def collected_achievement_slots(profile, stars=4):
-    return {
+    owned = {
         item["slot"] for item in profile["inventory"]
         if item.get("achievement") and item.get("stars") == stars
     }
+    prefix = f"achievement:{stars}:"
+    recorded = {
+        entry.rsplit(":", 1)[-1]
+        for entry in profile.get("collection_catalog", [])
+        if entry.startswith(prefix)
+    }
+    return owned | recorded
 
 
 def sync_achievement_item(profile, unit_key, maker):
@@ -2915,7 +3001,7 @@ elif st.session_state.screen == "admin_panel":
     st.divider()
     admin_section = st.selectbox(
         "選擇管理功能",
-        ["建立學生", "帳號管理", "測試進度", "答題紀錄", "遊戲反饋"],
+        ["建立學生", "帳號管理", "測試進度", "答題紀錄", "公告管理", "遊戲反饋"],
         key="admin_section",
     )
     if admin_section == "建立學生":
@@ -3124,6 +3210,54 @@ elif st.session_state.screen == "admin_panel":
             st.dataframe(attempts, hide_index=True, use_container_width=True)
         else:
             st.info("目前尚無答題紀錄。")
+    if admin_section == "公告管理":
+        st.write("### 📢 公告管理")
+        with st.form("create_announcement_form", clear_on_submit=True):
+            announcement_title = st.text_input("公告標題", max_chars=80)
+            announcement_content = st.text_area(
+                "公告內容", height=220, max_chars=3000,
+                placeholder="輸入要讓所有學生看到的公告內容……",
+            )
+            announcement_submitted = st.form_submit_button(
+                "發布公告", type="primary", use_container_width=True
+            )
+        if announcement_submitted:
+            if not announcement_title.strip() or not announcement_content.strip():
+                st.warning("公告標題與內容都必須填寫。")
+            else:
+                create_announcement(announcement_title, announcement_content)
+                st.success("公告已發布。")
+                st.rerun()
+        announcements = announcement_rows()
+        if announcements:
+            st.write("### 已建立的公告")
+            for announcement in announcements:
+                status = "發布中" if announcement["is_active"] else "已停用"
+                with st.expander(
+                    f"{announcement['title']}｜{status}｜{announcement['created_at_text']}"
+                ):
+                    st.write(announcement["content"])
+                    action_col, confirm_col, delete_col = st.columns([1, 1.2, 1])
+                    if action_col.button(
+                        "停用" if announcement["is_active"] else "重新發布",
+                        key=f"toggle_announcement_{announcement['id']}",
+                        use_container_width=True,
+                    ):
+                        set_announcement_active(
+                            announcement["id"], not bool(announcement["is_active"])
+                        )
+                        st.rerun()
+                    confirm_delete = confirm_col.checkbox(
+                        "確認永久刪除", key=f"confirm_announcement_{announcement['id']}"
+                    )
+                    if delete_col.button(
+                        "刪除", key=f"delete_announcement_{announcement['id']}",
+                        disabled=not confirm_delete, use_container_width=True,
+                    ):
+                        delete_announcement(announcement["id"])
+                        st.rerun()
+        else:
+            st.info("目前尚未建立公告。")
     if admin_section == "遊戲反饋":
         st.write("### 學生遊戲反饋")
         feedback_rows = game_feedback_rows()
@@ -3342,7 +3476,7 @@ elif st.session_state.screen == "home":
     if st.session_state.active_player == "__TEACHER__":
         teacher_admin_target = st.selectbox(
             "返回老師管理後台",
-            ["建立學生", "帳號管理", "測試進度", "答題紀錄", "遊戲反饋"],
+            ["建立學生", "帳號管理", "測試進度", "答題紀錄", "公告管理", "遊戲反饋"],
             index=None,
             placeholder="返回老師管理後台",
             key="teacher_admin_target",
@@ -3362,7 +3496,15 @@ elif st.session_state.screen == "home":
 elif st.session_state.screen == "announcements":
     scroll_page_to_top("scroll_announcements_to_top")
     st.subheader("📢 公告事項")
-    st.info("目前沒有新的公告事項。之後老師可以在這裡公布更新內容、活動與系統提醒。")
+    announcements = announcement_rows(active_only=True)
+    if announcements:
+        for announcement in announcements:
+            with st.container(border=True):
+                st.write(f"### {announcement['title']}")
+                st.caption(f"發布時間：{announcement['created_at_text']}")
+                st.write(announcement["content"])
+    else:
+        st.info("目前沒有新的公告事項。")
     render_bottom_home_button("announcements")
 
 elif st.session_state.screen == "feedback":
@@ -4240,8 +4382,9 @@ elif st.session_state.screen in {"backpack", "gallery"}:
             reward_cols = st.columns(3)
             for col, (unit_key, name, slot, requirement, action) in zip(reward_cols, four_star_specs[gallery_chapter]):
                 owned_item = achievement_item(profile, unit_key)
-                if owned_item:
-                    col.success(f"✅ ★★★★ {SLOT_ICONS[slot]} {name}｜已收藏\n\n{fixed_text(owned_item)}")
+                if achievement_was_collected(profile, unit_key, 4):
+                    detail = fixed_text(owned_item) if owned_item else "曾經取得（目前未持有）"
+                    col.success(f"✅ ★★★★ {SLOT_ICONS[slot]} {name}｜已收藏\n\n{detail}")
                     continue
                 col.info(f"⬜ ★★★★ {SLOT_ICONS[slot]} {name}\n\n取得方式：{requirement}")
                 if action in ("unit", "collection"):
