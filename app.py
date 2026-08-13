@@ -54,7 +54,7 @@ BOSS_CONFIGS = {
     "1_elite": {"name": "血月狼人", "image": "blood-moon-werewolf.webp", "hp": 900, "damage": 45, "interval": 1.5, "exp": 150},
     "2_normal": {"name": "刺甲蜘蛛", "image": "thorn-armor-spider.webp", "hp": 800, "damage": 36, "interval": 2.0, "exp": 150},
     "2_elite": {"name": "魅惑影蛛", "image": "charming-shadow-spider.webp", "hp": 1200, "damage": 54, "interval": 1.5, "exp": 200},
-    "3_normal": {"name": "深淵魔龍", "image": "abyss-dragon.webp", "hp": 1050, "damage": 45, "interval": 2.0, "exp": 200, "critical_rate": 0.20},
+    "3_normal": {"name": "深淵魔龍", "image": "abyss-dragon.webp", "hp": 1050, "damage": 45, "interval": 2.0, "exp": 200, "critical_rate": 0.50},
     "3_elite": {"name": "烈焰龍王", "image": "flame-dragon-king.webp", "hp": 1550, "damage": 62, "interval": 1.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 20},
 }
 BOSS_MAX_HP = 400
@@ -133,9 +133,9 @@ SLOT_ICONS = {
 }
 
 CHAPTERS = {
-    "1": {"number": "第一章", "name": "整數加減法", "multiplier": 1.00},
-    "2": {"number": "第二章", "name": "整數的乘除法", "multiplier": 1.15},
-    "3": {"number": "第三章", "name": "小數的加減法", "multiplier": 1.30},
+    "1": {"number": "第一章", "name": "整數加減法"},
+    "2": {"number": "第二章", "name": "整數的乘除法"},
+    "3": {"number": "第三章", "name": "小數的加減法"},
 }
 
 UNITS = {
@@ -193,14 +193,37 @@ def chapter_unit_ids(chapter_id):
 FIXED_STATS = {
     "helmet": ("hp", {1: 8, 2: 14, 3: 20, 4: 25}),
     "armor": ("defense", {1: 2, 2: 4, 3: 6, 4: 8}),
-    "gloves": ("attack", {1: 1, 2: 2, 3: 4, 4: 6}),
+    "gloves": ("attack", {1: 1, 2: 2, 3: 3, 4: 6}),
     "weapon": ("attack", {1: 2, 2: 4, 3: 6, 4: 8}),
-    "boots": ("attack_speed", {1: 0.03, 2: 0.06, 3: 0.10, 4: 0.13}),
+    "boots": ("attack_speed", {1: 0.10, 2: 0.12, 3: 0.13, 4: 0.23}),
     "necklace": ("boss_hp_reduction", {1: 0.03, 2: 0.06, 3: 0.10, 4: 0.13}),
     "ring": ("first_hit_percent", {1: 0.03, 2: 0.06, 3: 0.10, 4: 0.13}),
     "belt": ("hp", {1: 6, 2: 11, 3: 16, 4: 20}),
     "shield": ("defense", {1: 1, 2: 3, 3: 5, 4: 7}),
 }
+
+CHAPTER_FIXED_INCREMENTS = {
+    "helmet": 4, "armor": 3, "gloves": 2, "weapon": 3,
+    "boots": 0.05, "necklace": 0.02, "ring": 0.02,
+    "belt": 3, "shield": 2,
+}
+
+
+def fixed_value_for(chapter_id, slot, stars):
+    """章節固定值：以第一章為基準，每往後一章加一次指定差值。"""
+    fixed_stat, base_values = FIXED_STATS[slot]
+    chapter_steps = max(0, int(chapter_id) - 1)
+    if stars == 4:
+        chapter_three_star = base_values[3] + CHAPTER_FIXED_INCREMENTS[slot] * chapter_steps
+        if fixed_stat == "attack_speed":
+            value = chapter_three_star + 0.10
+        elif fixed_stat in ("boss_hp_reduction", "first_hit_percent"):
+            value = chapter_three_star + 0.03
+        else:
+            value = chapter_three_star + 3
+    else:
+        value = base_values[stars] + CHAPTER_FIXED_INCREMENTS[slot] * chapter_steps
+    return fixed_stat, (round(value) if fixed_stat in ("hp", "attack", "defense") else round(value, 3))
 
 AFFIX_NAMES = {
     "attack_pct": "攻擊力",
@@ -598,6 +621,7 @@ def normalize_profile(profile, name):
     title_rewards = [
         ("elite_boss_wins", "好像有點勇哦"),
         ("chapter2_elite_boss_wins", "別小看我！"),
+        ("chapter3_elite_boss_wins", "一刀斬龍"),
     ]
     for wins_key, title in title_rewards:
         if profile.get(wins_key, 0) > 0 and title not in profile["titles"]:
@@ -1322,13 +1346,8 @@ def make_random_item(profile, unit_id, stars):
     if not combinations:
         return None
     slot, affix_stat, affix_value = random.choice(combinations)
-    fixed_stat, values = FIXED_STATS[slot]
     chapter_id = unit_id.split("-")[0]
-    raw_fixed_value = values[stars] * CHAPTERS[chapter_id]["multiplier"]
-    if fixed_stat in ("hp", "attack", "defense"):
-        fixed_value = round(raw_fixed_value)
-    else:
-        fixed_value = round(raw_fixed_value, 3)
+    fixed_stat, fixed_value = fixed_value_for(chapter_id, slot, stars)
     return {
         "uid": uuid.uuid4().hex,
         "unit": unit_id,
@@ -1360,9 +1379,7 @@ def make_shop_item(profile, chapter_id=None):
     affix_stat = random.choice(list(AFFIX_NAMES))
     value_pool = AFFIX_VALUES.get(affix_stat, AFFIX_VALUES["default"])[3]
     affix_value = random.choice(value_pool)
-    fixed_stat, values = FIXED_STATS[slot]
-    raw_value = values[3] * CHAPTERS[chapter_id]["multiplier"]
-    fixed_value = round(raw_value) if fixed_stat in ("hp", "attack", "defense") else round(raw_value, 3)
+    fixed_stat, fixed_value = fixed_value_for(chapter_id, slot, 3)
     return {
         "shop_id": uuid.uuid4().hex,
         "sold": False,
@@ -1426,13 +1443,9 @@ def make_forged_item(profile, source_stars, chapter_id, selected_slot=None, sele
     if selected_slot:
         item["slot"] = selected_slot
         item["name"] = GEAR_NAMES[target_stars][selected_slot]
-        fixed_stat, values = FIXED_STATS[selected_slot]
-        raw_value = values[target_stars] * CHAPTERS[chapter_id]["multiplier"]
+        fixed_stat, fixed_value = fixed_value_for(chapter_id, selected_slot, target_stars)
         item["fixed_stat"] = fixed_stat
-        item["fixed_value"] = (
-            round(raw_value) if fixed_stat in ("hp", "attack", "defense")
-            else round(raw_value, 3)
-        )
+        item["fixed_value"] = fixed_value
     if selected_affix:
         item["affix_stat"] = selected_affix
         item["affix_value"] = random.choice(
@@ -1450,7 +1463,7 @@ def make_chapter_reward():
         "stars": 4,
         "name": "整數勇者之劍",
         "fixed_stat": "attack",
-        "fixed_value": 8,
+        "fixed_value": fixed_value_for("1", "weapon", 4)[1],
         "affix_stat": "attack_pct",
         "affix_value": 0.25,
         "achievement": True,
@@ -1465,7 +1478,7 @@ def make_elite_reward():
         "stars": 4,
         "name": "收藏家王冠",
         "fixed_stat": "hp",
-        "fixed_value": 25,
+        "fixed_value": fixed_value_for("1", "helmet", 4)[1],
         "affix_stat": "defense_pct",
         "affix_value": 0.25,
         "achievement": True,
@@ -1476,7 +1489,7 @@ def make_collection_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-1-collection", "slot": "necklace",
         "stars": 4, "name": "九星守護項鍊", "fixed_stat": "boss_hp_reduction",
-        "fixed_value": 0.13, "affix_stat": "hp_pct", "affix_value": 0.25,
+        "fixed_value": fixed_value_for("1", "necklace", 4)[1], "affix_stat": "hp_pct", "affix_value": 0.25,
         "achievement": True,
     }
 
@@ -1485,7 +1498,7 @@ def make_chapter2_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-2", "slot": "gloves",
         "stars": 4, "name": "乘除勇者手甲", "fixed_stat": "attack",
-        "fixed_value": 6, "affix_stat": "attack_pct", "affix_value": 0.25,
+        "fixed_value": fixed_value_for("2", "gloves", 4)[1], "affix_stat": "attack_pct", "affix_value": 0.25,
         "achievement": True,
     }
 
@@ -1494,7 +1507,7 @@ def make_chapter2_collection_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-2-collection", "slot": "boots",
         "stars": 4, "name": "乘除疾風戰靴", "fixed_stat": "attack_speed",
-        "fixed_value": 0.13, "affix_stat": "speed_pct", "affix_value": 0.25,
+        "fixed_value": fixed_value_for("2", "boots", 4)[1], "affix_stat": "speed_pct", "affix_value": 0.25,
         "achievement": True,
     }
 
@@ -1503,7 +1516,7 @@ def make_chapter2_elite_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-2-elite", "slot": "shield",
         "stars": 4, "name": "乘除霸主盾", "fixed_stat": "defense",
-        "fixed_value": 7, "affix_stat": "hp_pct", "affix_value": 0.25,
+        "fixed_value": fixed_value_for("2", "shield", 4)[1], "affix_stat": "hp_pct", "affix_value": 0.25,
         "achievement": True,
     }
 
@@ -1569,6 +1582,54 @@ def sync_achievement_item(profile, unit_key, maker):
     return changed
 
 
+def sync_item_fixed_value(item):
+    """依新版章節差值表同步一至四星裝備，回傳是否有修改。"""
+    chapter_id = item_chapter_id(item)
+    slot = item.get("slot")
+    stars = int(item.get("stars", 0) or 0)
+    if chapter_id not in CHAPTERS or slot not in FIXED_STATS or stars not in (1, 2, 3, 4):
+        return False
+    fixed_stat, fixed_value = fixed_value_for(chapter_id, slot, stars)
+    changed = item.get("fixed_stat") != fixed_stat or item.get("fixed_value") != fixed_value
+    item["fixed_stat"] = fixed_stat
+    item["fixed_value"] = fixed_value
+    item.setdefault("chapter", chapter_id)
+    return changed
+
+
+def migrate_all_profiles_fixed_values():
+    """一次性更新資料庫內所有玩家已裝備、未裝備與商店裝備。"""
+    migration_key = "fixed_values_chapter_steps_v1"
+    with db_connection() as db:
+        done = db.execute("SELECT value FROM settings WHERE key=?", (migration_key,)).fetchone()
+        if done and done["value"] == "1":
+            return
+        rows = db.execute("SELECT student_code, profile_json FROM players").fetchall()
+        for row in rows:
+            profile = json.loads(row["profile_json"])
+            changed = False
+            for item in profile.get("inventory", []):
+                changed = sync_item_fixed_value(item) or changed
+            for shop_entry in (profile.get("shop") or {}).get("items", []):
+                shop_item = shop_entry.get("item")
+                if shop_item:
+                    changed = sync_item_fixed_value(shop_item) or changed
+            if profile.get("chapter3_elite_boss_wins", 0) > 0 and "一刀斬龍" not in profile.get("titles", []):
+                profile.setdefault("titles", []).append("一刀斬龍")
+                profile.setdefault("retro_reward_notice", []).append("補發成就稱號「一刀斬龍」")
+                changed = True
+            if changed:
+                db.execute(
+                    "UPDATE players SET profile_json=? WHERE student_code=?",
+                    (json.dumps(profile, ensure_ascii=False), row["student_code"]),
+                )
+        db.execute(
+            "INSERT INTO settings(key, value) VALUES(?, '1') "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (migration_key,),
+        )
+
+
 def fixed_text(item):
     names = {
         "hp": "HP", "attack": "攻擊力", "defense": "防禦力",
@@ -1627,14 +1688,19 @@ def render_item_comparison(profile, new_item):
     comparison_rows = []
     for label, key, kind in stat_specs:
         difference = after[key] - before[key]
+        if abs(difference) < 1e-9:
+            continue
         comparison_rows.append({
             "人物能力": label,
             "目前": display_value(before[key], kind),
             "更換後": display_value(after[key], kind),
-            "增減": ("—" if abs(difference) < 1e-9 else display_value(difference, kind, signed=True)),
+            "增減": display_value(difference, kind, signed=True),
         })
-    st.write("**人物完整能力前後對照**")
-    st.dataframe(comparison_rows, hide_index=True, use_container_width=True)
+    st.write("**能力變動對照**")
+    if comparison_rows:
+        st.dataframe(comparison_rows, hide_index=True, use_container_width=True)
+    else:
+        st.caption("更換後人物能力沒有變動。")
 
 
 def equipped_items(profile):
@@ -2067,8 +2133,12 @@ def finish_battle(result):
             profile["inventory"].append(reward)
             profile[reward_claimed_key] = True
             reward_item_uid = reward["uid"]
-        if boss_type == "elite" and chapter_id in ("1", "2"):
-            earned_title = "好像有點勇哦" if chapter_id == "1" else "別小看我！"
+        if boss_type == "elite" and chapter_id in ("1", "2", "3"):
+            earned_title = {
+                "1": "好像有點勇哦",
+                "2": "別小看我！",
+                "3": "一刀斬龍",
+            }[chapter_id]
             if earned_title not in profile["titles"]:
                 profile["titles"].append(earned_title)
                 result["earned_title"] = earned_title
@@ -2343,6 +2413,7 @@ def render_chapter_boss_card(chapter_id, boss_type, unlocked):
 
 
 init_db()
+migrate_all_profiles_fixed_values()
 if USE_POSTGRES and not ADMIN_PIN_SECRET:
     st.error("公開版尚未設定 ADMIN_PIN，已停止登入以保護老師後台。")
     st.info("請到 Streamlit App settings → Secrets 設定 ADMIN_PIN 與 DATABASE_URL。")
@@ -2745,6 +2816,7 @@ elif st.session_state.screen == "home":
         st.session_state.screen = "character_stats"
         st.rerun()
     if nav1[1].button("🗺️ 關卡", use_container_width=True):
+        st.session_state.scroll_menu_to_top = True
         st.session_state.screen = "menu"
         st.rerun()
     if nav1[2].button("🎒 背包", use_container_width=True):
@@ -2831,6 +2903,16 @@ elif st.session_state.screen == "character_stats":
     render_bottom_home_button("character_stats")
 
 elif st.session_state.screen == "menu":
+    scroll_page_to_top("scroll_menu_to_top")
+    st.markdown(
+        """
+        <style>
+        /* 關卡頁本身沒有分頁；隱藏切頁時可能短暫殘留的背包 tabs。 */
+        [data-testid="stTabs"] { display:none !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     profile = get_profile()
     if sync_daily_tasks(profile):
         save_profile(profile)
@@ -3709,6 +3791,10 @@ elif st.session_state.screen == "boss_watch":
         [data-testid="stToolbar"],
         [data-testid="stDecoration"],
         footer { display: none !important; }
+        /* 戰鬥頁不使用能力卡，隱藏切頁動畫殘留的準備畫面數值。 */
+        .st-key-boss_mobile_stats,
+        [class*="st-key-boss_mobile_stats"],
+        [data-testid="stMetric"] { display: none !important; }
         [data-testid="stMainBlockContainer"] {
             padding-top: 0.35rem !important;
             padding-bottom: 0.35rem !important;
@@ -3716,6 +3802,21 @@ elif st.session_state.screen == "boss_watch":
         </style>
         """,
         unsafe_allow_html=True,
+    )
+    components.html(
+        """
+        <script>
+        const removeBattlePrepResidue = () => {
+            const doc = parent.document;
+            doc.querySelectorAll(
+                '.st-key-boss_mobile_stats, [class*="st-key-boss_mobile_stats"], [data-testid="stMetric"]'
+            ).forEach(node => node.remove());
+        };
+        [0, 50, 120, 250, 500, 900].forEach(delay => setTimeout(removeBattlePrepResidue, delay));
+        </script>
+        """,
+        height=0,
+        scrolling=False,
     )
     scroll_page_to_top("scroll_battle_to_top")
     @st.fragment(run_every=0.35)
