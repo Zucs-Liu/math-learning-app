@@ -3481,14 +3481,14 @@ elif st.session_state.screen == "login":
     if role == "學生":
         login_tab, register_tab = st.tabs(["登入", "建立新勇者"])
         with login_tab:
-            code = st.text_input("學生代碼", placeholder="例如 A001").strip().upper()
-            pin = st.text_input("6位PIN", type="password", max_chars=6, key="login_pin")
-            keep_signed_in = st.checkbox(
-                "5分鐘保持登入",
-                value=True,
-                key="keep_student_signed_in",
+            code_col, pin_col = st.columns(2, vertical_alignment="bottom")
+            code = code_col.text_input("學生代碼", placeholder="例如 A001").strip().upper()
+            pin = pin_col.text_input("6位PIN", type="password", max_chars=6, key="login_pin")
+            remember_col, login_col = st.columns(2, vertical_alignment="center")
+            keep_signed_in = remember_col.checkbox(
+                "5分鐘保持登入", value=True, key="keep_student_signed_in"
             )
-            if st.button("學生登入", type="primary", use_container_width=True):
+            if login_col.button("學生登入", type="primary"):
                 valid, result = verify_student(code, pin)
                 if valid:
                     st.session_state.active_player = result
