@@ -1020,7 +1020,11 @@ def apply_login_background():
             color: #171717 !important;
         }}
         [data-testid="stRadio"] > div label,
+        [data-testid="stRadio"] > div label p,
+        [data-testid="stRadio"] > div label span,
         [data-testid="stCheckbox"] label,
+        [data-testid="stCheckbox"] label p,
+        [data-testid="stCheckbox"] label span,
         [data-testid="stTabs"] [role="tab"] {{
             color: #171717 !important;
         }}
@@ -1035,6 +1039,14 @@ def apply_login_background():
             margin-right: auto !important;
         }}
         [data-testid="stCheckbox"] {{
+            width: fit-content !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }}
+        div[data-testid="stElementContainer"]:has(> [data-testid="stCheckbox"]),
+        div[data-testid="stElementContainer"]:has([data-testid="stCheckbox"]) {{
+            width: fit-content !important;
+            max-width: max-content !important;
             margin-left: auto !important;
             margin-right: auto !important;
         }}
@@ -1047,6 +1059,12 @@ def apply_login_background():
             width: min(320px, 100%) !important;
             margin-left: auto !important;
             margin-right: auto !important;
+        }}
+        [data-testid="stTextInput"] input,
+        [data-testid="stTextInput"] input::placeholder {{
+            color: #171717 !important;
+            opacity: 1 !important;
+            -webkit-text-fill-color: #171717 !important;
         }}
         [data-testid="stTextInput"] label,
         [data-testid="stRadio"] label,
@@ -1091,7 +1109,7 @@ def apply_login_background():
             }}
             .stMainBlockContainer, [data-testid="stMainBlockContainer"] {{
                 width: min(88vw, 430px);
-                margin: 30px auto 24px !important;
+                margin: 58px auto 24px !important;
                 padding: .5rem 0 1.25rem !important;
             }}
             .stMainBlockContainer h1, [data-testid="stMainBlockContainer"] h1 {{
