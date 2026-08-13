@@ -53,14 +53,14 @@ MAX_QUESTIONS = 20
 PROFILE_CACHE_SECONDS = 300
 SHORT_LOGIN_SECONDS = 300
 BOSS_CONFIGS = {
-    "1_normal": {"name": "荒野魔狼", "image": "wild-wolf.webp", "hp": 600, "damage": 30, "interval": 2.0, "exp": 100},
-    "1_elite": {"name": "血月狼人", "image": "blood-moon-werewolf.webp", "hp": 900, "damage": 45, "interval": 1.5, "exp": 150},
-    "2_normal": {"name": "刺甲蜘蛛", "image": "thorn-armor-spider.webp", "hp": 800, "damage": 36, "interval": 2.0, "exp": 150},
-    "2_elite": {"name": "魅惑影蛛", "image": "charming-shadow-spider.webp", "hp": 1200, "damage": 54, "interval": 1.5, "exp": 200},
-    "3_normal": {"name": "深淵魔龍", "image": "abyss-dragon.webp", "hp": 1050, "damage": 45, "interval": 2.0, "exp": 200, "critical_rate": 0.50},
-    "3_elite": {"name": "烈焰龍王", "image": "flame-dragon-king.webp", "hp": 1550, "damage": 62, "interval": 1.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 20},
-    "4_normal": {"name": "六尾雷狐", "image": "six-tail-thunder-fox.webp", "hp": 1350, "damage": 52, "interval": 2.0, "exp": 250, "defense_reduction": 20},
-    "4_elite": {"name": "九尾天狐", "image": "nine-tail-celestial-fox.webp", "hp": 2000, "damage": 72, "interval": 1.5, "exp": 300, "skill": "天降雷劫", "skill_hp_threshold": 0.5, "skill_damage": 40},
+    "1_normal": {"name": "荒野魔狼", "image": "wild-wolf.webp", "hp": 300, "damage": 10, "interval": 2.0, "exp": 100},
+    "1_elite": {"name": "血月狼人", "image": "blood-moon-werewolf.webp", "hp": 400, "damage": 20, "interval": 1.5, "exp": 150},
+    "2_normal": {"name": "刺甲蜘蛛", "image": "thorn-armor-spider.webp", "hp": 600, "damage": 20, "interval": 2.0, "exp": 150},
+    "2_elite": {"name": "魅惑影蛛", "image": "charming-shadow-spider.webp", "hp": 800, "damage": 40, "interval": 1.5, "exp": 200},
+    "3_normal": {"name": "深淵魔龍", "image": "abyss-dragon.webp", "hp": 900, "damage": 30, "interval": 2.0, "exp": 200, "critical_rate": 0.50},
+    "3_elite": {"name": "烈焰龍王", "image": "flame-dragon-king.webp", "hp": 1200, "damage": 60, "interval": 1.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 50},
+    "4_normal": {"name": "六尾雷狐", "image": "six-tail-thunder-fox.webp", "hp": 1200, "damage": 40, "interval": 2.0, "exp": 250, "defense_reduction": 20},
+    "4_elite": {"name": "九尾天狐", "image": "nine-tail-celestial-fox.webp", "hp": 1600, "damage": 80, "interval": 1.5, "exp": 300, "skill": "天降雷劫", "skill_hp_threshold": 0.5, "skill_damage": 40},
 }
 BOSS_MAX_HP = 400
 BOSS_DAMAGE = 30
@@ -2508,6 +2508,14 @@ def finish_quiz():
     st.session_state.screen = "quiz_result"
 
 
+def leave_quiz():
+    """Leave an unfinished quiz without saving a result or granting rewards."""
+    st.session_state.deadline = None
+    st.session_state.quiz_started_at = None
+    st.session_state.message = ""
+    st.session_state.screen = "menu"
+
+
 def submit_quiz_answer():
     if st.session_state.screen != "quiz" or st.session_state.attempts >= MAX_QUESTIONS:
         return
@@ -4799,6 +4807,11 @@ elif st.session_state.screen in {"backpack", "gallery"}:
     render_bottom_home_button(inventory_view)
 
 elif st.session_state.screen == "quiz":
+    if st.button("← 返回章節（離開本次測驗）", key="leave_quiz_button"):
+        leave_quiz()
+        st.session_state.scroll_menu_to_top = True
+        st.rerun()
+
     unit = UNITS[st.session_state.selected_unit]
     st.subheader(f"單元{st.session_state.selected_unit}：{unit['name']}")
     st.caption("星級規則：最高連擊1～4為一星、5～9為二星；達成10連擊立即三星通關。最多作答20題。")
