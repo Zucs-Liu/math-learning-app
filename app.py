@@ -49,6 +49,7 @@ st.markdown(
 )
 
 MAX_QUESTIONS = 20
+PROFILE_CACHE_SECONDS = 300
 BOSS_CONFIGS = {
     "1_normal": {"name": "荒野魔狼", "image": "wild-wolf.webp", "hp": 600, "damage": 30, "interval": 2.0, "exp": 100},
     "1_elite": {"name": "血月狼人", "image": "blood-moon-werewolf.webp", "hp": 900, "damage": 45, "interval": 1.5, "exp": 150},
@@ -312,8 +313,8 @@ def postgres_pool():
         min_size=1,
         max_size=10,
         timeout=15,
-        max_lifetime=300,
-        max_idle=60,
+        max_lifetime=900,
+        max_idle=300,
         reconnect_timeout=30,
         check=ConnectionPool.check_connection,
         kwargs={"row_factory": dict_row},
@@ -728,7 +729,7 @@ def get_profile():
     cached = st.session_state.get("_profile_cache")
     if (
         cached and cached.get("code") == code
-        and time.time() - cached.get("loaded_at", 0) < 5
+        and time.time() - cached.get("loaded_at", 0) < PROFILE_CACHE_SECONDS
     ):
         return cached["profile"]
     with db_connection() as db:
@@ -1595,6 +1596,7 @@ def sync_item_fixed_value(item):
     return changed
 
 
+@st.cache_resource(show_spinner=False)
 def migrate_all_profiles_fixed_values():
     """一次性更新資料庫內所有玩家已裝備、未裝備與商店裝備。"""
     migration_key = "fixed_values_chapter_steps_v1"
