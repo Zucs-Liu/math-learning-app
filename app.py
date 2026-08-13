@@ -60,7 +60,7 @@ BOSS_CONFIGS = {
     "3_normal": {"name": "深淵魔龍", "image": "abyss-dragon.webp", "hp": 900, "damage": 30, "interval": 2.0, "exp": 200, "critical_rate": 0.50},
     "3_elite": {"name": "烈焰龍王", "image": "flame-dragon-king.webp", "hp": 1200, "damage": 60, "interval": 1.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 50},
     "4_normal": {"name": "六尾雷狐", "image": "six-tail-thunder-fox.webp", "hp": 1200, "damage": 40, "interval": 2.0, "exp": 250, "defense_reduction": 20},
-    "4_elite": {"name": "九尾天狐", "image": "nine-tail-celestial-fox.webp", "hp": 1600, "damage": 80, "interval": 1.5, "exp": 300, "skill": "天降雷劫", "skill_hp_threshold": 0.5, "skill_damage": 40},
+    "4_elite": {"name": "九尾天狐", "image": "nine-tail-celestial-fox.webp", "hp": 1600, "damage": 80, "interval": 1.5, "exp": 300, "skill": "天降雷劫", "skill_hp_threshold": 0.5, "true_damage": 70},
 }
 BOSS_MAX_HP = 400
 BOSS_DAMAGE = 30
@@ -952,6 +952,59 @@ def built_in_avatar_data(index):
     if not image_path.exists():
         return None
     return "data:image/webp;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
+
+
+@st.cache_data(show_spinner=False)
+def login_background_data_uri():
+    image_path = Path(__file__).parent / "assets" / "login" / "heroes-vs-demon.webp"
+    if not image_path.exists():
+        return ""
+    return "data:image/webp;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
+
+
+def apply_login_background():
+    background = login_background_data_uri()
+    if not background:
+        return
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background:
+                linear-gradient(90deg, rgba(7, 10, 25, .30), rgba(7, 10, 25, .10)),
+                url('{background}') center center / cover fixed no-repeat;
+        }}
+        .stMainBlockContainer, [data-testid="stMainBlockContainer"] {{
+            width: min(720px, calc(100% - 32px));
+            max-width: 720px;
+            margin-left: 2vw;
+            margin-right: auto;
+            margin-top: 18px;
+            padding: 1.25rem 1.5rem 2rem;
+            border-radius: 24px;
+            background: rgba(255, 255, 255, .84);
+            box-shadow: 0 18px 60px rgba(0, 0, 0, .28);
+            backdrop-filter: blur(7px);
+        }}
+        .stMainBlockContainer h1, [data-testid="stMainBlockContainer"] h1 {{
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+        }}
+        @media (max-width: 600px) {{
+            .stApp {{ background-position: 58% center; }}
+            .stMainBlockContainer, [data-testid="stMainBlockContainer"] {{
+                width: calc(100% - 16px);
+                margin: 8px;
+                padding: .8rem .9rem 1.5rem;
+                border-radius: 18px;
+                background: rgba(255, 255, 255, .82);
+            }}
+            .stMainBlockContainer h1, [data-testid="stMainBlockContainer"] h1 {{ font-size: 2.15rem !important; }}
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_avatar_editor(profile):
@@ -2474,6 +2527,13 @@ def stars_for_combo(combo):
 
 
 def start_quiz(unit_id):
+    if st.session_state.active_player != "__TEACHER__":
+        profile = get_profile()
+        if not unit_unlocked(profile, unit_id):
+            st.session_state.selected_chapter = highest_unlocked_chapter(profile)
+            st.session_state.screen = "menu"
+            st.toast("請先通過前一章普通 BOSS，才能進入這個章節。", icon="🔒")
+            return False
     st.session_state.selected_unit = unit_id
     st.session_state.selected_chapter = unit_id.split("-")[0]
     st.session_state.deadline = None
@@ -2498,6 +2558,7 @@ def start_quiz(unit_id):
     st.session_state.extra_reward_messages = []
     st.session_state.answer_history = []
     st.session_state.screen = "quiz"
+    return True
 
 
 def finish_quiz():
@@ -2717,11 +2778,15 @@ def simulate_battle(stats, boss_type="normal"):
         else:
             now = next_skill
             if config.get("skill_hp_threshold") is not None:
-                skill_damage = config.get("skill_damage", 0) * (1 - stats["damage_reduction_pct"])
                 threshold_skill_used = True
-                shield_absorbed = min(shield_hp, skill_damage)
-                shield_hp -= shield_absorbed
-                core_hp = max(0.0, core_hp - (skill_damage - shield_absorbed))
+                if config.get("true_damage") is not None:
+                    skill_damage = config["true_damage"]
+                    core_hp = max(0.0, core_hp - skill_damage)
+                else:
+                    skill_damage = config.get("skill_damage", 0) * (1 - stats["damage_reduction_pct"])
+                    shield_absorbed = min(shield_hp, skill_damage)
+                    shield_hp -= shield_absorbed
+                    core_hp = max(0.0, core_hp - (skill_damage - shield_absorbed))
             else:
                 skill_damage = config.get("true_damage", 0)
                 core_hp = max(0.0, core_hp - skill_damage)
@@ -3188,9 +3253,10 @@ def render_chapter_boss_card(chapter_id, boss_type, unlocked):
             )
         if config.get("skill"):
             if config.get("skill_hp_threshold") is not None:
+                threshold_damage = config.get("true_damage", config.get("skill_damage", 0))
                 abilities.append(
                     f"技能「{config['skill']}」：血量首次低於 {config['skill_hp_threshold']:.0%} 時，"
-                    f"造成 {config['skill_damage']:g} 傷害（可被傷害減免抵銷）"
+                    f"造成 {threshold_damage:g} {'真實傷害（無視防禦與傷害減免）' if config.get('true_damage') is not None else '傷害（可被傷害減免抵銷）'}"
                 )
             else:
                 abilities.append(
@@ -3272,6 +3338,7 @@ if st.session_state.screen == "bootstrap":
             st.rerun()
 
 elif st.session_state.screen == "login":
+    apply_login_background()
     role = st.radio("登入身分", ["學生", "老師"], horizontal=True)
     if role == "學生":
         login_tab, register_tab = st.tabs(["登入", "建立新勇者"])
@@ -4038,10 +4105,17 @@ elif st.session_state.screen == "menu":
         st.success("📬 系統補發內容已收進勇者信箱；獎勵先前已直接入帳。")
         profile["retro_reward_notice"] = []
         save_profile(profile)
+    if st.session_state.active_player == "__TEACHER__":
+        available_chapters = list(CHAPTERS)
+    else:
+        highest_chapter = int(highest_unlocked_chapter(profile))
+        available_chapters = [cid for cid in CHAPTERS if int(cid) <= highest_chapter]
+    if st.session_state.selected_chapter not in available_chapters:
+        st.session_state.selected_chapter = available_chapters[-1]
     chapter_id = st.selectbox(
         "選擇章節",
-        options=list(CHAPTERS),
-        index=list(CHAPTERS).index(st.session_state.selected_chapter),
+        options=available_chapters,
+        index=available_chapters.index(st.session_state.selected_chapter),
         format_func=lambda cid: f"{CHAPTERS[cid]['number']}｜{CHAPTERS[cid]['name']}",
     )
     if chapter_id != st.session_state.selected_chapter:
@@ -4964,10 +5038,11 @@ elif st.session_state.screen == "boss_ready":
         )
     if config.get("skill"):
         if config.get("skill_hp_threshold") is not None:
+            threshold_damage = config.get("true_damage", config.get("skill_damage", 0))
             st.error(
                 f"⚡ BOSS技能「{config['skill']}」：BOSS血量首次低於"
-                f"{config['skill_hp_threshold']:.0%}時發動一次，造成{config['skill_damage']:g}傷害；"
-                "不計算防禦，但可被受到傷害降低與開場護盾抵銷。"
+                f"{config['skill_hp_threshold']:.0%}時發動一次，造成{threshold_damage:g}"
+                f"{'真實傷害；無法被防禦、傷害減免或護盾抵銷。' if config.get('true_damage') is not None else '傷害；不計算防禦，但可被受到傷害降低與開場護盾抵銷。'}"
             )
         else:
             st.error(
