@@ -59,6 +59,8 @@ BOSS_CONFIGS = {
     "2_elite": {"name": "魅惑影蛛", "image": "charming-shadow-spider.webp", "hp": 1200, "damage": 54, "interval": 1.5, "exp": 200},
     "3_normal": {"name": "深淵魔龍", "image": "abyss-dragon.webp", "hp": 1050, "damage": 45, "interval": 2.0, "exp": 200, "critical_rate": 0.50},
     "3_elite": {"name": "烈焰龍王", "image": "flame-dragon-king.webp", "hp": 1550, "damage": 62, "interval": 1.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 20},
+    "4_normal": {"name": "六尾雷狐", "image": "six-tail-thunder-fox.webp", "hp": 1350, "damage": 52, "interval": 2.0, "exp": 250, "defense_reduction": 20},
+    "4_elite": {"name": "九尾天狐", "image": "nine-tail-celestial-fox.webp", "hp": 2000, "damage": 72, "interval": 1.5, "exp": 300, "skill": "天降雷劫", "skill_hp_threshold": 0.5, "skill_damage": 40},
 }
 BOSS_MAX_HP = 400
 BOSS_DAMAGE = 30
@@ -139,6 +141,7 @@ CHAPTERS = {
     "1": {"number": "第一章", "name": "整數加減法"},
     "2": {"number": "第二章", "name": "整數的乘除法"},
     "3": {"number": "第三章", "name": "小數的加減法"},
+    "4": {"number": "第四章", "name": "小數乘除法"},
 }
 
 UNITS = {
@@ -186,6 +189,22 @@ UNITS = {
         "name": "一位小數加減二位小數",
         "slots": ["necklace", "ring", "belt", "shield"],
         "description": "例如：12.6＋3.56、18.4－2.75",
+    },
+    "4-1": {
+        "name": "一位小數乘以一位整數", "slots": ["helmet", "armor"],
+        "description": "例如：1.2×7",
+    },
+    "4-2": {
+        "name": "一位小數乘以一位小數", "slots": ["gloves", "weapon"],
+        "description": "例如：1.2×0.3（乘數個位數為0）",
+    },
+    "4-3": {
+        "name": "一位小數除以一位整數（整除）", "slots": ["boots", "necklace"],
+        "description": "例如：1.2÷4",
+    },
+    "4-4": {
+        "name": "一位小數除以一位小數（整除）", "slots": ["ring", "belt", "shield"],
+        "description": "例如：1.2÷0.3（除數個位數為0）",
     },
 }
 
@@ -435,6 +454,16 @@ def init_db():
                 clear_time REAL NOT NULL, achieved_at TEXT NOT NULL,
                 FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS chapter4_rankings (
+                student_code TEXT PRIMARY KEY, hero_name TEXT NOT NULL, level INTEGER NOT NULL,
+                clear_time REAL NOT NULL, achieved_at TEXT NOT NULL,
+                FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS chapter4_elite_rankings (
+                student_code TEXT PRIMARY KEY, hero_name TEXT NOT NULL, level INTEGER NOT NULL,
+                clear_time REAL NOT NULL, achieved_at TEXT NOT NULL,
+                FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
+            );
             CREATE TABLE IF NOT EXISTS attempts (
                 id {"BIGSERIAL PRIMARY KEY" if USE_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
                 student_code TEXT NOT NULL,
@@ -658,6 +687,13 @@ def new_profile(name):
         "chapter3_reward_claimed": False,
         "chapter3_collection_reward_claimed": False,
         "chapter3_elite_reward_claimed": False,
+        "chapter4_boss_exp_claimed": False,
+        "chapter4_boss_wins": 0,
+        "chapter4_elite_boss_exp_claimed": False,
+        "chapter4_elite_boss_wins": 0,
+        "chapter4_reward_claimed": False,
+        "chapter4_collection_reward_claimed": False,
+        "chapter4_elite_reward_claimed": False,
     }
 
 
@@ -688,6 +724,8 @@ def normalize_profile(profile, name):
         catalog.update(f"2:3:{slot}" for slot in SLOT_NAMES)
     if profile.get("chapter3_collection_reward_claimed"):
         catalog.update(f"3:3:{slot}" for slot in SLOT_NAMES)
+    if profile.get("chapter4_collection_reward_claimed"):
+        catalog.update(f"4:3:{slot}" for slot in SLOT_NAMES)
     achievement_history = (
         ("chapter_reward_claimed", "chapter-1", "weapon"),
         ("collection_item_claimed", "chapter-1-collection", "necklace"),
@@ -698,6 +736,9 @@ def normalize_profile(profile, name):
         ("chapter3_reward_claimed", "chapter-3", "armor"),
         ("chapter3_collection_reward_claimed", "chapter-3-collection", "belt"),
         ("chapter3_elite_reward_claimed", "chapter-3-elite", "ring"),
+        ("chapter4_reward_claimed", "chapter-4", "helmet"),
+        ("chapter4_collection_reward_claimed", "chapter-4-collection", "boots"),
+        ("chapter4_elite_reward_claimed", "chapter-4-elite", "weapon"),
     )
     for claimed_key, unit_key, slot in achievement_history:
         if profile.get(claimed_key):
@@ -719,6 +760,7 @@ def normalize_profile(profile, name):
         ("elite_boss_wins", "好像有點勇哦"),
         ("chapter2_elite_boss_wins", "別小看我！"),
         ("chapter3_elite_boss_wins", "一刀斬龍"),
+        ("chapter4_elite_boss_wins", "渡雷劫方可成仙"),
     ]
     for wins_key, title in title_rewards:
         if profile.get(wins_key, 0) > 0 and title not in profile["titles"]:
@@ -830,7 +872,7 @@ def get_profile():
         and time.time() - cached.get("loaded_at", 0) < PROFILE_CACHE_SECONDS
     ):
         cached_profile = cached["profile"]
-        if "chapter3_reward_claimed" not in cached_profile:
+        if any(key not in cached_profile for key in new_profile(cached_profile.get("name", "勇者"))):
             cached_profile = normalize_profile(cached_profile, cached_profile.get("name", "勇者"))
             retroactively_grant_chapter3_rewards(cached_profile)
             save_profile(cached_profile)
@@ -864,6 +906,9 @@ def get_profile():
         ("chapter-3", make_chapter3_reward),
         ("chapter-3-collection", make_chapter3_collection_reward),
         ("chapter-3-elite", make_chapter3_elite_reward),
+        ("chapter-4", make_chapter4_reward),
+        ("chapter-4-collection", make_chapter4_collection_reward),
+        ("chapter-4-elite", make_chapter4_elite_reward),
     ):
         migrated = sync_achievement_item(profile, unit_key, maker) or migrated
     if migrated or normalized_changed:
@@ -1114,6 +1159,7 @@ def save_best_ranking(profile, clear_time, boss_type="normal", chapter_id="1"):
         ("1", "normal"): "rankings", ("1", "elite"): "elite_rankings",
         ("2", "normal"): "chapter2_rankings", ("2", "elite"): "chapter2_elite_rankings",
         ("3", "normal"): "chapter3_rankings", ("3", "elite"): "chapter3_elite_rankings",
+        ("4", "normal"): "chapter4_rankings", ("4", "elite"): "chapter4_elite_rankings",
     }[(chapter_id, boss_type)]
     with db_connection() as db:
         row = db.execute(f"SELECT clear_time FROM {table} WHERE student_code=?", (code,)).fetchone()
@@ -1132,6 +1178,7 @@ def ranking_rows(boss_type="normal", chapter_id="1", include_private_identity=Fa
         ("1", "normal"): "rankings", ("1", "elite"): "elite_rankings",
         ("2", "normal"): "chapter2_rankings", ("2", "elite"): "chapter2_elite_rankings",
         ("3", "normal"): "chapter3_rankings", ("3", "elite"): "chapter3_elite_rankings",
+        ("4", "normal"): "chapter4_rankings", ("4", "elite"): "chapter4_elite_rankings",
     }[(chapter_id, boss_type)]
     with db_connection() as db:
         rows = db.execute(
@@ -1491,6 +1538,8 @@ def current_midnight_period():
 
 
 def highest_unlocked_chapter(profile):
+    if profile.get("chapter3_boss_wins", 0) > 0:
+        return "4"
     if profile.get("chapter2_boss_wins", 0) > 0:
         return "3"
     if profile.get("boss_wins", 0) > 0:
@@ -1528,6 +1577,7 @@ def permanent_task_definitions():
         "1": ("boss_wins", "elite_boss_wins"),
         "2": ("chapter2_boss_wins", "chapter2_elite_boss_wins"),
         "3": ("chapter3_boss_wins", "chapter3_elite_boss_wins"),
+        "4": ("chapter4_boss_wins", "chapter4_elite_boss_wins"),
     }
     for chapter_id in CHAPTERS:
         for unit_id in chapter_unit_ids(chapter_id):
@@ -1565,6 +1615,7 @@ def special_task_definitions(code, profile=None):
         "1": ("rankings", "elite_rankings"),
         "2": ("chapter2_rankings", "chapter2_elite_rankings"),
         "3": ("chapter3_rankings", "chapter3_elite_rankings"),
+        "4": ("chapter4_rankings", "chapter4_elite_rankings"),
     }
     clear_times = {}
     union_parts = []
@@ -1688,7 +1739,7 @@ def boss_is_unlocked(profile, chapter_id, boss_type):
             for unit_id in chapter_unit_ids(chapter_id)
         )
     normal_wins_key = {
-        "1": "boss_wins", "2": "chapter2_boss_wins", "3": "chapter3_boss_wins",
+        "1": "boss_wins", "2": "chapter2_boss_wins", "3": "chapter3_boss_wins", "4": "chapter4_boss_wins",
     }[chapter_id]
     return profile.get(normal_wins_key, 0) > 0
 
@@ -1931,6 +1982,33 @@ def make_chapter3_elite_reward():
     }
 
 
+def make_chapter4_reward():
+    return {
+        "uid": uuid.uuid4().hex, "unit": "chapter-4", "slot": "helmet",
+        "stars": 4, "name": "雷狐靈冠", "fixed_stat": "hp",
+        "fixed_value": fixed_value_for("4", "helmet", 4)[1],
+        "affix_stat": "hp_pct", "affix_value": 0.25, "achievement": True,
+    }
+
+
+def make_chapter4_collection_reward():
+    return {
+        "uid": uuid.uuid4().hex, "unit": "chapter-4-collection", "slot": "boots",
+        "stars": 4, "name": "紫電踏雲靴", "fixed_stat": "attack_speed",
+        "fixed_value": fixed_value_for("4", "boots", 4)[1],
+        "affix_stat": "speed_pct", "affix_value": 0.25, "achievement": True,
+    }
+
+
+def make_chapter4_elite_reward():
+    return {
+        "uid": uuid.uuid4().hex, "unit": "chapter-4-elite", "slot": "weapon",
+        "stars": 4, "name": "九尾天雷刃", "fixed_stat": "attack",
+        "fixed_value": fixed_value_for("4", "weapon", 4)[1],
+        "affix_stat": "critical_rate", "affix_value": 0.25, "achievement": True,
+    }
+
+
 def retroactively_grant_chapter3_rewards(profile):
     """依既有第三章進度補發新開放的三件四星裝備。"""
     changed = False
@@ -1971,6 +2049,9 @@ def item_chapter_id(item):
     if item.get("chapter"):
         return str(item["chapter"])
     unit = str(item.get("unit", ""))
+    achievement_match = re.match(r"chapter-(\d+)", unit)
+    if achievement_match:
+        return achievement_match.group(1)
     return unit.split("-")[0] if unit and unit[0].isdigit() else None
 
 
@@ -2127,7 +2208,7 @@ def fixed_text(item):
 
 def item_text(item):
     chapter_id = item.get("chapter")
-    if not chapter_id and str(item.get("unit", "")).startswith(("1-", "2-")):
+    if not chapter_id and re.match(r"^[1-9]-", str(item.get("unit", ""))):
         chapter_id = str(item["unit"]).split("-")[0]
     chapter_label = f"{CHAPTERS[chapter_id]['number']}・" if chapter_id in CHAPTERS else ""
     return f"{SLOT_ICONS[item['slot']]} {chapter_label}{item['name']} {'⭐' * item['stars']}｜固定：{fixed_text(item)}｜詞條：{AFFIX_NAMES[item['affix_stat']]} +{item['affix_value']:.0%}"
@@ -2238,12 +2319,30 @@ def unit_unlocked(profile, unit_id):
         return False
     if chapter_id == "3" and profile.get("chapter2_boss_wins", 0) <= 0 and st.session_state.active_player != "__TEACHER__":
         return False
+    if chapter_id == "4" and profile.get("chapter3_boss_wins", 0) <= 0 and st.session_state.active_player != "__TEACHER__":
+        return False
     order = chapter_unit_ids(chapter_id)
     index = order.index(unit_id)
     return index == 0 or profile["unit_best_stars"][order[index - 1]] > 0
 
 
 def make_question(unit_id):
+    if unit_id == "4-1":
+        a_tenths, multiplier = random.randint(1, 99), random.randint(2, 9)
+        return {"text": f"{a_tenths / 10:.1f} × {multiplier} ＝ ?", "answer": round(a_tenths * multiplier / 10, 2)}
+    if unit_id == "4-2":
+        a_tenths, b_tenths = random.randint(1, 99), random.randint(1, 9)
+        return {"text": f"{a_tenths / 10:.1f} × {b_tenths / 10:.1f} ＝ ?", "answer": round(a_tenths * b_tenths / 100, 2)}
+    if unit_id == "4-3":
+        divisor = random.randint(2, 9)
+        quotient_tenths = random.randint(1, 50)
+        dividend_tenths = divisor * quotient_tenths
+        return {"text": f"{dividend_tenths / 10:.1f} ÷ {divisor} ＝ ?", "answer": round(quotient_tenths / 10, 2)}
+    if unit_id == "4-4":
+        divisor_tenths = random.randint(1, 9)
+        quotient = random.randint(1, max(1, 99 // divisor_tenths))
+        dividend_tenths = divisor_tenths * quotient
+        return {"text": f"{dividend_tenths / 10:.1f} ÷ {divisor_tenths / 10:.1f} ＝ ?", "answer": quotient}
     if unit_id in ("3-1", "3-2"):
         add = random.choice([True, False])
         a = random.randint(10, 199) / 10
@@ -2522,6 +2621,24 @@ def process_rewards():
         st.session_state.extra_reward_messages.append(
             f"第三章九部位收藏完成，獲得100 EXP與：{item_text(reward)}"
         )
+    if (
+        all(profile["unit_best_stars"][uid] == 3 for uid in chapter_unit_ids("4"))
+        and not profile["chapter4_reward_claimed"]
+    ):
+        reward = make_chapter4_reward()
+        profile["inventory"].append(reward)
+        profile["chapter4_reward_claimed"] = True
+        st.session_state.extra_reward_messages.append(f"第四章滿星獎勵：{item_text(reward)}")
+    if has_full_three_star_set(profile, "4") and not profile["chapter4_collection_reward_claimed"]:
+        collection_levels = add_exp(profile, 100)
+        reward = make_chapter4_collection_reward()
+        profile["inventory"].append(reward)
+        profile["chapter4_collection_reward_claimed"] = True
+        if collection_levels:
+            st.session_state.collection_level_up_to = profile["level"]
+        st.session_state.extra_reward_messages.append(
+            f"第四章九部位收藏完成，獲得100 EXP與：{item_text(reward)}"
+        )
     st.session_state.earned_exp = exp_gain
     st.session_state.result_processed = True
     save_profile(profile)
@@ -2542,13 +2659,15 @@ def simulate_battle(stats, boss_type="normal"):
     player_hp = core_hp + shield_hp
     hero_interval = 1 / stats["attack_speed"]
     boss_interval = config["interval"] * (1 + elite_boss_slow)
+    effective_defense = max(0.0, stats["defense"] - config.get("defense_reduction", 0))
     received = (
-        config["damage"] * 100 / (100 + stats["defense"])
+        config["damage"] * 100 / (100 + effective_defense)
         * (1 - stats["damage_reduction_pct"])
     )
     critical_every = round(1 / stats["critical_rate"]) if stats["critical_rate"] > 0 else None
     skill_interval = config.get("skill_interval")
     next_skill = skill_interval if skill_interval else float("inf")
+    threshold_skill_used = False
     next_hero, next_boss = 0.0, boss_interval
     hero_hits = boss_hits = 0
     events = [{"time": 0.0, "boss_hp": boss_hp, "player_hp": player_hp, "text": "戰鬥開始"}]
@@ -2566,6 +2685,12 @@ def simulate_battle(stats, boss_type="normal"):
             events.append({"time": now, "boss_hp": boss_hp, "player_hp": player_hp, "text": f"勇者第{hero_hits}擊{critical_text}造成{damage:.1f}傷害"})
             if boss_hp <= 0:
                 return {"victory": True, "duration": now, "events": events}
+            if (
+                config.get("skill_hp_threshold") is not None
+                and not threshold_skill_used
+                and boss_hp <= boss_max * config["skill_hp_threshold"]
+            ):
+                next_skill = now
             next_hero += hero_interval
         elif next_boss <= next_skill:
             now = next_boss
@@ -2583,16 +2708,25 @@ def simulate_battle(stats, boss_type="normal"):
             next_boss += boss_interval
         else:
             now = next_skill
-            true_damage = config.get("true_damage", 0)
-            core_hp = max(0.0, core_hp - true_damage)
+            if config.get("skill_hp_threshold") is not None:
+                skill_damage = config.get("skill_damage", 0) * (1 - stats["damage_reduction_pct"])
+                threshold_skill_used = True
+                shield_absorbed = min(shield_hp, skill_damage)
+                shield_hp -= shield_absorbed
+                core_hp = max(0.0, core_hp - (skill_damage - shield_absorbed))
+            else:
+                skill_damage = config.get("true_damage", 0)
+                core_hp = max(0.0, core_hp - skill_damage)
             player_hp = core_hp + shield_hp
             events.append({
                 "time": now, "boss_hp": boss_hp, "player_hp": player_hp,
-                "text": f"BOSS施放技能「{config.get('skill')}」，造成{true_damage:g}真實傷害！",
+                "text": f"BOSS施放技能「{config.get('skill')}」，造成{skill_damage:g}{'真實' if config.get('true_damage') else ''}傷害！",
             })
             if core_hp <= 0:
                 return {"victory": False, "duration": now, "events": events}
-            next_skill += skill_interval
+            next_skill = (
+                next_skill + skill_interval if skill_interval else float("inf")
+            )
     raise RuntimeError("戰鬥計算超出限制")
 
 
@@ -2614,6 +2748,8 @@ def finish_battle(result):
             ("2", "elite"): ("chapter2_elite_boss_wins", "chapter2_elite_boss_exp_claimed"),
             ("3", "normal"): ("chapter3_boss_wins", "chapter3_boss_exp_claimed"),
             ("3", "elite"): ("chapter3_elite_boss_wins", "chapter3_elite_boss_exp_claimed"),
+            ("4", "normal"): ("chapter4_boss_wins", "chapter4_boss_exp_claimed"),
+            ("4", "elite"): ("chapter4_elite_boss_wins", "chapter4_elite_boss_exp_claimed"),
         }
         wins_key, exp_key = key_map[(chapter_id, boss_type)]
         profile[wins_key] += 1
@@ -2627,21 +2763,24 @@ def finish_battle(result):
             "1": "elite_reward_claimed",
             "2": "chapter2_elite_reward_claimed",
             "3": "chapter3_elite_reward_claimed",
+            "4": "chapter4_elite_reward_claimed",
         }.get(chapter_id)
         if boss_type == "elite" and reward_claimed_key and not profile[reward_claimed_key]:
             reward = {
                 "1": make_elite_reward,
                 "2": make_chapter2_elite_reward,
                 "3": make_chapter3_elite_reward,
+                "4": make_chapter4_elite_reward,
             }[chapter_id]()
             profile["inventory"].append(reward)
             profile[reward_claimed_key] = True
             reward_item_uid = reward["uid"]
-        if boss_type == "elite" and chapter_id in ("1", "2", "3"):
+        if boss_type == "elite" and chapter_id in ("1", "2", "3", "4"):
             earned_title = {
                 "1": "好像有點勇哦",
                 "2": "別小看我！",
                 "3": "一刀斬龍",
+                "4": "渡雷劫方可成仙",
             }[chapter_id]
             if earned_title not in profile["titles"]:
                 profile["titles"].append(earned_title)
@@ -2760,6 +2899,8 @@ BOSS_WIN_KEYS = {
     ("2", "elite"): "chapter2_elite_boss_wins",
     ("3", "normal"): "chapter3_boss_wins",
     ("3", "elite"): "chapter3_elite_boss_wins",
+    ("4", "normal"): "chapter4_boss_wins",
+    ("4", "elite"): "chapter4_elite_boss_wins",
 }
 SKILL_CINEMATIC_SECONDS = 1.5
 SKILL_DRAGON_FLIGHT_SECONDS = 2.0
@@ -2878,9 +3019,10 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
         if boss_image else '<div class="boss-fallback">🐉</div>'
     )
     skill_overlay = ""
+    is_lightning_skill = bool(active_skill and "天降雷劫" in active_skill.get("text", ""))
     if skill_phase == "announcement":
         skill_overlay = (
-            '<div class="skill-cinematic"><div class="skill-flame">🔥</div>'
+            f'<div class="skill-cinematic {"lightning-cinematic" if is_lightning_skill else ""}"><div class="skill-flame">{"⚡" if is_lightning_skill else "🔥"}</div>'
             f'<strong>{active_skill["text"]}</strong><div>戰鬥計時暫停</div></div>'
         )
     elif skill_impact:
@@ -2888,16 +3030,25 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
         skill_damage_text = skill_damage.group(1) if skill_damage else ""
         skill_overlay = (
             '<div class="skill-aftermath-layer">'
-            f'<div class="true-damage-number">真實傷害 -{skill_damage_text}</div>'
+            f'<div class="true-damage-number">{"雷劫傷害" if is_lightning_skill else "真實傷害"} -{skill_damage_text}</div>'
             '</div>'
         )
     elif skill_flight:
-        fire_dragon_image = effect_image_data_uri("fire-dragon-strike.webp")
-        dragon_visual = (
-            f'<img class="eastern-fire-dragon" src="{fire_dragon_image}" alt="火龍斬">'
-            if fire_dragon_image else '<div class="fire-dragon-fallback">🐉</div>'
-        )
-        skill_overlay = f'<div class="dragon-skill-layer">{dragon_visual}</div>'
+        if is_lightning_skill:
+            skill_overlay = (
+                '<div class="dragon-skill-layer lightning-skill-layer">'
+                '<div class="lightning-bolt main-bolt"></div>'
+                '<div class="lightning-bolt side-bolt left-bolt"></div>'
+                '<div class="lightning-bolt side-bolt right-bolt"></div>'
+                '<div class="lightning-impact-glow"></div></div>'
+            )
+        else:
+            fire_dragon_image = effect_image_data_uri("fire-dragon-strike.webp")
+            dragon_visual = (
+                f'<img class="eastern-fire-dragon" src="{fire_dragon_image}" alt="火龍斬">'
+                if fire_dragon_image else '<div class="fire-dragon-fallback">🐉</div>'
+            )
+            skill_overlay = f'<div class="dragon-skill-layer">{dragon_visual}</div>'
     if skill_flight:
         arena_class = "battle-arena skill-flight-arena"
     elif skill_impact:
@@ -2935,6 +3086,7 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
           align-items:center;justify-content:center;color:white;font-size:26px;text-align:center;
           background:radial-gradient(circle,#ff7a18dd,#8b0000ee);animation:skillFlash .55s ease-in-out infinite alternate;}}
         .skill-flame {{font-size:82px;animation:flameGrow .5s ease-in-out infinite alternate;}}
+        .lightning-cinematic {{background:radial-gradient(circle,#8a5cffdd,#17002fee);}}
         .skill-flight-arena {{background:#000;border-color:#000;box-shadow:none;overflow:visible;perspective:none;}}
         .skill-flight-arena:after {{display:none;}}
         .skill-flight-arena > .fighter {{visibility:hidden;}}
@@ -2944,6 +3096,18 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
           transform-origin:center;animation:dragonRush{event_sequence} 2s linear forwards;will-change:transform,opacity;}}
         .fire-dragon-fallback {{position:absolute;left:100%;top:-20%;font-size:150px;
           animation:dragonRush{event_sequence} 2s linear forwards;}}
+        .lightning-skill-layer {{background:#000;}}
+        .lightning-bolt {{position:absolute;top:-15%;left:50%;width:18px;height:125%;
+          background:linear-gradient(90deg,#6f2cff,#fff 42%,#d7b8ff 62%,#7028ff);
+          box-shadow:0 0 18px #9d55ff,0 0 50px #6e20ff,0 0 90px #b279ff;
+          clip-path:polygon(38% 0,100% 0,62% 28%,95% 28%,38% 60%,70% 60%,0 100%,28% 65%,0 65%,42% 34%,10% 34%);
+          transform-origin:top center;opacity:0;animation:lightningDrop{event_sequence} 2s ease-in forwards;}}
+        .side-bolt {{width:9px;filter:blur(.3px);opacity:0;}}
+        .left-bolt {{left:37%;transform:rotate(-8deg);animation-delay:.12s;}}
+        .right-bolt {{left:63%;transform:rotate(9deg);animation-delay:.22s;}}
+        .lightning-impact-glow {{position:absolute;left:50%;bottom:-12%;width:42vw;height:25vh;
+          transform:translateX(-50%);border-radius:50%;background:radial-gradient(ellipse,#fff 0 5%,#a55cffaa 22%,transparent 70%);
+          opacity:0;animation:lightningGlow{event_sequence} 2s ease-out forwards;}}
         .skill-aftermath-layer {{position:absolute;inset:0;z-index:10;pointer-events:none;}}
         .true-damage-number {{position:absolute;left:10%;top:20%;font-size:30px;font-weight:900;color:#fff3a0;
           text-shadow:0 2px 2px #500,0 0 10px #ff2700;opacity:0;animation:trueDamage{event_sequence} 1s ease-out forwards;}}
@@ -2967,6 +3131,8 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
         @keyframes skillFlash {{to{{filter:brightness(1.35);}}}}
         @keyframes flameGrow {{to{{transform:scale(1.35) rotate(8deg);}}}}
         @keyframes dragonRush{event_sequence} {{0%{{opacity:0;transform:translate(10%,-12%) scale(.58) rotate(-8deg);}}8%{{opacity:1;}}48%{{opacity:1;transform:translate(-105%,58%) scale(1.05) rotate(-8deg);}}88%{{opacity:1;transform:translate(-205%,138%) scale(1.22) rotate(-8deg);}}100%{{opacity:0;transform:translate(-235%,158%) scale(1.3) rotate(-8deg);}}}}
+        @keyframes lightningDrop{event_sequence} {{0%{{opacity:0;transform:translateY(-105%) scaleY(.25);}}12%{{opacity:1;}}48%{{opacity:1;transform:translateY(0) scaleY(1);}}62%{{opacity:.35;}}70%{{opacity:1;filter:brightness(1.8);}}100%{{opacity:0;transform:translateY(8%) scaleY(1.04);}}}}
+        @keyframes lightningGlow{event_sequence} {{0%,35%{{opacity:0;transform:translateX(-50%) scale(.2);}}52%{{opacity:1;transform:translateX(-50%) scale(1.4);}}100%{{opacity:0;transform:translateX(-50%) scale(2);}}}}
         @keyframes trueDamage{event_sequence} {{0%{{opacity:0;transform:translateY(25px) scale(.5);}}18%{{opacity:1;transform:translateY(0) scale(1.25);}}100%{{opacity:0;transform:translateY(-38px) scale(.95);}}}}
         @keyframes arenaImpact{event_sequence} {{0%,100%{{transform:translate(0,0);filter:none;}}8%{{transform:translate(-12px,6px);filter:brightness(1.5);}}18%{{transform:translate(12px,-6px);}}30%{{transform:translate(-9px,-5px);}}44%{{transform:translate(8px,5px);}}62%{{transform:translate(-5px,0);filter:brightness(1.15);}}}}
         @media (max-width:600px) {{
@@ -3008,11 +3174,21 @@ def render_chapter_boss_card(chapter_id, boss_type, unlocked):
             abilities.append(
                 f"暴擊率 {config['critical_rate']:.0%}（每第 5 次攻擊必定暴擊，造成 1.5 倍傷害）"
             )
-        if config.get("skill"):
+        if config.get("defense_reduction"):
             abilities.append(
-                f"技能「{config['skill']}」：每 {config['skill_interval']:g} 秒造成 "
-                f"{config['true_damage']:g} 真實傷害"
+                f"被動：戰鬥期間勇者防禦降低 {config['defense_reduction']}（最低為0；傷害減免仍有效）"
             )
+        if config.get("skill"):
+            if config.get("skill_hp_threshold") is not None:
+                abilities.append(
+                    f"技能「{config['skill']}」：血量首次低於 {config['skill_hp_threshold']:.0%} 時，"
+                    f"造成 {config['skill_damage']:g} 傷害（可被傷害減免抵銷）"
+                )
+            else:
+                abilities.append(
+                    f"技能「{config['skill']}」：每 {config['skill_interval']:g} 秒造成 "
+                    f"{config['true_damage']:g} 真實傷害"
+                )
         info_col.write("**能力／技能：**" + ("；".join(abilities) if abilities else "無"))
         if button_col.button(
             "開始挑戰" if unlocked else "尚未解鎖",
@@ -3287,6 +3463,8 @@ elif st.session_state.screen == "admin_panel":
                     f"第二章菁英BOSS：{detail_profile.get('chapter2_elite_boss_wins', 0)}次",
                     f"第三章一般BOSS：{detail_profile.get('chapter3_boss_wins', 0)}次",
                     f"第三章菁英BOSS：{detail_profile.get('chapter3_elite_boss_wins', 0)}次",
+                    f"第四章一般BOSS：{detail_profile.get('chapter4_boss_wins', 0)}次",
+                    f"第四章菁英BOSS：{detail_profile.get('chapter4_elite_boss_wins', 0)}次",
                 ]
                 st.caption("｜".join(boss_progress))
 
@@ -3316,7 +3494,16 @@ elif st.session_state.screen == "admin_panel":
                 )
                 for item in sorted_inventory:
                     source_id = item_chapter_id(item)
-                    source = CHAPTERS[source_id]["number"] if source_id in CHAPTERS else "成就／BOSS"
+                    unit_key = str(item.get("unit", ""))
+                    if item.get("achievement"):
+                        if unit_key.endswith("-elite") and source_id in CHAPTERS:
+                            source = f"成就／{CHAPTERS[source_id]['number']}菁英BOSS"
+                        elif source_id in CHAPTERS:
+                            source = f"成就／{CHAPTERS[source_id]['number']}"
+                        else:
+                            source = "成就"
+                    else:
+                        source = CHAPTERS[source_id]["number"] if source_id in CHAPTERS else "其他"
                     inventory_rows.append({
                         "穿戴": "✅" if detail_profile["equipment"].get(item["slot"]) == item["uid"] else "",
                         "部位": f"{SLOT_ICONS[item['slot']]} {SLOT_NAMES[item['slot']]}",
@@ -3887,7 +4074,7 @@ elif st.session_state.screen == "menu":
             cols[2].button("🔒 尚未解鎖", disabled=True, key=f"locked_{unit_id}", use_container_width=True)
             cols[3].button("🎫 尚未通關", disabled=True, key=f"sweep_locked_{unit_id}", use_container_width=True)
     boss_unlocked = all(profile["unit_best_stars"][uid] == 3 for uid in current_unit_ids)
-    normal_win_keys = {"1": "boss_wins", "2": "chapter2_boss_wins", "3": "chapter3_boss_wins"}
+    normal_win_keys = {"1": "boss_wins", "2": "chapter2_boss_wins", "3": "chapter3_boss_wins", "4": "chapter4_boss_wins"}
     elite_unlocked = profile.get(normal_win_keys[chapter_id], 0) > 0
     st.write("### 章節 BOSS")
     render_chapter_boss_card(chapter_id, "normal", boss_unlocked)
@@ -3910,13 +4097,20 @@ elif st.session_state.screen == "menu":
             st.success("第二章三星全裝收藏已完成：★★★★ 乘除疾風戰靴｜固定：攻擊速度 +0.13/秒｜詞條：攻擊速度 +25%")
         if profile["chapter2_elite_reward_claimed"]:
             st.success("第二章菁英征服已完成：★★★★ 乘除霸主盾｜固定：防禦力 +7｜詞條：HP +25%")
-    else:
+    elif chapter_id == "3":
         if profile["chapter3_reward_claimed"]:
             st.success("第三章滿星成就已完成：★★★★ 龍鱗守護鎧｜固定：防禦力 +15｜詞條：防禦力 +25%")
         if profile["chapter3_collection_reward_claimed"]:
             st.success("第三章三星全裝收藏已完成：100 EXP＋★★★★ 龍心腰帶｜固定：HP +25｜詞條：HP +25%")
         if profile["chapter3_elite_reward_claimed"]:
             st.success("第三章菁英征服已完成：★★★★ 烈焰龍王戒｜第一擊額外扣除菁英BOSS血量17%｜對菁英BOSS傷害 +25%")
+    else:
+        if profile["chapter4_reward_claimed"]:
+            st.success(f"第四章滿星成就已完成：★★★★ 雷狐靈冠｜固定：HP +{fixed_value_for('4', 'helmet', 4)[1]:g}｜詞條：HP +25%")
+        if profile["chapter4_collection_reward_claimed"]:
+            st.success(f"第四章三星全裝收藏已完成：100 EXP＋★★★★ 紫電踏雲靴｜固定：攻擊速度 +{fixed_value_for('4', 'boots', 4)[1]:.2f}/秒｜詞條：攻擊速度 +25%")
+        if profile["chapter4_elite_reward_claimed"]:
+            st.success(f"第四章菁英征服已完成：★★★★ 九尾天雷刃｜固定：攻擊力 +{fixed_value_for('4', 'weapon', 4)[1]:g}｜詞條：暴擊率 +25%")
     if st.session_state.active_player == "__TEACHER__":
         if st.button("返回老師管理後台"):
             st.session_state.active_player = None
@@ -4556,6 +4750,11 @@ elif st.session_state.screen in {"backpack", "gallery"}:
                     ("chapter-3-collection", "龍心腰帶", "belt", "收集第三章九部位三星", "collection"),
                     ("chapter-3-elite", "烈焰龍王戒", "ring", "首次擊敗第三章菁英BOSS「烈焰龍王」", "elite"),
                 ],
+                "4": [
+                    ("chapter-4", "雷狐靈冠", "helmet", "完成第四章所有三星單元", "unit"),
+                    ("chapter-4-collection", "紫電踏雲靴", "boots", "收集第四章九部位三星", "collection"),
+                    ("chapter-4-elite", "九尾天雷刃", "weapon", "首次擊敗第四章菁英BOSS「九尾天狐」", "elite"),
+                ],
             }
             owned_four_slots = collected_achievement_slots(profile, 4)
             st.write(f"#### 全系列四星部位 {len(owned_four_slots)}/9")
@@ -4564,7 +4763,7 @@ elif st.session_state.screen in {"backpack", "gallery"}:
             if missing:
                 st.caption(f"尚缺部位：{'、'.join(missing)}。四星九部位集滿前，成就裝備不會重複部位。")
             else:
-                st.success("四星九部位已全部收藏！下一件成就裝備開始進入五星輪替。")
+                st.success("四星九部位已全部收藏！後續章節四星裝備可用來更新更高固定值的同部位裝備。")
             if not four_star_specs[gallery_chapter]:
                 st.info("第三章四星成就裝備尚未開放；目前可先收集九部位三星裝備並測試BOSS難度。")
             reward_cols = st.columns(3)
@@ -4588,6 +4787,7 @@ elif st.session_state.screen in {"backpack", "gallery"}:
                         "1": "boss_wins",
                         "2": "chapter2_boss_wins",
                         "3": "chapter3_boss_wins",
+                        "4": "chapter4_boss_wins",
                     }[gallery_chapter], 0) > 0
                     if col.button("前往菁英BOSS", key=f"elite_go_{unit_key}", disabled=not elite_ready, use_container_width=True):
                         st.session_state.selected_chapter = gallery_chapter
@@ -4616,8 +4816,8 @@ elif st.session_state.screen == "quiz":
         with st.form("answer_form"):
             st.number_input(
                 "你的答案", value=None,
-                step=0.01 if st.session_state.selected_unit.startswith("3-") else 1.0,
-                format="%.2f" if st.session_state.selected_unit.startswith("3-") else "%.0f",
+                step=0.01 if st.session_state.selected_unit.startswith(("3-", "4-")) else 1.0,
+                format="%.2f" if st.session_state.selected_unit.startswith(("3-", "4-")) else "%.0f",
                 key="answer_input",
                 placeholder="輸入後按 Enter",
             )
@@ -4740,12 +4940,27 @@ elif st.session_state.screen == "boss_ready":
     st.write("### BOSS 能力與技能")
     st.write(f"BOSS HP：{config['hp']}｜每{config['interval']:g}秒攻擊{config['damage']}")
     if config.get("critical_rate"):
-        st.warning(f"⚠️ BOSS特殊能力：暴擊率 {config['critical_rate']:.0%}；每第5次攻擊必定暴擊，造成1.5倍傷害。")
-    if config.get("skill"):
-        st.error(
-            f"🔥 BOSS技能「{config['skill']}」：每{config['skill_interval']:g}秒造成"
-            f"{config['true_damage']:g}真實傷害，無法被防禦或減傷詞條抵消。"
+        st.warning(
+            f"⚠️ BOSS特殊能力：暴擊率 {config['critical_rate']:.0%}；"
+            f"每第{round(1 / config['critical_rate'])}次攻擊必定暴擊，造成1.5倍傷害。"
         )
+    if config.get("defense_reduction"):
+        st.warning(
+            f"⚡ BOSS被動：戰鬥期間勇者防禦降低 {config['defense_reduction']}（最低為0）；"
+            "受到傷害降低詞條仍可生效。"
+        )
+    if config.get("skill"):
+        if config.get("skill_hp_threshold") is not None:
+            st.error(
+                f"⚡ BOSS技能「{config['skill']}」：BOSS血量首次低於"
+                f"{config['skill_hp_threshold']:.0%}時發動一次，造成{config['skill_damage']:g}傷害；"
+                "不計算防禦，但可被受到傷害降低與開場護盾抵銷。"
+            )
+        else:
+            st.error(
+                f"🔥 BOSS技能「{config['skill']}」：每{config['skill_interval']:g}秒造成"
+                f"{config['true_damage']:g}真實傷害，無法被防禦或減傷詞條抵消。"
+            )
     if has_cleared:
         st.info(f"預估{'獲勝' if result['victory'] else '失敗'}，約 {result['duration']:.2f} 秒結束。")
     else:
