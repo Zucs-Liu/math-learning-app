@@ -970,36 +970,127 @@ def apply_login_background():
         f"""
         <style>
         .stApp {{
+            background: #090a18;
+            isolation: isolate;
+        }}
+        .stApp::before {{
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            pointer-events: none;
             background:
-                linear-gradient(90deg, rgba(7, 10, 25, .30), rgba(7, 10, 25, .10)),
-                url('{background}') center center / cover fixed no-repeat;
+                linear-gradient(rgba(7, 10, 25, .12), rgba(7, 10, 25, .28)),
+                url('{background}') center top / contain no-repeat,
+                #090a18;
         }}
         .stMainBlockContainer, [data-testid="stMainBlockContainer"] {{
-            width: min(720px, calc(100% - 32px));
-            max-width: 720px;
-            margin-left: 2vw;
-            margin-right: auto;
-            margin-top: 18px;
-            padding: 1.25rem 1.5rem 2rem;
-            border-radius: 24px;
-            background: rgba(255, 255, 255, .84);
-            box-shadow: 0 18px 60px rgba(0, 0, 0, .28);
-            backdrop-filter: blur(7px);
+            width: min(560px, calc(100% - 32px));
+            max-width: 560px;
+            margin: 92px auto 30px !important;
+            padding: 1rem 1.25rem 2rem !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
         }}
         .stMainBlockContainer h1, [data-testid="stMainBlockContainer"] h1 {{
-            margin-top: 0 !important;
-            padding-top: 0 !important;
+            position: fixed;
+            z-index: 10;
+            top: 4.15rem;
+            left: .8rem;
+            margin: 0 !important;
+            padding: .15rem .3rem !important;
+            color: white !important;
+            text-shadow: 0 3px 12px rgba(0,0,0,.9);
+        }}
+        [data-testid="stRadio"] > div,
+        [data-testid="stCheckbox"],
+        [data-testid="stTextInput"] input,
+        [data-testid="stButton"] button {{
+            border-radius: 14px !important;
+        }}
+        [data-testid="stRadio"] > div,
+        [data-testid="stCheckbox"] {{
+            width: fit-content;
+            padding: .45rem .8rem;
+            background: rgba(255,255,255,.88);
+            border: 1px solid rgba(255,255,255,.78);
+            box-shadow: 0 5px 18px rgba(0,0,0,.18);
+        }}
+        [data-testid="stRadio"] {{
+            width: fit-content !important;
+            margin-left: 0 !important;
+            margin-right: auto !important;
+        }}
+        [data-testid="stRadio"] > label {{
+            width: 100%;
+            text-align: left;
+            justify-content: flex-start;
+        }}
+        [data-testid="stTextInput"] {{
+            width: min(320px, 100%) !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }}
+        [data-testid="stTextInput"] label,
+        [data-testid="stRadio"] label,
+        [data-testid="stCheckbox"] label,
+        [data-testid="stTabs"] button {{
+            font-weight: 700 !important;
+        }}
+        [data-testid="stTextInput"] > label,
+        [data-testid="stRadio"] > label {{
+            color: white !important;
+            text-shadow: 0 2px 7px rgba(0,0,0,.95);
+        }}
+        [data-testid="stTabs"] [role="tablist"] {{
+            width: min(320px, 100%);
+            margin-left: auto;
+            margin-right: auto;
+            padding: .18rem .45rem;
+            border-radius: 14px;
+            background: rgba(255,255,255,.88);
+            box-shadow: 0 5px 18px rgba(0,0,0,.18);
+        }}
+        [data-testid="stTabs"] [role="tab"] {{
+            flex: 1 1 50%;
+            justify-content: center;
         }}
         @media (max-width: 600px) {{
-            .stApp {{ background-position: 58% center; }}
-            .stMainBlockContainer, [data-testid="stMainBlockContainer"] {{
-                width: calc(100% - 16px);
-                margin: 8px;
-                padding: .8rem .9rem 1.5rem;
-                border-radius: 18px;
-                background: rgba(255, 255, 255, .82);
+            .stApp::before {{
+                background:
+                    linear-gradient(rgba(7,10,25,.08), rgba(7,10,25,.24)),
+                    url('{background}') center top / cover no-repeat;
             }}
-            .stMainBlockContainer h1, [data-testid="stMainBlockContainer"] h1 {{ font-size: 2.15rem !important; }}
+            .stMainBlockContainer, [data-testid="stMainBlockContainer"] {{
+                width: min(88vw, 430px);
+                margin: 30px auto 24px !important;
+                padding: .5rem 0 1.25rem !important;
+            }}
+            .stMainBlockContainer h1, [data-testid="stMainBlockContainer"] h1 {{
+                font-size: 2rem !important;
+                top: 4.05rem;
+                left: .35rem;
+            }}
+            [data-testid="stRadio"], [data-testid="stTabs"],
+            [data-testid="stCheckbox"],
+            [data-testid="stButton"] {{
+                max-width: 390px;
+                margin-left: auto;
+                margin-right: auto;
+            }}
+            [data-testid="stTextInput"] {{
+                width: min(250px, 76vw) !important;
+            }}
+            [data-testid="stTabs"] [role="tablist"] {{
+                width: min(250px, 76vw);
+            }}
+            [data-testid="stTextInput"] input {{
+                background: rgba(255,255,255,.90) !important;
+                border: 1px solid rgba(255,255,255,.82) !important;
+                box-shadow: 0 5px 18px rgba(0,0,0,.20);
+            }}
         }}
         </style>
         """,
