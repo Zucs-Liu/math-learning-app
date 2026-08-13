@@ -467,6 +467,17 @@ def init_db():
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS mailbox (
+                id {"BIGSERIAL PRIMARY KEY" if USE_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
+                student_code TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                message TEXT NOT NULL,
+                reward_json TEXT,
+                is_read INTEGER NOT NULL DEFAULT 0,
+                is_claimed INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
+            );
             """
         )
         db.execute("INSERT OR IGNORE INTO settings(key, value) VALUES('registration_enabled', '1')")
@@ -1200,10 +1211,74 @@ def submit_game_feedback(student_code, category, message):
         )
 
 
+def send_mail(student_code, subject, message, reward=None, claimed=False):
+    reward_json = json.dumps(reward, ensure_ascii=False) if reward else None
+    with db_connection() as db:
+        db.execute(
+            "INSERT INTO mailbox(student_code, subject, message, reward_json, is_read, is_claimed, created_at) "
+            "VALUES(?, ?, ?, ?, 0, ?, ?)",
+            (student_code, subject, message.strip(), reward_json, 1 if claimed else 0,
+             database_timestamp()),
+        )
+
+
+def mailbox_rows(student_code):
+    with db_connection() as db:
+        rows = [dict(row) for row in db.execute(
+            "SELECT id, subject, message, reward_json, is_read, is_claimed, created_at "
+            "FROM mailbox WHERE student_code=? "
+            "ORDER BY is_read ASC, is_claimed ASC, id DESC",
+            (student_code,),
+        ).fetchall()]
+    for row in rows:
+        row["reward"] = json.loads(row.pop("reward_json")) if row.get("reward_json") else None
+        row["created_at"] = taipei_time_text(row["created_at"])
+    return rows
+
+
+def unread_mail_count(student_code):
+    with db_connection() as db:
+        row = db.execute(
+            "SELECT COUNT(*) AS count FROM mailbox WHERE student_code=? AND is_read=0",
+            (student_code,),
+        ).fetchone()
+    return int(row["count"] or 0)
+
+
+def mark_mail_read(mail_id, student_code):
+    with db_connection() as db:
+        db.execute(
+            "UPDATE mailbox SET is_read=1 WHERE id=? AND student_code=?",
+            (mail_id, student_code),
+        )
+
+
+def claim_mail_reward(mail_id, student_code):
+    with db_connection() as db:
+        row = db.execute(
+            "SELECT reward_json, is_claimed FROM mailbox WHERE id=? AND student_code=?",
+            (mail_id, student_code),
+        ).fetchone()
+    if not row or row["is_claimed"] or not row["reward_json"]:
+        return False
+    reward = json.loads(row["reward_json"])
+    profile = get_profile()
+    profile["coins"] += int(reward.get("coins", 0))
+    profile["sweep_tickets"] += int(reward.get("sweep_tickets", 0))
+    profile["smelting_stones"] += int(reward.get("smelting_stones", 0))
+    save_profile(profile)
+    with db_connection() as db:
+        db.execute(
+            "UPDATE mailbox SET is_read=1, is_claimed=1 WHERE id=? AND student_code=?",
+            (mail_id, student_code),
+        )
+    return True
+
+
 def game_feedback_rows():
     with db_connection() as db:
         rows = [dict(row) for row in db.execute(
-            "SELECT f.id AS 編號, p.real_name AS 正式姓名, p.hero_name AS 勇者名稱, "
+            "SELECT f.id AS 編號, f.student_code AS 學生代碼, p.real_name AS 正式姓名, p.hero_name AS 勇者名稱, "
             "f.category AS 問題分類, f.message AS 回饋內容, f.created_at AS 送出時間 "
             "FROM game_feedback f JOIN players p ON p.student_code=f.student_code "
             "ORDER BY f.id DESC"
@@ -3080,6 +3155,44 @@ elif st.session_state.screen == "admin_panel":
                 ]
             st.caption(f"目前顯示 {len(visible_feedback)} 則回饋，最新回饋排在最上方。")
             st.dataframe(visible_feedback, hide_index=True, use_container_width=True)
+            feedback_choices = {
+                f"#{row['編號']}｜{row['正式姓名']}｜{row['問題分類']}": row
+                for row in visible_feedback
+            }
+            selected_feedback_label = st.selectbox(
+                "選擇要回覆的反饋", list(feedback_choices), key="admin_feedback_reply_target"
+            )
+            selected_feedback = feedback_choices[selected_feedback_label]
+            st.caption("學生問題：" + selected_feedback["回饋內容"])
+            with st.form("admin_feedback_reply_form", clear_on_submit=True):
+                reply_message = st.text_area(
+                    "老師回覆", placeholder="輸入要寄到勇者信箱的內容……", max_chars=2000
+                )
+                st.caption("如需補發獎勵，可填寫附件；沒有則保持為0。")
+                reward_cols = st.columns(3)
+                reward_coins = reward_cols[0].number_input("金幣", min_value=0, step=100)
+                reward_tickets = reward_cols[1].number_input("擊殺券", min_value=0, step=1)
+                reward_stones = reward_cols[2].number_input("融煉石", min_value=0, step=1)
+                reply_submitted = st.form_submit_button(
+                    "寄出回覆", type="primary", use_container_width=True
+                )
+            if reply_submitted:
+                if not reply_message.strip():
+                    st.warning("請先輸入回覆內容。")
+                else:
+                    reward = {
+                        "coins": int(reward_coins),
+                        "sweep_tickets": int(reward_tickets),
+                        "smelting_stones": int(reward_stones),
+                    }
+                    reward = {key: value for key, value in reward.items() if value > 0}
+                    send_mail(
+                        selected_feedback["學生代碼"],
+                        f"老師回覆｜{selected_feedback['問題分類']}",
+                        reply_message,
+                        reward or None,
+                    )
+                    st.success("回覆已寄到學生的勇者信箱。")
         else:
             st.info("目前還沒有學生送出遊戲反饋。")
     if st.button("登出管理後台"):
@@ -3118,7 +3231,12 @@ elif st.session_state.screen == "home":
     if sync_daily_tasks(profile):
         save_profile(profile)
     if profile.get("retro_reward_notice"):
-        st.success("🎁 補發獎勵：" + "；".join(profile["retro_reward_notice"]) + "。可到背包查看。")
+        for notice in profile["retro_reward_notice"]:
+            send_mail(
+                st.session_state.active_player, "系統補發通知", notice,
+                claimed=True,
+            )
+        st.success("📬 系統補發內容已收進勇者信箱；獎勵先前已直接入帳。")
         profile["retro_reward_notice"] = []
         save_profile(profile)
 
@@ -3211,9 +3329,14 @@ elif st.session_state.screen == "home":
         st.session_state.screen = "daily_tasks"
         st.rerun()
     nav3[0].button("🥚 寵物召喚｜尚未開放", disabled=True, use_container_width=True)
-    if nav3[1].button("💬 遊戲反饋", use_container_width=True):
+    if nav3[1].button("💬 問題回報", use_container_width=True):
         st.session_state.scroll_feedback_to_top = True
         st.session_state.screen = "feedback"
+        st.rerun()
+    mail_count = unread_mail_count(st.session_state.active_player)
+    mail_label = f"📬 勇者信箱（{mail_count}）" if mail_count else "📭 勇者信箱"
+    if nav3[2].button(mail_label, use_container_width=True):
+        st.session_state.screen = "mailbox"
         st.rerun()
 
     if st.session_state.active_player == "__TEACHER__":
@@ -3271,6 +3394,51 @@ elif st.session_state.screen == "feedback":
             )
             st.success("回饋已送給老師，謝謝你幫忙改善遊戲！")
     render_bottom_home_button("feedback")
+
+elif st.session_state.screen == "mailbox":
+    scroll_page_to_top("scroll_mailbox_to_top")
+    st.subheader("📬 勇者信箱")
+    mails = mailbox_rows(st.session_state.active_player)
+    mailbox_filter = st.radio(
+        "信件分類", ["未閱讀", "已閱讀"], horizontal=True, key="mailbox_filter"
+    )
+    visible_mails = [
+        mail for mail in mails
+        if bool(mail["is_read"]) == (mailbox_filter == "已閱讀")
+    ]
+    if not visible_mails:
+        st.info(f"目前沒有{mailbox_filter}信件。")
+    for mail in visible_mails:
+        reward = mail.get("reward") or {}
+        reward_parts = []
+        if reward.get("coins"):
+            reward_parts.append(f"🪙 金幣 ×{reward['coins']}")
+        if reward.get("sweep_tickets"):
+            reward_parts.append(f"🎫 擊殺券 ×{reward['sweep_tickets']}")
+        if reward.get("smelting_stones"):
+            reward_parts.append(f"💎 融煉石 ×{reward['smelting_stones']}")
+        claimed_label = "｜✅ 已領取" if mail["is_claimed"] else ""
+        with st.expander(f"{mail['subject']}｜{mail['created_at']}{claimed_label}"):
+            st.write(mail["message"])
+            if reward_parts:
+                st.info("附件獎勵：" + "、".join(reward_parts))
+            if reward_parts and not mail["is_claimed"]:
+                if st.button(
+                    "領取獎勵", key=f"claim_mail_{mail['id']}",
+                    type="primary", use_container_width=True,
+                ):
+                    if claim_mail_reward(mail["id"], st.session_state.active_player):
+                        st.success("獎勵已領取！")
+                    st.rerun()
+            elif not mail["is_read"]:
+                if st.button(
+                    "標示為已閱讀", key=f"read_mail_{mail['id']}",
+                    use_container_width=True,
+                ):
+                    mark_mail_read(mail["id"], st.session_state.active_player)
+                    st.rerun()
+    st.caption("已閱讀或已領取的信件會移至已閱讀清單；已領取信件排列在較下方。")
+    render_bottom_home_button("mailbox")
 
 elif st.session_state.screen == "character_stats":
     profile = get_profile()
@@ -3346,7 +3514,12 @@ elif st.session_state.screen == "menu":
     if sync_daily_tasks(profile):
         save_profile(profile)
     if profile.get("retro_reward_notice"):
-        st.success("🎁 補發獎勵：" + "；".join(profile["retro_reward_notice"]) + "。可到背包的消耗道具與成就稱號查看。")
+        for notice in profile["retro_reward_notice"]:
+            send_mail(
+                st.session_state.active_player, "系統補發通知", notice,
+                claimed=True,
+            )
+        st.success("📬 系統補發內容已收進勇者信箱；獎勵先前已直接入帳。")
         profile["retro_reward_notice"] = []
         save_profile(profile)
     chapter_id = st.selectbox(
