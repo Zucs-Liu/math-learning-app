@@ -1122,7 +1122,7 @@ def student_ranking_rows(rows, limit=10):
 
 
 def character_ranking_tables():
-    """一次讀取與計算全部學生能力，再建立四種排序。"""
+    """一次讀取與計算全部學生能力，再建立各項角色能力排序。"""
     with db_connection() as db:
         rows = db.execute(
             "SELECT student_code, hero_name, profile_json FROM players "
@@ -1140,6 +1140,7 @@ def character_ranking_tables():
             "自己": "👤 你" if row["student_code"] == st.session_state.active_player else "",
             "頭像": profile.get("avatar_data"), "玩家": public_name,
             "等級": profile["level"], "EXP": profile["exp"],
+            "HP": round(stats["hp"], 1),
             "攻擊": round(stats["attack"], 1),
             "防禦": round(stats["defense"], 1),
             "攻速／秒": round(stats["attack_speed"], 2),
@@ -1147,12 +1148,14 @@ def character_ranking_tables():
         prepared.append(base)
     sort_keys = {
         "level": lambda row: (-row["等級"], -row["EXP"], row["玩家"]),
+        "hp": lambda row: (-row["HP"], -row["等級"], -row["EXP"], row["玩家"]),
         "attack": lambda row: (-row["攻擊"], -row["等級"], row["玩家"]),
         "defense": lambda row: (-row["防禦"], -row["等級"], row["玩家"]),
         "speed": lambda row: (-row["攻速／秒"], -row["等級"], row["玩家"]),
     }
     visible_columns = {
         "level": ("頭像", "玩家", "等級", "EXP"),
+        "hp": ("頭像", "玩家", "等級", "HP"),
         "attack": ("頭像", "玩家", "等級", "攻擊"),
         "defense": ("頭像", "玩家", "等級", "防禦"),
         "speed": ("頭像", "玩家", "等級", "攻速／秒"),
@@ -2805,6 +2808,7 @@ elif st.session_state.screen == "login":
                 st.error("管理PIN錯誤。")
 
 elif st.session_state.screen == "admin_panel":
+    st.session_state.pop("teacher_admin_target", None)
     if not st.session_state.admin_authenticated:
         st.session_state.screen = "login"
         st.rerun()
@@ -3215,8 +3219,17 @@ elif st.session_state.screen == "home":
         st.rerun()
 
     if st.session_state.active_player == "__TEACHER__":
-        if st.button("返回老師管理後台"):
+        teacher_admin_target = st.selectbox(
+            "返回老師管理後台",
+            ["建立學生", "帳號管理", "測試進度", "遊戲反饋"],
+            index=None,
+            placeholder="返回老師管理後台",
+            key="teacher_admin_target",
+            label_visibility="collapsed",
+        )
+        if teacher_admin_target:
             st.session_state.active_player = None
+            st.session_state.admin_section = teacher_admin_target
             st.session_state.screen = "admin_panel"
             st.rerun()
     elif st.button("登出學生帳號"):
@@ -3597,8 +3610,8 @@ elif st.session_state.screen == "daily_tasks":
 elif st.session_state.screen == "rankings":
     scroll_page_to_top("scroll_ranking_to_top")
     st.subheader("🏆 勇者排行榜")
-    boss_tab, level_tab, attack_tab, defense_tab, speed_tab = st.tabs(
-        ["🐉 BOSS排行", "⭐ 等級排行", "⚔️ 攻擊排行", "🛡️ 防禦排行", "💨 攻速排行"],
+    boss_tab, level_tab, hp_tab, attack_tab, defense_tab, speed_tab = st.tabs(
+        ["🐉 BOSS排行", "⭐ 等級排行", "❤️ HP排行", "⚔️ 攻擊排行", "🛡️ 防禦排行", "💨 攻速排行"],
         key="student_ranking_tabs", default="🐉 BOSS排行",
     )
     with boss_tab:
@@ -3621,6 +3634,7 @@ elif st.session_state.screen == "rankings":
             st.info("目前還沒有勇者完成這個BOSS。")
     ranking_specs = [
         (level_tab, "level", "等級相同時，以目前EXP較多者優先。"),
+        (hp_tab, "hp", "依目前等級與穿戴裝備計算HP；同值時以等級與EXP排序。"),
         (attack_tab, "attack", "依目前穿戴裝備計算攻擊力。"),
         (defense_tab, "defense", "依目前穿戴裝備計算防禦力。"),
         (speed_tab, "speed", "依目前穿戴裝備計算每秒攻擊次數。"),
