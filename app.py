@@ -955,12 +955,20 @@ def built_in_avatar_data(index):
 
 
 @st.cache_data(show_spinner=False)
+def _login_background_data_uri(filename, modified_ns):
+    """modified_ns is part of the cache key so replaced artwork reloads immediately."""
+    image_path = Path(__file__).parent / "assets" / "login" / filename
+    if not image_path.exists():
+        return ""
+    return "data:image/webp;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
+
+
 def login_background_data_uri(animated=True):
     filename = "heroes-vs-demon-animated.webp" if animated else "heroes-vs-demon.webp"
     image_path = Path(__file__).parent / "assets" / "login" / filename
     if not image_path.exists():
         return ""
-    return "data:image/webp;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
+    return _login_background_data_uri(filename, image_path.stat().st_mtime_ns)
 
 
 def apply_login_background():
