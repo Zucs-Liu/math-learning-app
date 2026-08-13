@@ -1128,7 +1128,7 @@ def apply_login_background():
                 padding: .38rem .7rem;
             }}
             [data-testid="stTextInput"] {{
-                width: min(250px, 76vw) !important;
+                width: min(125px, 42vw) !important;
             }}
             [data-testid="stTabs"] [role="tablist"] {{
                 width: min(250px, 76vw);
