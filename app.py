@@ -1090,6 +1090,28 @@ def apply_login_background():
             flex: 1 1 50%;
             justify-content: center;
         }}
+        .st-key-login_fields_row [data-testid="stHorizontalBlock"],
+        .st-key-login_actions_row [data-testid="stHorizontalBlock"] {{
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            gap: .55rem !important;
+            align-items: end !important;
+        }}
+        .st-key-login_fields_row [data-testid="stColumn"],
+        .st-key-login_actions_row [data-testid="stColumn"] {{
+            min-width: 0 !important;
+            width: 50% !important;
+            flex: 1 1 50% !important;
+        }}
+        .st-key-login_fields_row [data-testid="stTextInput"] {{
+            width: 100% !important;
+        }}
+        .st-key-login_actions_row [data-testid="stCheckbox"],
+        .st-key-login_actions_row [data-testid="stButton"] {{
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }}
         [data-testid="stButton"] {{
             width: fit-content !important;
             margin-left: auto !important;
@@ -3481,14 +3503,17 @@ elif st.session_state.screen == "login":
     if role == "學生":
         login_tab, register_tab = st.tabs(["登入", "建立新勇者"])
         with login_tab:
-            code_col, pin_col = st.columns(2, vertical_alignment="bottom")
-            code = code_col.text_input("學生代碼", placeholder="例如 A001").strip().upper()
-            pin = pin_col.text_input("6位PIN", type="password", max_chars=6, key="login_pin")
-            remember_col, login_col = st.columns(2, vertical_alignment="center")
-            keep_signed_in = remember_col.checkbox(
-                "5分鐘保持登入", value=True, key="keep_student_signed_in"
-            )
-            if login_col.button("學生登入", type="primary"):
+            with st.container(key="login_fields_row"):
+                code_col, pin_col = st.columns(2, vertical_alignment="bottom")
+                code = code_col.text_input("學生代碼", placeholder="例如 A001").strip().upper()
+                pin = pin_col.text_input("6位PIN", type="password", max_chars=6, key="login_pin")
+            with st.container(key="login_actions_row"):
+                remember_col, login_col = st.columns(2, vertical_alignment="center")
+                keep_signed_in = remember_col.checkbox(
+                    "5分鐘保持登入", value=True, key="keep_student_signed_in"
+                )
+                login_pressed = login_col.button("學生登入", type="primary")
+            if login_pressed:
                 valid, result = verify_student(code, pin)
                 if valid:
                     st.session_state.active_player = result
