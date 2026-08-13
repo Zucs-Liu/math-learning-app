@@ -964,7 +964,7 @@ def _login_background_data_uri(filename, modified_ns):
 
 
 def login_background_data_uri(animated=True):
-    filename = "heroes-vs-demon-animated.webp" if animated else "heroes-vs-demon.webp"
+    filename = "heroes-vs-demon-animated-v2.webp" if animated else "heroes-vs-demon-v2.webp"
     image_path = Path(__file__).parent / "assets" / "login" / filename
     if not image_path.exists():
         return ""
