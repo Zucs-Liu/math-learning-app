@@ -459,6 +459,14 @@ def init_db():
                 answered_at TEXT NOT NULL,
                 FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS game_feedback (
+                id {"BIGSERIAL PRIMARY KEY" if USE_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"},
+                student_code TEXT NOT NULL,
+                category TEXT NOT NULL,
+                message TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
+            );
             """
         )
         db.execute("INSERT OR IGNORE INTO settings(key, value) VALUES('registration_enabled', '1')")
@@ -1085,6 +1093,28 @@ def student_rows():
         ).fetchall()]
     for row in rows:
         row["建立時間"] = taipei_time_text(row["建立時間"])
+    return rows
+
+
+def submit_game_feedback(student_code, category, message):
+    with db_connection() as db:
+        db.execute(
+            "INSERT INTO game_feedback(student_code, category, message, created_at) "
+            "VALUES(?, ?, ?, ?)",
+            (student_code, category, message.strip(), database_timestamp()),
+        )
+
+
+def game_feedback_rows():
+    with db_connection() as db:
+        rows = [dict(row) for row in db.execute(
+            "SELECT f.id AS 編號, p.real_name AS 正式姓名, p.hero_name AS 勇者名稱, "
+            "f.category AS 問題分類, f.message AS 回饋內容, f.created_at AS 送出時間 "
+            "FROM game_feedback f JOIN players p ON p.student_code=f.student_code "
+            "ORDER BY f.id DESC"
+        ).fetchall()]
+    for row in rows:
+        row["送出時間"] = taipei_time_text(row["送出時間"])[:-3]
     return rows
 
 
@@ -2490,7 +2520,7 @@ if st.session_state.screen not in {"boss_ready", "boss_watch"}:
 
 home_return_screens = {
     "character_stats", "menu", "backpack", "gallery", "rankings", "economy", "daily_tasks",
-    "quiz", "quiz_result", "sweep_result", "boss_ready", "boss_result",
+    "feedback", "quiz", "quiz_result", "sweep_result", "boss_ready", "boss_result",
 }
 if st.session_state.get("active_player") and st.session_state.screen in home_return_screens:
     if st.button("← 回到首頁", key=f"home_return_{st.session_state.screen}"):
@@ -2601,7 +2631,9 @@ elif st.session_state.screen == "admin_panel":
             st.warning(teacher_name_error)
     st.caption("老師測試角色不需要學生代碼或額外PIN，也不會占用學生編號或學生排名。")
     st.divider()
-    create_tab, manage_tab, progress_tab = st.tabs(["建立學生", "帳號管理", "測試進度"])
+    create_tab, manage_tab, progress_tab, feedback_tab = st.tabs(
+        ["建立學生", "帳號管理", "測試進度", "遊戲反饋"]
+    )
     with create_tab:
         registration_enabled = setting_get("registration_enabled") == "1"
         new_registration_state = st.toggle("允許學生自行註冊", value=registration_enabled)
@@ -2816,6 +2848,39 @@ elif st.session_state.screen == "admin_panel":
         st.write("### 最近200筆答題紀錄")
         if attempts:
             st.dataframe(attempts, hide_index=True, use_container_width=True)
+    with feedback_tab:
+        st.write("### 學生遊戲反饋")
+        feedback_rows = game_feedback_rows()
+        if feedback_rows:
+            feedback_counts = {}
+            for feedback_row in feedback_rows:
+                category = feedback_row["問題分類"]
+                feedback_counts[category] = feedback_counts.get(category, 0) + 1
+            st.write("#### 問題分類統計")
+            st.dataframe(
+                [
+                    {"問題分類": category, "回饋數量": count}
+                    for category, count in sorted(
+                        feedback_counts.items(), key=lambda item: (-item[1], item[0])
+                    )
+                ],
+                hide_index=True,
+                use_container_width=True,
+            )
+            category_options = ["全部"] + sorted({row["問題分類"] for row in feedback_rows})
+            selected_feedback_category = st.selectbox(
+                "問題分類篩選", category_options, key="admin_feedback_category"
+            )
+            visible_feedback = feedback_rows
+            if selected_feedback_category != "全部":
+                visible_feedback = [
+                    row for row in feedback_rows
+                    if row["問題分類"] == selected_feedback_category
+                ]
+            st.caption(f"目前顯示 {len(visible_feedback)} 則回饋，最新回饋排在最上方。")
+            st.dataframe(visible_feedback, hide_index=True, use_container_width=True)
+        else:
+            st.info("目前還沒有學生送出遊戲反饋。")
     if st.button("登出管理後台"):
         st.session_state.admin_authenticated = False
         st.session_state.created_account = None
@@ -2933,6 +2998,10 @@ elif st.session_state.screen == "home":
         st.session_state.screen = "daily_tasks"
         st.rerun()
     nav3[0].button("🥚 寵物召喚｜尚未開放", disabled=True, use_container_width=True)
+    if nav3[1].button("💬 遊戲反饋", use_container_width=True):
+        st.session_state.scroll_feedback_to_top = True
+        st.session_state.screen = "feedback"
+        st.rerun()
 
     if st.session_state.active_player == "__TEACHER__":
         if st.button("返回老師管理後台"):
@@ -2944,6 +3013,36 @@ elif st.session_state.screen == "home":
         st.session_state.active_player = None
         st.session_state.screen = "login"
         st.rerun()
+
+elif st.session_state.screen == "feedback":
+    scroll_page_to_top("scroll_feedback_to_top")
+    st.subheader("💬 遊戲反饋")
+    st.info("你的回饋會直接送到老師後台，幫助老師判斷接下來要優先改善哪一部分。")
+    with st.form("game_feedback_form", clear_on_submit=True):
+        st.write("**請問勇者是在什麼情況下遇到問題？**")
+        feedback_category = st.selectbox(
+            "問題分類",
+            ["能力", "裝備", "商店", "熔煉", "關卡", "任務", "戰鬥", "延遲", "人物", "其他"],
+        )
+        feedback_message = st.text_area(
+            "請詳細描述遇到的問題",
+            placeholder="例如：在哪個畫面、按了什麼按鈕、畫面出現什麼狀況……",
+            height=220,
+            max_chars=2000,
+        )
+        feedback_submitted = st.form_submit_button(
+            "送出遊戲反饋", type="primary", use_container_width=True
+        )
+    if feedback_submitted:
+        cleaned_feedback = feedback_message.strip()
+        if len(cleaned_feedback) < 5:
+            st.warning("請至少輸入5個字，讓老師能了解發生了什麼問題。")
+        else:
+            submit_game_feedback(
+                st.session_state.active_player, feedback_category, cleaned_feedback
+            )
+            st.success("回饋已送給老師，謝謝你幫忙改善遊戲！")
+    render_bottom_home_button("feedback")
 
 elif st.session_state.screen == "character_stats":
     profile = get_profile()
