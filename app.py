@@ -3478,9 +3478,60 @@ elif st.session_state.screen in {"backpack", "gallery"}:
             backpack_items = [
                 item for item in profile["inventory"] if item["uid"] not in equipped_uids
             ]
-            st.write(f"### 未裝備物品（{len(backpack_items)}件）")
+            title_col, bulk_col = st.columns([4, 1], vertical_alignment="center")
+            title_col.write(f"### 未裝備物品（{len(backpack_items)}件）")
+            bulk_mode = st.session_state.get("bulk_dismantle_mode", False)
+            if bulk_col.button(
+                "取消多項分解" if bulk_mode else "多項分解",
+                key="toggle_bulk_dismantle",
+                use_container_width=True,
+            ):
+                st.session_state.bulk_dismantle_mode = not bulk_mode
+                st.rerun()
             st.caption("背包只顯示未穿戴裝備；點擊格子可查看、裝備或分解。每列5格，超過25件可繼續往下瀏覽。")
             sorted_items = sorted(backpack_items, key=lambda x: (-x["stars"], list(SLOT_NAMES).index(x["slot"])))
+            if bulk_mode:
+                eligible_bulk_items = [item for item in sorted_items if item["stars"] in (1, 2, 3)]
+                selected_bulk_items = [
+                    item
+                    for item in eligible_bulk_items
+                    if st.session_state.get(f"bulk_break_{item['uid']}", False)
+                ]
+                bulk_coins = sum(item["stars"] * 100 for item in selected_bulk_items)
+                bulk_stones = sum(1 for item in selected_bulk_items if item["stars"] == 3)
+                st.info(
+                    f"已選擇 {len(selected_bulk_items)} 件，可獲得 {bulk_coins} 金幣"
+                    + (f"、{bulk_stones} 顆融煉石" if bulk_stones else "")
+                    + "。四星裝備不可分解。"
+                )
+                confirm_col, clear_col = st.columns(2)
+                if confirm_col.button(
+                    "確認分解所選裝備",
+                    key="confirm_bulk_dismantle",
+                    type="primary",
+                    disabled=not selected_bulk_items,
+                    use_container_width=True,
+                ):
+                    profile["coins"] += bulk_coins
+                    profile["smelting_stones"] += bulk_stones
+                    remove_inventory_items(profile, [item["uid"] for item in selected_bulk_items])
+                    save_profile(profile)
+                    for item in selected_bulk_items:
+                        st.session_state.pop(f"bulk_break_{item['uid']}", None)
+                    st.session_state.bulk_dismantle_mode = False
+                    st.session_state.bulk_dismantle_notice = (
+                        f"已分解 {len(selected_bulk_items)} 件裝備，獲得 {bulk_coins} 金幣"
+                        + (f"與 {bulk_stones} 顆融煉石" if bulk_stones else "")
+                        + "。"
+                    )
+                    st.rerun()
+                if clear_col.button("取消並清除選取", key="clear_bulk_dismantle", use_container_width=True):
+                    for item in eligible_bulk_items:
+                        st.session_state.pop(f"bulk_break_{item['uid']}", None)
+                    st.session_state.bulk_dismantle_mode = False
+                    st.rerun()
+            if st.session_state.get("bulk_dismantle_notice"):
+                st.success(st.session_state.pop("bulk_dismantle_notice"))
             if not sorted_items:
                 st.info("完成單元後可以取得裝備。")
             for start in range(0, len(sorted_items), 5):
@@ -3494,6 +3545,14 @@ elif st.session_state.screen in {"backpack", "gallery"}:
                         item = row_items[col_index]
                         equipped = profile["equipment"].get(item["slot"]) == item["uid"]
                         label = f"{SLOT_ICONS[item['slot']]} {item['name']}\n{'⭐' * item['stars']}"
+                        if bulk_mode:
+                            col.checkbox(
+                                label,
+                                key=f"bulk_break_{item['uid']}",
+                                disabled=item["stars"] >= 4,
+                                help="四星裝備不可分解" if item["stars"] >= 4 else "勾選後可一次分解",
+                            )
+                            continue
                         with col.popover(label, use_container_width=True):
                             render_item_comparison(profile, item)
                             if st.button("裝備", key=f"grid_equip_{item['uid']}", use_container_width=True):
