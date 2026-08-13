@@ -2834,7 +2834,7 @@ elif st.session_state.screen == "admin_panel":
     st.divider()
     admin_section = st.selectbox(
         "選擇管理功能",
-        ["建立學生", "帳號管理", "測試進度", "遊戲反饋"],
+        ["建立學生", "帳號管理", "測試進度", "答題紀錄", "遊戲反饋"],
         key="admin_section",
     )
     if admin_section == "建立學生":
@@ -3002,42 +3002,32 @@ elif st.session_state.screen == "admin_panel":
         else:
             st.info("目前尚未建立學生帳號。")
     if admin_section == "測試進度":
-        rows = ranking_rows("normal", include_private_identity=True)
-        st.write("### 第一章一般BOSS最佳排名")
-        if rows:
-            render_ranking(rows)
-        else:
-            st.info("目前尚無BOSS通關紀錄。")
-        elite_rows = ranking_rows("elite", include_private_identity=True)
-        st.write("### 第一章菁英BOSS最佳排名")
-        if elite_rows:
-            render_ranking(elite_rows)
-        else:
-            st.info("目前尚無菁英BOSS通關紀錄。")
-        chapter2_rows = ranking_rows("normal", "2", include_private_identity=True)
-        st.write("### 第二章一般BOSS最佳排名")
-        if chapter2_rows:
-            render_ranking(chapter2_rows)
-        else:
-            st.info("目前尚無第二章一般BOSS通關紀錄。")
-        chapter2_elite_rows = ranking_rows("elite", "2", include_private_identity=True)
-        st.write("### 第二章菁英BOSS最佳排名")
-        if chapter2_elite_rows:
-            render_ranking(chapter2_elite_rows)
-        else:
-            st.info("目前尚無第二章菁英BOSS通關紀錄。")
-        chapter3_rows = ranking_rows("normal", "3", include_private_identity=True)
-        st.write("### 第三章一般BOSS最佳排名")
-        if chapter3_rows:
-            render_ranking(chapter3_rows)
-        else:
-            st.info("目前尚無第三章一般BOSS通關紀錄。")
-        chapter3_elite_rows = ranking_rows("elite", "3", include_private_identity=True)
-        st.write("### 第三章菁英BOSS最佳排名")
-        if chapter3_elite_rows:
-            render_ranking(chapter3_elite_rows)
-        else:
-            st.info("目前尚無第三章菁英BOSS通關紀錄。")
+        st.write("### BOSS通關進度")
+        st.caption("點擊章節名稱展開該章BOSS排名，再點一次即可收合。")
+        opened_chapter = st.session_state.get("admin_progress_chapter")
+        for chapter_id, chapter in CHAPTERS.items():
+            is_open = opened_chapter == chapter_id
+            chapter_label = f"{'▼' if is_open else '▶'} {chapter['number']}｜{chapter['name']} BOSS"
+            if st.button(
+                chapter_label,
+                key=f"admin_progress_toggle_{chapter_id}",
+                use_container_width=True,
+            ):
+                st.session_state.admin_progress_chapter = None if is_open else chapter_id
+                st.rerun()
+            if is_open:
+                for boss_type, boss_label in (("normal", "一般BOSS"), ("elite", "菁英BOSS")):
+                    boss_name = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]["name"]
+                    st.write(f"#### {boss_label}｜{boss_name} 最佳排名")
+                    boss_rows = ranking_rows(
+                        boss_type, chapter_id, include_private_identity=True
+                    )
+                    if boss_rows:
+                        render_ranking(boss_rows)
+                    else:
+                        st.info(f"目前尚無{boss_label}通關紀錄。")
+
+    if admin_section == "答題紀錄":
         with db_connection() as db:
             attempts = [dict(row) for row in db.execute(
                 "SELECT p.student_code AS 學生代碼, p.real_name AS 正式姓名, "
@@ -3051,6 +3041,8 @@ elif st.session_state.screen == "admin_panel":
         st.write("### 最近200筆答題紀錄")
         if attempts:
             st.dataframe(attempts, hide_index=True, use_container_width=True)
+        else:
+            st.info("目前尚無答題紀錄。")
     if admin_section == "遊戲反饋":
         st.write("### 學生遊戲反饋")
         feedback_rows = game_feedback_rows()
@@ -3221,7 +3213,7 @@ elif st.session_state.screen == "home":
     if st.session_state.active_player == "__TEACHER__":
         teacher_admin_target = st.selectbox(
             "返回老師管理後台",
-            ["建立學生", "帳號管理", "測試進度", "遊戲反饋"],
+            ["建立學生", "帳號管理", "測試進度", "答題紀錄", "遊戲反饋"],
             index=None,
             placeholder="返回老師管理後台",
             key="teacher_admin_target",
