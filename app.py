@@ -50,6 +50,7 @@ st.markdown(
 
 MAX_QUESTIONS = 20
 PROFILE_CACHE_SECONDS = 300
+SHORT_LOGIN_SECONDS = 300
 BOSS_CONFIGS = {
     "1_normal": {"name": "荒野魔狼", "image": "wild-wolf.webp", "hp": 600, "damage": 30, "interval": 2.0, "exp": 100},
     "1_elite": {"name": "血月狼人", "image": "blood-moon-werewolf.webp", "hp": 900, "damage": 45, "interval": 1.5, "exp": 150},
@@ -498,6 +499,49 @@ def setting_set(key, value):
             (key, value),
         )
     setting_get.clear()
+
+
+def short_login_secret():
+    """Use an existing server-only secret; never store or expose the student's PIN."""
+    return str(ADMIN_PIN_SECRET or DATABASE_URL or setting_get("admin_pin_hash") or "local-math-adventure")
+
+
+def make_short_login_token(student_code):
+    expires_at = int(time.time()) + SHORT_LOGIN_SECONDS
+    payload = f"{student_code}.{expires_at}"
+    signature = hmac.new(
+        short_login_secret().encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    return f"{payload}.{signature}"
+
+
+def verify_short_login_token(token):
+    try:
+        student_code, expires_text, signature = token.rsplit(".", 2)
+        payload = f"{student_code}.{expires_text}"
+        expected = hmac.new(
+            short_login_secret().encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(signature, expected) or int(expires_text) < int(time.time()):
+            return None
+        if student_code == "__TEACHER__":
+            return None
+        with db_connection() as db:
+            exists = db.execute(
+                "SELECT 1 FROM players WHERE student_code=?", (student_code,)
+            ).fetchone()
+        return student_code if exists else None
+    except (TypeError, ValueError):
+        return None
+
+
+def remember_short_login(student_code):
+    st.query_params["resume"] = make_short_login_token(student_code)
+
+
+def clear_short_login():
+    if "resume" in st.query_params:
+        del st.query_params["resume"]
 
 
 def pin_digest(pin, salt_hex):
@@ -2414,6 +2458,13 @@ def render_chapter_boss_card(chapter_id, boss_type, unlocked):
 
 init_db()
 migrate_all_profiles_fixed_values()
+if not st.session_state.get("active_player") and st.query_params.get("resume"):
+    resumed_player = verify_short_login_token(st.query_params.get("resume"))
+    if resumed_player:
+        st.session_state.active_player = resumed_player
+        st.session_state.screen = "home"
+    else:
+        clear_short_login()
 if USE_POSTGRES and not ADMIN_PIN_SECRET:
     st.error("公開版尚未設定 ADMIN_PIN，已停止登入以保護老師後台。")
     st.info("請到 Streamlit App settings → Secrets 設定 ADMIN_PIN 與 DATABASE_URL。")
@@ -2471,10 +2522,19 @@ elif st.session_state.screen == "login":
         with login_tab:
             code = st.text_input("學生代碼", placeholder="例如 A001").strip().upper()
             pin = st.text_input("6位PIN", type="password", max_chars=6, key="login_pin")
+            keep_signed_in = st.checkbox(
+                "5分鐘內保持登入（重新整理或切回手機網頁時自動恢復）",
+                value=True,
+                key="keep_student_signed_in",
+            )
             if st.button("學生登入", type="primary", use_container_width=True):
                 valid, result = verify_student(code, pin)
                 if valid:
                     st.session_state.active_player = result
+                    if keep_signed_in:
+                        remember_short_login(result)
+                    else:
+                        clear_short_login()
                     st.session_state.screen = "home"
                     st.rerun()
                 else:
@@ -2880,6 +2940,7 @@ elif st.session_state.screen == "home":
             st.session_state.screen = "admin_panel"
             st.rerun()
     elif st.button("登出學生帳號"):
+        clear_short_login()
         st.session_state.active_player = None
         st.session_state.screen = "login"
         st.rerun()
@@ -3036,6 +3097,7 @@ elif st.session_state.screen == "menu":
             st.session_state.screen = "admin_panel"
             st.rerun()
     elif st.button("登出學生帳號"):
+        clear_short_login()
         st.session_state.active_player = None
         st.session_state.screen = "login"
         st.rerun()
