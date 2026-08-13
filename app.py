@@ -860,7 +860,6 @@ def render_avatar_editor(profile):
         avatar_col.markdown("## 🧙")
     if profile.get("gender") in {"male", "female"}:
         gender_col.write(f"**角色性別：{'男性' if profile['gender'] == 'male' else '女性'}**")
-        gender_col.caption("性別已確定，無法再次更改。")
     else:
         gender_col.warning("性別只能設定一次，並會決定後續 BOSS 戰鬥中的勇者圖片。")
         selected_gender = gender_col.radio(
@@ -936,6 +935,93 @@ def render_avatar_editor(profile):
                         st.session_state.show_builtin_avatar_picker = False
                         st.session_state.scroll_home_after_avatar = True
                         st.rerun()
+
+
+def render_compact_avatar_editor(profile):
+    with st.container(key="home_avatar_summary"):
+        avatar_col, gender_col, notice_col = st.columns([1.2, 2.2, 2], vertical_alignment="top")
+    if profile.get("avatar_data"):
+        avatar_col.image(profile["avatar_data"], width=96)
+    else:
+        avatar_col.markdown("## 🧙")
+    if avatar_col.button("點擊頭像更換", key="toggle_avatar_editor", use_container_width=True):
+        st.session_state.show_avatar_editor = not st.session_state.get("show_avatar_editor", False)
+        st.rerun()
+
+    if profile.get("gender") in {"male", "female"}:
+        gender_col.write(f"**角色性別：{'男性' if profile['gender'] == 'male' else '女性'}**")
+    else:
+        gender_col.warning("性別只能設定一次，並會影響後續 BOSS 戰鬥中的勇者圖片。")
+        selected_gender = gender_col.radio(
+            "選擇角色性別", ["male", "female"], horizontal=True,
+            format_func=lambda value: "男性" if value == "male" else "女性",
+            key="one_time_gender",
+        )
+        if gender_col.button("確認性別（設定後不能更改）", type="primary", use_container_width=True):
+            profile["gender"] = selected_gender
+            save_profile(profile)
+            st.rerun()
+
+    notice_col.markdown("#### 📢 最新消息")
+    if notice_col.button("📢 公告事項", key="open_announcements", type="primary", use_container_width=True):
+        st.session_state.scroll_announcements_to_top = True
+        st.session_state.screen = "announcements"
+        st.rerun()
+
+    if not st.session_state.get("show_avatar_editor", False):
+        return
+    st.divider()
+    editor_header, editor_close = st.columns([5, 1], vertical_alignment="center")
+    editor_header.markdown("#### 更換大頭貼")
+    if editor_close.button("關閉", key="close_avatar_editor", use_container_width=True):
+        st.session_state.show_avatar_editor = False
+        st.rerun()
+    avatar_source = st.radio(
+        "選擇更換方式", ["內建Q版大頭貼", "自行上傳大頭貼"],
+        horizontal=True, key="avatar_source",
+    )
+    if avatar_source == "自行上傳大頭貼":
+        uploaded = st.file_uploader(
+            "選擇圖片", type=["png", "jpg", "jpeg", "webp"], key="compact_avatar_upload",
+            help="圖片上限2MB，會自動縮小；只顯示於角色與排行榜。",
+        )
+        if uploaded and st.button("儲存大頭貼", type="primary", use_container_width=True):
+            try:
+                profile["avatar_data"] = avatar_from_upload(uploaded)
+                save_profile(profile)
+                st.session_state.show_avatar_editor = False
+                st.session_state.scroll_home_after_avatar = True
+                st.rerun()
+            except Exception as error:
+                st.error(f"無法處理圖片：{error}")
+        return
+
+    st.caption("選擇一張內建Q版大頭貼；選定後會自動收起選單並回到人物區。")
+    st.markdown(
+        """
+        <style>
+        @media (max-width:768px) and (orientation:portrait) {
+          [class*="st-key-compact_avatar_row_"] [data-testid="stHorizontalBlock"] {display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;gap:.18rem !important;width:100% !important;}
+          [class*="st-key-compact_avatar_row_"] [data-testid="stColumn"] {min-width:0 !important;width:calc(25% - .14rem) !important;max-width:calc(25% - .14rem) !important;flex:0 0 calc(25% - .14rem) !important;padding:0 !important;}
+          [class*="st-key-compact_avatar_row_"] [data-testid="stImage"] img {width:100% !important;height:auto !important;border-radius:8px !important;}
+          [class*="st-key-compact_avatar_row_"] button {min-height:1.9rem !important;padding:.15rem .05rem !important;font-size:.72rem !important;}
+        }
+        </style>
+        """, unsafe_allow_html=True,
+    )
+    for row_number, row_start in enumerate(range(1, 21, 4), 1):
+        with st.container(key=f"compact_avatar_row_{row_number}"):
+            columns = st.columns(4, gap="small")
+            for column, index in zip(columns, range(row_start, row_start + 4)):
+                avatar_data = built_in_avatar_data(index)
+                if avatar_data:
+                    column.image(avatar_data, use_container_width=True)
+                if column.button("使用", key=f"compact_avatar_{index}", use_container_width=True):
+                    profile["avatar_data"] = avatar_data
+                    save_profile(profile)
+                    st.session_state.show_avatar_editor = False
+                    st.session_state.scroll_home_after_avatar = True
+                    st.rerun()
 
 
 def log_attempt(unit_id):
@@ -1902,7 +1988,7 @@ def focus_answer_input():
 
 
 def scroll_page_to_top(state_key):
-    """只在剛切換頁面時，把 Streamlit 主畫面可靠地捲到頂端。"""
+    """只在剛切換頁面的第一個繪製週期回頂端，不干擾之後的手動捲動。"""
     if not st.session_state.get(state_key):
         return
     components.html(
@@ -1925,15 +2011,14 @@ def scroll_page_to_top(state_key):
                     if (node.scrollTo) node.scrollTo({top: 0, left: 0, behavior: 'instant'});
                 });
             });
-            const block = doc.querySelector('[data-testid="stMainBlockContainer"]');
-            if (block) block.scrollIntoView({block: 'start', inline: 'nearest', behavior: 'instant'});
             doc.documentElement.scrollTop = 0;
             doc.documentElement.scrollLeft = 0;
             doc.body.scrollTop = 0;
             doc.body.scrollLeft = 0;
             parent.window.scrollTo(0, 0);
         };
-        [0, 50, 150, 300, 600, 1000, 1600].forEach(delay => setTimeout(scrollTop, delay));
+        scrollTop();
+        requestAnimationFrame(() => requestAnimationFrame(scrollTop));
         </script>
         """,
         height=1,
@@ -2332,6 +2417,8 @@ BOSS_WIN_KEYS = {
     ("3", "elite"): "chapter3_elite_boss_wins",
 }
 SKILL_CINEMATIC_SECONDS = 1.5
+SKILL_DRAGON_FLIGHT_SECONDS = 2.0
+SKILL_IMPACT_SECONDS = 1.0
 
 
 def boss_has_been_cleared(profile, chapter_id, boss_type):
@@ -2350,18 +2437,40 @@ def battle_presentation_state(result, real_elapsed):
         if real_elapsed < cinematic_start:
             break
         if real_elapsed < cinematic_start + SKILL_CINEMATIC_SECONDS:
-            active_skill = event
+            active_skill = {**event, "presentation_phase": "announcement"}
+            simulated_elapsed = max(0.0, event["time"] - 0.001)
+            break
+        flight_start = cinematic_start + SKILL_CINEMATIC_SECONDS
+        if real_elapsed < flight_start + SKILL_DRAGON_FLIGHT_SECONDS:
+            active_skill = {**event, "presentation_phase": "dragon_flight"}
+            simulated_elapsed = max(0.0, event["time"] - 0.001)
+            break
+        impact_start = flight_start + SKILL_DRAGON_FLIGHT_SECONDS
+        if real_elapsed < impact_start + SKILL_IMPACT_SECONDS:
+            active_skill = {**event, "presentation_phase": "aftermath"}
             simulated_elapsed = event["time"]
             break
-        paused_seconds += SKILL_CINEMATIC_SECONDS
+        paused_seconds += (
+            SKILL_CINEMATIC_SECONDS + SKILL_DRAGON_FLIGHT_SECONDS + SKILL_IMPACT_SECONDS
+        )
         simulated_elapsed = real_elapsed - paused_seconds
-    presentation_duration = result["duration"] + len(skill_events) * SKILL_CINEMATIC_SECONDS
+    presentation_duration = result["duration"] + len(skill_events) * (
+        SKILL_CINEMATIC_SECONDS + SKILL_DRAGON_FLIGHT_SECONDS + SKILL_IMPACT_SECONDS
+    )
     return simulated_elapsed, active_skill, presentation_duration
 
 
 @st.cache_data(show_spinner=False)
 def boss_image_data_uri(filename):
     image_path = Path(__file__).parent / "assets" / "bosses" / filename
+    if not image_path.exists():
+        return ""
+    return "data:image/webp;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
+
+
+@st.cache_data(show_spinner=False)
+def effect_image_data_uri(filename):
+    image_path = Path(__file__).parent / "assets" / "effects" / filename
     if not image_path.exists():
         return ""
     return "data:image/webp;base64," + base64.b64encode(image_path.read_bytes()).decode("ascii")
@@ -2377,14 +2486,41 @@ def hero_image_data_uri(gender="male"):
 
 
 def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_skill=None, gender="male"):
+    skill_phase = active_skill.get("presentation_phase") if active_skill else None
+    skill_flight = skill_phase == "dragon_flight"
+    skill_impact = skill_phase == "aftermath"
     hero_attacking = event["text"].startswith("勇者") and active_skill is None
     boss_attacking = ("BOSS第" in event["text"] or "BOSS發動" in event["text"]) and active_skill is None
+    critical_hit = "暴擊" in event["text"]
+    hero_defeated = event.get("player_hp", 1) <= 0
+    boss_defeated = event.get("boss_hp", 1) <= 0
     hero_class = "fighter hero hero-attack" if hero_attacking else "fighter hero"
     boss_class = "fighter boss boss-attack" if boss_attacking else "fighter boss"
-    hero_hit = boss_attacking or active_skill is not None
+    # 模擬器在0秒同時建立「戰鬥開始」與勇者第一擊，因此前兩筆才是入場畫面。
+    if event_sequence <= 2:
+        hero_class += " enter-battle hero-enter"
+        boss_class += " enter-battle boss-enter"
+    if hero_defeated:
+        hero_class += " defeated"
+    if boss_defeated:
+        boss_class += " defeated"
+    hero_hit = boss_attacking or skill_impact
     boss_hit = hero_attacking
+    if hero_hit and not hero_defeated:
+        hero_class += " hit-shake"
+    if boss_hit and not boss_defeated:
+        boss_class += " hit-shake"
     hero_claws = '<div class="claw-hit hero-claw"><i></i><i></i><i></i></div>' if hero_hit else ""
     boss_claws = '<div class="claw-hit boss-claw"><i></i><i></i><i></i></div>' if boss_hit else ""
+    sword_slash = '<div class="sword-slash"></div>' if hero_attacking else ""
+    damage_match = re.search(r"造成\s*([0-9.]+)", event["text"])
+    damage_text = damage_match.group(1) if damage_match else ""
+    damage_overlay = ""
+    if damage_text and active_skill is None:
+        target_class = "damage-on-boss" if hero_attacking else "damage-on-hero"
+        critical_class = " critical-number" if critical_hit else ""
+        prefix = "暴擊 " if critical_hit else "-"
+        damage_overlay = f'<div class="damage-number {target_class}{critical_class}">{prefix}{damage_text}</div>'
     boss_config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
     boss_image = boss_image_data_uri(boss_config["image"])
     hero_image = hero_image_data_uri(gender)
@@ -2397,25 +2533,51 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
         if boss_image else '<div class="boss-fallback">🐉</div>'
     )
     skill_overlay = ""
-    if active_skill:
+    if skill_phase == "announcement":
         skill_overlay = (
             '<div class="skill-cinematic"><div class="skill-flame">🔥</div>'
             f'<strong>{active_skill["text"]}</strong><div>戰鬥計時暫停</div></div>'
         )
+    elif skill_impact:
+        skill_damage = re.search(r"造成\s*([0-9.]+)", active_skill["text"])
+        skill_damage_text = skill_damage.group(1) if skill_damage else ""
+        skill_overlay = (
+            '<div class="skill-aftermath-layer">'
+            f'<div class="true-damage-number">真實傷害 -{skill_damage_text}</div>'
+            '</div>'
+        )
+    elif skill_flight:
+        fire_dragon_image = effect_image_data_uri("fire-dragon-strike.webp")
+        dragon_visual = (
+            f'<img class="eastern-fire-dragon" src="{fire_dragon_image}" alt="火龍斬">'
+            if fire_dragon_image else '<div class="fire-dragon-fallback">🐉</div>'
+        )
+        skill_overlay = f'<div class="dragon-skill-layer">{dragon_visual}</div>'
+    if skill_flight:
+        arena_class = "battle-arena skill-flight-arena"
+    elif skill_impact:
+        arena_class = "battle-arena skill-impact-arena"
+    else:
+        arena_class = "battle-arena"
     st.markdown(
         f"""
         <style>
-        .battle-arena {{position:relative;height:250px;margin:14px 0 18px;padding:24px;
-          overflow:hidden;border-radius:22px;background:linear-gradient(#dff3ff 0 62%,#c7e5ad 62%);
-          border:2px solid #d8e1ea;display:flex;align-items:flex-end;justify-content:space-between;}}
-        .fighter {{position:relative;font-size:88px;line-height:1;text-align:center;filter:drop-shadow(0 8px 5px #0003);}}
-        .boss-portrait {{width:150px;height:150px;border-radius:22px;object-fit:cover;border:3px solid #fff;}}
-        .hero-portrait {{width:150px;height:150px;border-radius:22px;object-fit:cover;border:3px solid #fff;}}
+        .battle-arena {{position:relative;height:270px;margin:14px 0 18px;padding:24px;
+          overflow:hidden;border-radius:22px;background:radial-gradient(circle at 50% 20%,#fff9 0 8%,transparent 36%),linear-gradient(#ccecff 0 60%,#8fc96f 60% 66%,#628f48 66%);
+          border:2px solid #d8e1ea;display:flex;align-items:flex-end;justify-content:space-between;perspective:900px;isolation:isolate;}}
+        .battle-arena:after {{content:"";position:absolute;left:7%;right:7%;bottom:22px;height:34px;background:#18320d33;border-radius:50%;filter:blur(8px);z-index:-1;}}
+        .fighter {{position:relative;font-size:88px;line-height:1;text-align:center;transform-style:preserve-3d;filter:drop-shadow(0 12px 7px #0005);animation:idleFloat 1.35s ease-in-out infinite alternate;will-change:transform;}}
+        .boss-portrait,.hero-portrait {{width:168px;height:168px;object-fit:cover;border:0;border-radius:0;
+          mix-blend-mode:multiply;-webkit-mask-image:radial-gradient(ellipse 52% 58% at 50% 48%,#000 58%,#000d 72%,transparent 100%);
+          mask-image:radial-gradient(ellipse 52% 58% at 50% 48%,#000 58%,#000d 72%,transparent 100%);}}
         .boss-fallback {{font-size:100px;line-height:150px;}}
         .hero-fallback {{font-size:100px;line-height:150px;}}
         .fighter span {{display:block;margin-top:10px;font-size:20px;font-weight:700;color:#313442;}}
-        .hero-attack {{animation:heroStrike{event_sequence} .55s ease-in-out;}}
-        .boss-attack {{animation:bossStrike{event_sequence} .55s ease-in-out;}}
+        .hero-attack {{z-index:3;animation:heroStrike{event_sequence} .62s cubic-bezier(.2,.8,.2,1);}}
+        .boss-attack {{z-index:3;animation:bossStrike{event_sequence} .62s cubic-bezier(.2,.8,.2,1);}}
+        .hero-attack .hero-portrait,.boss-attack .boss-portrait {{filter:brightness(1.12) saturate(1.18);}}
+        .hit-shake .hero-portrait,.hit-shake .boss-portrait {{animation:hitShake{event_sequence} .52s ease-out;}}
+        .sword-slash {{position:absolute;z-index:6;right:-105px;top:18px;width:125px;height:125px;border-radius:50%;border-right:12px solid #fff;border-top:7px solid #6de7ff;filter:drop-shadow(0 0 8px #2ecbff);transform:rotate(28deg);animation:swordArc{event_sequence} .55s ease-out forwards;}}
         .claw-hit {{position:absolute;z-index:4;inset:8px 12px 34px;pointer-events:none;
           animation:clawFlash{event_sequence} .65s ease-out forwards;}}
         .claw-hit i {{position:absolute;left:48%;top:8%;width:8px;height:82%;border-radius:8px;
@@ -2428,15 +2590,50 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
           align-items:center;justify-content:center;color:white;font-size:26px;text-align:center;
           background:radial-gradient(circle,#ff7a18dd,#8b0000ee);animation:skillFlash .55s ease-in-out infinite alternate;}}
         .skill-flame {{font-size:82px;animation:flameGrow .5s ease-in-out infinite alternate;}}
-        @keyframes heroStrike{event_sequence} {{50%{{transform:translateX(110px) rotate(-8deg) scale(1.12);}}}}
-        @keyframes bossStrike{event_sequence} {{50%{{transform:translateX(-110px) rotate(8deg) scale(1.12);}}}}
+        .skill-flight-arena {{background:#000;border-color:#000;box-shadow:none;overflow:visible;perspective:none;}}
+        .skill-flight-arena:after {{display:none;}}
+        .skill-flight-arena > .fighter {{visibility:hidden;}}
+        .dragon-skill-layer {{position:fixed;inset:0;z-index:999999;pointer-events:none;overflow:hidden;background:#000;}}
+        .eastern-fire-dragon {{position:absolute;left:100%;top:-42%;width:min(760px,92vw);height:auto;
+          max-width:none;filter:drop-shadow(0 0 14px #ff2400) drop-shadow(0 0 36px #ff8500);
+          transform-origin:center;animation:dragonRush{event_sequence} 2s linear forwards;will-change:transform,opacity;}}
+        .fire-dragon-fallback {{position:absolute;left:100%;top:-20%;font-size:150px;
+          animation:dragonRush{event_sequence} 2s linear forwards;}}
+        .skill-aftermath-layer {{position:absolute;inset:0;z-index:10;pointer-events:none;}}
+        .true-damage-number {{position:absolute;left:10%;top:20%;font-size:30px;font-weight:900;color:#fff3a0;
+          text-shadow:0 2px 2px #500,0 0 10px #ff2700;opacity:0;animation:trueDamage{event_sequence} 1s ease-out forwards;}}
+        .skill-impact-arena {{animation:arenaImpact{event_sequence} 1s ease-in-out;}}
+        .damage-number {{position:absolute;z-index:8;top:38px;font-size:28px;font-weight:900;color:#fff;text-shadow:0 2px 2px #000,0 0 8px #e00000;animation:damageRise{event_sequence} .85s ease-out forwards;}}
+        .damage-on-hero {{left:18%;}} .damage-on-boss {{right:18%;}}
+        .critical-number {{font-size:34px;color:#ffe33b;text-shadow:0 2px 2px #5b1800,0 0 12px #ff8a00;}}
+        .defeated {{animation:defeatFall{event_sequence} .9s ease-in forwards !important;transform-origin:bottom center;}}
+        .hero-enter {{animation:heroEnter{event_sequence} .72s cubic-bezier(.18,.85,.28,1.15) both;}}
+        .boss-enter {{animation:bossEnter{event_sequence} .72s cubic-bezier(.18,.85,.28,1.15) both;}}
+        @keyframes idleFloat {{from{{transform:translateY(0) rotateX(1deg);}}to{{transform:translateY(-7px) rotateX(-2deg);}}}}
+        @keyframes heroEnter{event_sequence} {{0%{{opacity:0;transform:translateX(-95px) translateY(35px) scale(.42) rotateY(55deg);}}65%{{opacity:1;transform:translateX(18px) translateY(-16px) scale(1.12) rotateY(-8deg);}}100%{{transform:translateX(0) translateY(0) scale(1) rotateY(0);}}}}
+        @keyframes bossEnter{event_sequence} {{0%{{opacity:0;transform:translateX(95px) translateY(35px) scale(.42) rotateY(-55deg);}}65%{{opacity:1;transform:translateX(-18px) translateY(-16px) scale(1.12) rotateY(8deg);}}100%{{transform:translateX(0) translateY(0) scale(1) rotateY(0);}}}}
+        @keyframes heroStrike{event_sequence} {{0%{{transform:translateX(0) rotate(0) scale(1);}}42%{{transform:translateX(145px) translateY(-12px) rotate(-9deg) scale(1.13);}}62%{{transform:translateX(125px) rotate(5deg) scale(1.08);}}100%{{transform:translateX(0);}}}}
+        @keyframes bossStrike{event_sequence} {{0%{{transform:translateX(0) rotate(0) scale(1);}}42%{{transform:translateX(-145px) translateY(-18px) rotate(9deg) scale(1.15);}}62%{{transform:translateX(-120px) rotate(-5deg) scale(1.08);}}100%{{transform:translateX(0);}}}}
+        @keyframes swordArc{event_sequence} {{0%{{opacity:0;transform:rotate(-30deg) scale(.35);}}35%{{opacity:1;transform:rotate(35deg) scale(1.2);}}100%{{opacity:0;transform:rotate(95deg) scale(1.45);}}}}
+        @keyframes damageRise{event_sequence} {{0%{{opacity:0;transform:translateY(35px) scale(.5);}}25%{{opacity:1;transform:translateY(0) scale(1.2);}}100%{{opacity:0;transform:translateY(-50px) scale(.9);}}}}
+        @keyframes hitShake{event_sequence} {{0%,100%{{transform:translateX(0);filter:none;}}18%{{transform:translateX(-11px);filter:sepia(1) saturate(8) hue-rotate(315deg) brightness(1.35);}}38%{{transform:translateX(9px);}}58%{{transform:translateX(-6px);filter:sepia(1) saturate(8) hue-rotate(315deg);}}78%{{transform:translateX(4px);}}}}
+        @keyframes defeatFall{event_sequence} {{to{{transform:translateY(35px) rotate(78deg) scale(.82);opacity:.35;filter:grayscale(1);}}}}
         @keyframes clawFlash{event_sequence} {{0%{{opacity:0;transform:scale(1.7);}}25%{{opacity:1;transform:scale(1);}}100%{{opacity:0;transform:scale(.92);}}}}
         @keyframes skillFlash {{to{{filter:brightness(1.35);}}}}
         @keyframes flameGrow {{to{{transform:scale(1.35) rotate(8deg);}}}}
+        @keyframes dragonRush{event_sequence} {{0%{{opacity:0;transform:translate(10%,-12%) scale(.58) rotate(-8deg);}}8%{{opacity:1;}}48%{{opacity:1;transform:translate(-105%,58%) scale(1.05) rotate(-8deg);}}88%{{opacity:1;transform:translate(-205%,138%) scale(1.22) rotate(-8deg);}}100%{{opacity:0;transform:translate(-235%,158%) scale(1.3) rotate(-8deg);}}}}
+        @keyframes trueDamage{event_sequence} {{0%{{opacity:0;transform:translateY(25px) scale(.5);}}18%{{opacity:1;transform:translateY(0) scale(1.25);}}100%{{opacity:0;transform:translateY(-38px) scale(.95);}}}}
+        @keyframes arenaImpact{event_sequence} {{0%,100%{{transform:translate(0,0);filter:none;}}8%{{transform:translate(-12px,6px);filter:brightness(1.5);}}18%{{transform:translate(12px,-6px);}}30%{{transform:translate(-9px,-5px);}}44%{{transform:translate(8px,5px);}}62%{{transform:translate(-5px,0);filter:brightness(1.15);}}}}
+        @media (max-width:600px) {{
+          .battle-arena {{height:250px;padding:14px;}}
+          .eastern-fire-dragon {{width:165vw;left:105%;top:-35%;}}
+          .true-damage-number {{left:5%;top:14%;font-size:25px;}}
+        }}
         </style>
-        <div class="battle-arena">
-          <div class="{hero_class}">{hero_visual}{hero_claws}<span>勇者</span></div>
+        <div class="{arena_class}">
+          <div class="{hero_class}">{hero_visual}{hero_claws}{sword_slash}<span>勇者</span></div>
           <div class="{boss_class}">{boss_visual}{boss_claws}<span>{boss_config['name']}</span></div>
+          {damage_overlay}
           {skill_overlay}
         </div>
         """,
@@ -2520,7 +2717,7 @@ if st.session_state.screen not in {"boss_ready", "boss_watch"}:
 
 home_return_screens = {
     "character_stats", "menu", "backpack", "gallery", "rankings", "economy", "daily_tasks",
-    "feedback", "quiz", "quiz_result", "sweep_result", "boss_ready", "boss_result",
+    "announcements", "feedback", "quiz", "quiz_result", "sweep_result", "boss_ready", "boss_result",
 }
 if st.session_state.get("active_player") and st.session_state.screen in home_return_screens:
     if st.button("← 回到首頁", key=f"home_return_{st.session_state.screen}"):
@@ -2631,10 +2828,12 @@ elif st.session_state.screen == "admin_panel":
             st.warning(teacher_name_error)
     st.caption("老師測試角色不需要學生代碼或額外PIN，也不會占用學生編號或學生排名。")
     st.divider()
-    create_tab, manage_tab, progress_tab, feedback_tab = st.tabs(
-        ["建立學生", "帳號管理", "測試進度", "遊戲反饋"]
+    admin_section = st.selectbox(
+        "選擇管理功能",
+        ["建立學生", "帳號管理", "測試進度", "遊戲反饋"],
+        key="admin_section",
     )
-    with create_tab:
+    if admin_section == "建立學生":
         registration_enabled = setting_get("registration_enabled") == "1"
         new_registration_state = st.toggle("允許學生自行註冊", value=registration_enabled)
         if new_registration_state != registration_enabled:
@@ -2660,7 +2859,7 @@ elif st.session_state.screen == "admin_panel":
             account = st.session_state.created_account
             st.success("帳號已建立，PIN只會在這裡顯示，請交給學生保存。")
             st.code(f"正式姓名：{account['real_name']}\n勇者名稱：{account['hero_name']}\n學生代碼：{account['student_code']}\nPIN：{account['pin']}")
-    with manage_tab:
+    if admin_section == "帳號管理":
         students = student_rows()
         if students:
             st.dataframe(students, hide_index=True, use_container_width=True)
@@ -2798,7 +2997,7 @@ elif st.session_state.screen == "admin_panel":
                 st.success(f"{selected_code} 的新PIN：{new_pin}（請立即記下）")
         else:
             st.info("目前尚未建立學生帳號。")
-    with progress_tab:
+    if admin_section == "測試進度":
         rows = ranking_rows("normal", include_private_identity=True)
         st.write("### 第一章一般BOSS最佳排名")
         if rows:
@@ -2848,7 +3047,7 @@ elif st.session_state.screen == "admin_panel":
         st.write("### 最近200筆答題紀錄")
         if attempts:
             st.dataframe(attempts, hide_index=True, use_container_width=True)
-    with feedback_tab:
+    if admin_section == "遊戲反饋":
         st.write("### 學生遊戲反饋")
         feedback_rows = game_feedback_rows()
         if feedback_rows:
@@ -2921,16 +3120,28 @@ elif st.session_state.screen == "home":
         profile["retro_reward_notice"] = []
         save_profile(profile)
 
-    name_col, money_col = st.columns([4, 2], vertical_alignment="center")
-    title_prefix = f"「{profile['equipped_title']}」" if profile.get("equipped_title") else ""
-    name_col.subheader(f"{title_prefix}{profile['name']}")
-    money_col.markdown(f"### 金幣 🪙 {profile.get('coins', 0)}")
-    render_avatar_editor(profile)
+    with st.container(key="home_name_money"):
+        name_col, money_col = st.columns([4, 2], vertical_alignment="center")
+        title_prefix = f"「{profile['equipped_title']}」" if profile.get("equipped_title") else ""
+        name_col.subheader(f"{title_prefix}{profile['name']}")
+        money_col.markdown(f"### 金幣 🪙 {profile.get('coins', 0)}")
+    render_compact_avatar_editor(profile)
 
     st.markdown(
         """
         <style>
         @media (max-width: 768px) and (orientation: portrait) {
+          .st-key-home_name_money [data-testid="stHorizontalBlock"] {display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;gap:.3rem !important;}
+          .st-key-home_name_money [data-testid="stColumn"]:first-child {min-width:0 !important;width:65% !important;max-width:65% !important;flex:0 0 65% !important;}
+          .st-key-home_name_money [data-testid="stColumn"]:last-child {min-width:0 !important;width:35% !important;max-width:35% !important;flex:0 0 35% !important;}
+          .st-key-home_name_money h3 {font-size:1.15rem !important;white-space:normal !important;}
+          .st-key-home_avatar_summary [data-testid="stHorizontalBlock"] {display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;gap:.25rem !important;align-items:flex-start !important;}
+          .st-key-home_avatar_summary [data-testid="stColumn"] {min-width:0 !important;padding:0 !important;}
+          .st-key-home_avatar_summary [data-testid="stColumn"]:nth-child(1) {width:28% !important;max-width:28% !important;flex:0 0 28% !important;}
+          .st-key-home_avatar_summary [data-testid="stColumn"]:nth-child(2) {width:37% !important;max-width:37% !important;flex:0 0 37% !important;}
+          .st-key-home_avatar_summary [data-testid="stColumn"]:nth-child(3) {width:35% !important;max-width:35% !important;flex:0 0 35% !important;}
+          .st-key-home_avatar_summary button {padding:.3rem .08rem !important;font-size:.7rem !important;white-space:normal !important;}
+          .st-key-home_avatar_summary p {font-size:.72rem !important;line-height:1.2 !important;}
           .st-key-home_nav_row_1,
           .st-key-home_nav_row_2,
           .st-key-home_nav_row_3 {width:100% !important;max-width:100% !important;overflow:hidden !important;}
@@ -3013,6 +3224,12 @@ elif st.session_state.screen == "home":
         st.session_state.active_player = None
         st.session_state.screen = "login"
         st.rerun()
+
+elif st.session_state.screen == "announcements":
+    scroll_page_to_top("scroll_announcements_to_top")
+    st.subheader("📢 公告事項")
+    st.info("目前沒有新的公告事項。之後老師可以在這裡公布更新內容、活動與系統提醒。")
+    render_bottom_home_button("announcements")
 
 elif st.session_state.screen == "feedback":
     scroll_page_to_top("scroll_feedback_to_top")
