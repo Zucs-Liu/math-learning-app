@@ -44,6 +44,14 @@ st.markdown(
     div[data-testid="stTabs"] {
         position: static !important;
     }
+    /* 手機直立時，所有一般功能頁緊接在 Streamlit 工具列下方。 */
+    @media (max-width: 900px) and (orientation: portrait) {
+        [data-testid="stMainBlockContainer"],
+        .stMainBlockContainer,
+        .block-container {
+            padding-top: 0.25rem !important;
+        }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -1343,7 +1351,6 @@ def render_compact_avatar_editor(profile):
             save_profile(profile)
             st.rerun()
 
-    notice_col.markdown("#### 📢 最新消息")
     if notice_col.button("📢 公告事項", key="open_announcements", type="primary", use_container_width=True):
         st.session_state.scroll_announcements_to_top = True
         st.session_state.screen = "announcements"
@@ -3524,6 +3531,25 @@ elif st.session_state.screen == "bootstrap":
 if st.session_state.screen == "inventory":
     st.session_state.screen = (
         "gallery" if st.session_state.get("inventory_view") == "gallery" else "backpack"
+    )
+
+# 手機直立版只微調功能頁的大標題；transform 不會推動下方其他內容。
+if st.session_state.screen not in {"login", "bootstrap", "boss_watch"}:
+    st.markdown(
+        """
+        <style>
+        @media (max-width: 900px) and (orientation: portrait) {
+            [data-testid="stMainBlockContainer"] h1:first-of-type,
+            .stMainBlockContainer h1:first-of-type,
+            .block-container h1:first-of-type {
+                font-size: 2.55rem !important;
+                transform: translateY(0.45rem);
+                transform-origin: left top;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
 active_chapter_id = st.session_state.get("selected_chapter", "1")
