@@ -3625,6 +3625,19 @@ if st.session_state.screen not in {"login", "bootstrap", "boss_watch"}:
         unsafe_allow_html=True,
     )
 
+# Streamlit 的 keyed tabs 在切換獨立頁面時，偶爾會短暫沿用上一頁的分頁列。
+# 僅在真正需要分頁的畫面顯示 tabs，避免背包分類殘留在首頁或其他功能頁。
+tab_screens = {"login", "backpack", "daily_tasks", "rankings"}
+if st.session_state.screen not in tab_screens:
+    st.markdown(
+        """
+        <style>
+        [data-testid="stTabs"] { display: none !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 active_chapter_id = st.session_state.get("selected_chapter", "1")
 if active_chapter_id not in CHAPTERS:
     active_chapter_id = "1"
@@ -5140,7 +5153,6 @@ elif st.session_state.screen in {"backpack", "gallery"}:
     if inventory_view == "backpack":
         gear_tab, consumable_tab, title_tab, future_tab = st.tabs(
             ["⚔️ 裝備", "🧪 消耗道具", "🏅 成就稱號", "🔒 待開放"],
-            key="backpack_tabs", default="⚔️ 裝備",
         )
         with gear_tab:
             st.markdown(
