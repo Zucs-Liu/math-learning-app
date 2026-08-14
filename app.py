@@ -616,6 +616,25 @@ def student_login_closed_message():
     return "🌙 每日晚上10點至隔日上午8點為休息時間，暫停學生登入與建立新勇者。"
 
 
+def render_student_login_closed_notice():
+    st.markdown(
+        f"""
+        <div style="
+            color:#111827;
+            background:rgba(255,255,255,.94);
+            border:1px solid rgba(17,24,39,.18);
+            border-radius:12px;
+            padding:.85rem 1rem;
+            margin:.5rem 0 1rem;
+            font-weight:600;
+            line-height:1.6;
+            box-shadow:0 3px 12px rgba(0,0,0,.18);
+        ">{student_login_closed_message()}</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def remember_short_login(student_code):
     st.query_params["resume"] = make_short_login_token(student_code)
 
@@ -3681,7 +3700,7 @@ elif st.session_state.screen == "login":
     if role == "學生":
         login_open = student_login_is_open()
         if not login_open:
-            st.warning(student_login_closed_message())
+            render_student_login_closed_notice()
         login_tab, register_tab = st.tabs(["登入", "建立新勇者"])
         with login_tab:
             with st.container(key="login_fields_row"):
@@ -3698,7 +3717,7 @@ elif st.session_state.screen == "login":
                 )
             if login_pressed:
                 if not student_login_is_open():
-                    st.warning(student_login_closed_message())
+                    render_student_login_closed_notice()
                 else:
                     valid, result = verify_student(code, pin)
                     if valid:
@@ -3722,7 +3741,7 @@ elif st.session_state.screen == "login":
                     disabled=not login_open,
                 ):
                     if not student_login_is_open():
-                        st.warning(student_login_closed_message())
+                        render_student_login_closed_notice()
                         st.stop()
                     name_error = validate_hero_name(hero_name)
                     if not real_name:
