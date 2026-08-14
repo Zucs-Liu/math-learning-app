@@ -1434,16 +1434,22 @@ def log_attempt(unit_id):
              st.session_state.quiz_elapsed / st.session_state.attempts if st.session_state.attempts else 0,
              database_timestamp()),
         )
-        for answer_row in st.session_state.answer_history:
-            db.execute(
-                "INSERT INTO question_logs(student_code, unit_id, question_text, submitted_answer, "
-                "correct_answer, is_correct, combo_after, elapsed_seconds, answered_at) "
-                "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (st.session_state.active_player, unit_id, answer_row["question_text"],
-                 answer_row["submitted_answer"], answer_row["correct_answer"],
-                 1 if answer_row["is_correct"] else 0, answer_row["combo_after"],
-                 answer_row["elapsed_seconds"], answer_row["answered_at"]),
-            )
+
+
+def log_question_answer(unit_id, answer_row):
+    """每答完一題立即保存，避免中途離開、斷線或部署更新造成紀錄遺失。"""
+    if st.session_state.active_player == "__TEACHER__":
+        return
+    with db_connection() as db:
+        db.execute(
+            "INSERT INTO question_logs(student_code, unit_id, question_text, submitted_answer, "
+            "correct_answer, is_correct, combo_after, elapsed_seconds, answered_at) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (st.session_state.active_player, unit_id, answer_row["question_text"],
+             answer_row["submitted_answer"], answer_row["correct_answer"],
+             1 if answer_row["is_correct"] else 0, answer_row["combo_after"],
+             answer_row["elapsed_seconds"], answer_row["answered_at"]),
+        )
 
 
 def save_best_ranking(profile, clear_time, boss_type="normal", chapter_id="1"):
@@ -2583,6 +2589,33 @@ def render_item_comparison(profile, new_item):
         st.caption("更換後人物能力沒有變動。")
 
 
+def dismiss_forge_result_dialog():
+    """關閉熔煉結果視窗等同保留裝備於背包。"""
+    st.session_state.forge_result_uid = None
+
+
+@st.dialog("🔥 熔煉完成", dismissible=True, on_dismiss=dismiss_forge_result_dialog)
+def render_forge_result_dialog(profile, forged_item):
+    st.success("成功合成以下裝備！")
+    st.markdown(f"### {item_text(forged_item)}")
+    render_item_comparison(profile, forged_item)
+    equip_col, keep_col = st.columns(2)
+    if equip_col.button(
+        "立即裝備", type="primary", use_container_width=True,
+        key=f"forge_dialog_equip_{forged_item['uid']}",
+    ):
+        profile["equipment"][forged_item["slot"]] = forged_item["uid"]
+        save_profile(profile)
+        st.session_state.forge_result_uid = None
+        st.rerun()
+    if keep_col.button(
+        "放入物品欄", use_container_width=True,
+        key=f"forge_dialog_keep_{forged_item['uid']}",
+    ):
+        st.session_state.forge_result_uid = None
+        st.rerun()
+
+
 def equipped_items(profile):
     items = []
     for uid in profile["equipment"].values():
@@ -2863,7 +2896,7 @@ def submit_quiz_answer():
     else:
         st.session_state.message = f"❌ 答案是{st.session_state.question['answer']}，連擊中斷。"
         st.session_state.combo = 0
-    st.session_state.answer_history.append({
+    answer_row = {
         "question_text": question_text,
         "submitted_answer": submitted_answer,
         "correct_answer": correct_answer,
@@ -2871,7 +2904,9 @@ def submit_quiz_answer():
         "combo_after": st.session_state.combo,
         "elapsed_seconds": round(time.time() - st.session_state.quiz_started_at, 2),
         "answered_at": database_timestamp(),
-    })
+    }
+    st.session_state.answer_history.append(answer_row)
+    log_question_answer(st.session_state.selected_unit, answer_row)
     st.session_state.answer_input = None
     if st.session_state.max_combo >= 10 or st.session_state.attempts >= MAX_QUESTIONS:
         finish_quiz()
@@ -2981,8 +3016,8 @@ def process_rewards():
     log_attempt(unit_id)
 
 
-def simulate_battle(stats, boss_type="normal"):
-    chapter_id = st.session_state.selected_chapter
+def simulate_battle(stats, boss_type="normal", chapter_id=None):
+    chapter_id = chapter_id or st.session_state.selected_chapter
     config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
     elite_boss_reduction = stats["boss_hp_reduction"] if boss_type == "elite" else 0.0
     elite_boss_damage = stats["boss_damage_pct"] if boss_type == "elite" else 0.0
@@ -3734,7 +3769,7 @@ elif st.session_state.screen == "admin_panel":
     st.divider()
     admin_section = st.selectbox(
         "選擇管理功能",
-        ["建立學生", "帳號管理", "測試進度", "答題紀錄", "公告管理", "遊戲反饋"],
+        ["建立學生", "帳號管理", "測試進度", "答題紀錄", "戰鬥模擬器", "公告管理", "遊戲反饋"],
         key="admin_section",
     )
     if admin_section == "建立學生":
@@ -4030,6 +4065,134 @@ elif st.session_state.screen == "admin_panel":
                         st.rerun()
         else:
             st.info("目前尚未建立公告。")
+    if admin_section == "戰鬥模擬器":
+        st.write("### ⚔️ 學生戰鬥模擬器")
+        st.info("此功能只讀取學生目前的等級與已穿戴裝備；不會修改通關紀錄、排名、經驗值、獎勵或學生資料。")
+        simulator_students = student_rows()
+        if not simulator_students:
+            st.warning("目前沒有可供模擬的學生帳號。")
+        else:
+            student_options = {
+                f"{row['學生代碼']}｜{row['正式姓名']}｜{row['勇者名稱']}": row["學生代碼"]
+                for row in simulator_students
+            }
+            simulator_student_label = st.selectbox(
+                "選擇學生",
+                list(student_options),
+                key="battle_simulator_student",
+            )
+            simulator_chapter = st.selectbox(
+                "選擇章節",
+                list(CHAPTERS),
+                format_func=lambda chapter_id: (
+                    f"{CHAPTERS[chapter_id]['number']}｜{CHAPTERS[chapter_id]['name']}"
+                ),
+                key="battle_simulator_chapter",
+            )
+            simulator_boss_type = st.radio(
+                "選擇 BOSS",
+                ["normal", "elite"],
+                format_func=lambda boss_type: (
+                    f"{'普通' if boss_type == 'normal' else '菁英'} BOSS｜"
+                    f"{BOSS_CONFIGS[f'{simulator_chapter}_{boss_type}']['name']}"
+                ),
+                horizontal=True,
+                key="battle_simulator_boss_type",
+            )
+            if st.button("開始唯讀模擬", type="primary", use_container_width=True):
+                simulator_code = student_options[simulator_student_label]
+                simulator_profile = student_learning_detail(simulator_code)
+                if simulator_profile is None:
+                    st.error("找不到這位學生的資料，請重新整理後再試一次。")
+                else:
+                    simulator_stats = player_stats(simulator_profile)
+                    simulator_config = BOSS_CONFIGS[
+                        f"{simulator_chapter}_{simulator_boss_type}"
+                    ]
+                    try:
+                        simulator_result = simulate_battle(
+                            simulator_stats,
+                            simulator_boss_type,
+                            simulator_chapter,
+                        )
+                    except RuntimeError as error:
+                        st.error(f"模擬失敗：{error}")
+                    else:
+                        st.write("#### 學生目前能力")
+                        stat_columns = st.columns(5)
+                        stat_columns[0].metric("等級", f"Lv{simulator_profile['level']}")
+                        stat_columns[1].metric("HP", f"{simulator_stats['hp']:.1f}")
+                        stat_columns[2].metric("攻擊", f"{simulator_stats['attack']:.1f}")
+                        stat_columns[3].metric("防禦", f"{simulator_stats['defense']:.1f}")
+                        stat_columns[4].metric("攻速", f"{simulator_stats['attack_speed']:.2f}/秒")
+                        special_parts = []
+                        special_labels = {
+                            "boss_hp_reduction": "菁英BOSS初始血量降低",
+                            "first_hit_percent": "第一擊額外扣除菁英BOSS血量",
+                            "boss_damage_pct": "對菁英BOSS傷害",
+                            "damage_reduction_pct": "受到傷害降低",
+                            "critical_rate": "暴擊率",
+                            "critical_damage": "暴擊傷害加成",
+                            "shield_pct": "開場護盾",
+                            "boss_attack_slow_pct": "菁英BOSS攻擊減速",
+                        }
+                        for stat_key, label in special_labels.items():
+                            if simulator_stats[stat_key] > 0:
+                                special_parts.append(
+                                    f"{label} {simulator_stats[stat_key] * 100:.0f}%"
+                                )
+                        st.caption(
+                            "特殊能力：" + ("｜".join(special_parts) if special_parts else "無")
+                        )
+
+                        simulator_events = simulator_result["events"]
+                        first_event = simulator_events[0]
+                        last_event = simulator_events[-1]
+                        hero_hits = sum(
+                            event["text"].startswith("勇者第") for event in simulator_events
+                        )
+                        boss_hits = sum(
+                            event["text"].startswith("BOSS第") for event in simulator_events
+                        )
+                        skill_hits = sum(
+                            event["text"].startswith("BOSS施放技能")
+                            for event in simulator_events
+                        )
+                        st.write("#### 模擬結果")
+                        if simulator_result["victory"]:
+                            st.success(f"模擬獲勝，戰鬥時間 {simulator_result['duration']:.2f} 秒。")
+                        else:
+                            st.error(f"模擬戰敗，戰鬥時間 {simulator_result['duration']:.2f} 秒。")
+                        result_columns = st.columns(4)
+                        result_columns[0].metric(
+                            "勇者剩餘 HP",
+                            f"{last_event['player_hp']:.1f} / {first_event['player_hp']:.1f}",
+                        )
+                        result_columns[1].metric(
+                            "BOSS 剩餘 HP",
+                            f"{last_event['boss_hp']:.1f} / {first_event['boss_hp']:.1f}",
+                        )
+                        result_columns[2].metric("勇者攻擊次數", hero_hits)
+                        result_columns[3].metric("BOSS攻擊／技能", f"{boss_hits}／{skill_hits}")
+                        st.caption(
+                            f"{simulator_config['name']}：原始 HP {simulator_config['hp']}、"
+                            f"攻擊 {simulator_config['damage']}、每 {simulator_config['interval']:g} 秒攻擊一次。"
+                        )
+                        st.write("#### 完整戰鬥明細")
+                        st.dataframe(
+                            [
+                                {
+                                    "時間": f"{event['time']:.2f} 秒",
+                                    "事件": event["text"],
+                                    "勇者 HP": round(event["player_hp"], 1),
+                                    "BOSS HP": round(event["boss_hp"], 1),
+                                }
+                                for event in simulator_events
+                            ],
+                            hide_index=True,
+                            use_container_width=True,
+                        )
+
     if admin_section == "遊戲反饋":
         st.write("### 學生遊戲反饋")
         if st.session_state.get("admin_reply_notice"):
@@ -4252,7 +4415,7 @@ elif st.session_state.screen == "home":
     if st.session_state.active_player == "__TEACHER__":
         teacher_admin_target = st.selectbox(
             "返回老師管理後台",
-            ["建立學生", "帳號管理", "測試進度", "答題紀錄", "公告管理", "遊戲反饋"],
+            ["建立學生", "帳號管理", "測試進度", "答題紀錄", "戰鬥模擬器", "公告管理", "遊戲反饋"],
             index=None,
             placeholder="返回老師管理後台",
             key="teacher_admin_target",
@@ -4781,7 +4944,9 @@ elif st.session_state.screen == "economy":
         else st.session_state.forge_result_uid
     )
     acquired_item = find_item(profile, acquired_uid) if acquired_uid else None
-    if acquired_item:
+    if acquired_item and mode == "forge":
+        render_forge_result_dialog(profile, acquired_item)
+    elif acquired_item:
         st.success("裝備已放入物品欄！請比較後選擇是否立即裝備。")
         render_item_comparison(profile, acquired_item)
         equip_col, keep_col = st.columns(2)
@@ -4899,32 +5064,40 @@ elif st.session_state.screen == "economy":
         source_chapter = item_chapter_id(selected_items[0]) if valid_materials else None
         enough_stone = source_stars != 2 or profile["smelting_stones"] >= 1
 
-        use_slot_stone = st.checkbox(
-            "放入1顆部位融煉石", disabled=profile["slot_smelting_stones"] <= 0,
-            help="放入後可指定融煉結果的裝備部位。",
-        ) and profile["slot_smelting_stones"] > 0
-        selected_slot = st.selectbox(
-            "指定部位", list(SLOT_NAMES), format_func=lambda slot: f"{SLOT_ICONS[slot]} {SLOT_NAMES[slot]}",
-            disabled=not use_slot_stone,
-        ) if use_slot_stone else None
-
-        available_affix_stones = ["不使用"]
-        if profile["basic_affix_smelting_stones"] > 0:
-            available_affix_stones.append("基礎詞條融煉石")
-        if profile["advanced_affix_smelting_stones"] > 0:
-            available_affix_stones.append("進階詞條融煉石")
-        affix_stone_type = st.radio("詞條融煉石", available_affix_stones, horizontal=True)
+        special_stone_type = st.radio(
+            "詞條熔煉石",
+            ["不使用", "部位基礎熔煉石", "基礎詞條熔煉石", "進階詞條熔煉石"],
+            help="一次只能選擇一種；選擇特殊熔煉石後，可以指定本次產出的部位或詞條。",
+        )
+        selected_slot = None
+        if special_stone_type == "部位基礎熔煉石":
+            selected_slot = st.selectbox(
+                "指定部位", list(SLOT_NAMES),
+                format_func=lambda slot: f"{SLOT_ICONS[slot]} {SLOT_NAMES[slot]}",
+            )
         basic_affixes = ["hp_pct", "attack_pct", "defense_pct", "speed_pct"]
         advanced_affixes = [key for key in AFFIX_NAMES if key not in basic_affixes]
         selected_affix = None
-        if affix_stone_type == "基礎詞條融煉石":
+        if special_stone_type == "基礎詞條熔煉石":
             selected_affix = st.selectbox(
                 "指定基礎詞條", basic_affixes, format_func=lambda key: AFFIX_NAMES[key]
             )
-        elif affix_stone_type == "進階詞條融煉石":
+        elif special_stone_type == "進階詞條熔煉石":
             selected_affix = st.selectbox(
                 "指定進階詞條", advanced_affixes, format_func=lambda key: AFFIX_NAMES[key]
             )
+        required_special_stone = {
+            "不使用": None,
+            "部位基礎熔煉石": "slot_smelting_stones",
+            "基礎詞條熔煉石": "basic_affix_smelting_stones",
+            "進階詞條熔煉石": "advanced_affix_smelting_stones",
+        }[special_stone_type]
+        enough_special_stone = (
+            required_special_stone is None
+            or profile.get(required_special_stone, 0) > 0
+        )
+        if not enough_special_stone:
+            st.warning(f"目前沒有可使用的「{special_stone_type}」。")
         if len(selected_items) == 3 and not same_star:
             st.warning("三件裝備必須是相同星級。")
         elif len(selected_items) == 3 and not same_chapter:
@@ -4938,7 +5111,7 @@ elif st.session_state.screen == "economy":
             st.warning("二星升三星需要1顆融煉石，目前數量不足。")
         if st.button(
             "開始融煉", type="primary", use_container_width=True,
-            disabled=not valid_materials or not enough_stone,
+            disabled=not valid_materials or not enough_stone or not enough_special_stone,
         ):
             result_item = make_forged_item(
                 profile, source_stars, source_chapter, selected_slot=selected_slot,
@@ -4947,11 +5120,11 @@ elif st.session_state.screen == "economy":
             remove_inventory_items(profile, selected)
             if source_stars == 2:
                 profile["smelting_stones"] -= 1
-            if use_slot_stone:
+            if special_stone_type == "部位基礎熔煉石":
                 profile["slot_smelting_stones"] -= 1
-            if affix_stone_type == "基礎詞條融煉石":
+            elif special_stone_type == "基礎詞條熔煉石":
                 profile["basic_affix_smelting_stones"] -= 1
-            elif affix_stone_type == "進階詞條融煉石":
+            elif special_stone_type == "進階詞條熔煉石":
                 profile["advanced_affix_smelting_stones"] -= 1
             profile["inventory"].append(result_item)
             save_profile(profile)
