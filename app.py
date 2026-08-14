@@ -971,30 +971,71 @@ def login_background_data_uri(animated=True):
     return _login_background_data_uri(filename, image_path.stat().st_mtime_ns)
 
 
+@st.cache_data(show_spinner=False)
+def _login_background_video_data_uri(filename, modified_ns):
+    """Cache the MP4 data URI; modified_ns refreshes it when the file is replaced."""
+    video_path = Path(__file__).parent / "assets" / "login" / filename
+    if not video_path.exists():
+        return ""
+    return "data:video/mp4;base64," + base64.b64encode(video_path.read_bytes()).decode("ascii")
+
+
+def login_background_video_data_uri():
+    filename = "heroes-vs-demon-idle.mp4"
+    video_path = Path(__file__).parent / "assets" / "login" / filename
+    if not video_path.exists():
+        return ""
+    return _login_background_video_data_uri(filename, video_path.stat().st_mtime_ns)
+
+
 def apply_login_background():
-    background = login_background_data_uri(animated=True)
     static_background = login_background_data_uri(animated=False)
-    if not background:
-        background = static_background
-    if not background:
+    video_background = login_background_video_data_uri()
+    background = static_background or login_background_data_uri(animated=True)
+    if not background and not video_background:
         return
+    video_html = ""
+    if video_background:
+        video_html = f"""
+        <video class="login-video-background" autoplay muted loop playsinline preload="auto"
+               poster="{background}" aria-hidden="true">
+            <source src="{video_background}" type="video/mp4">
+        </video>
+        """
     st.markdown(
         f"""
+        {video_html}
         <style>
         .stApp {{
             background: #090a18;
             isolation: isolate;
         }}
+        .login-video-background {{
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+            object-fit: contain;
+            object-position: center top;
+            background: #090a18;
+        }}
         .stApp::before {{
             content: "";
             position: fixed;
             inset: 0;
-            z-index: -1;
+            z-index: 1;
             pointer-events: none;
             background:
-                linear-gradient(rgba(7, 10, 25, .12), rgba(7, 10, 25, .28)),
-                url('{background}') center top / contain no-repeat,
-                #090a18;
+                linear-gradient(rgba(7, 10, 25, .10), rgba(7, 10, 25, .24));
+        }}
+        .stApp > header,
+        .stApp [data-testid="stAppViewContainer"],
+        .stApp [data-testid="stMain"] {{
+            position: relative;
+            z-index: 2;
+            background: transparent !important;
         }}
         .stMainBlockContainer, [data-testid="stMainBlockContainer"] {{
             width: min(560px, calc(100% - 32px));
@@ -1137,9 +1178,11 @@ def apply_login_background():
         }}
         @media (max-width: 600px) {{
             .stApp::before {{
-                background:
-                    linear-gradient(rgba(7,10,25,.08), rgba(7,10,25,.24)),
-                    url('{background}') center top / cover no-repeat;
+                background: linear-gradient(rgba(7,10,25,.08), rgba(7,10,25,.24));
+            }}
+            .login-video-background {{
+                object-fit: cover;
+                object-position: center top;
             }}
             .stMainBlockContainer, [data-testid="stMainBlockContainer"] {{
                 width: min(88vw, 430px);
@@ -1174,6 +1217,9 @@ def apply_login_background():
             }}
         }}
         @media (prefers-reduced-motion: reduce) {{
+            .login-video-background {{
+                display: none;
+            }}
             .stApp::before {{
                 background:
                     linear-gradient(rgba(7,10,25,.10), rgba(7,10,25,.26)),
