@@ -668,7 +668,7 @@ def new_profile(name):
         "task_rewards_initialized": False,
         "elite_special_tasks_migrated": False,
         "boss_best_times": {},
-        "shop": {"generated_at": None, "items": []},
+        "shop": {"generated_at": None, "items": [], "paid_refresh_count": 0},
         "inventory": [],
         "collection_catalog": [],
         "equipment": {slot: None for slot in SLOT_NAMES},
@@ -2110,15 +2110,30 @@ def make_shop_item(profile, chapter_id=None):
     }
 
 
+def shop_paid_refresh_cost(profile):
+    """每五次強制刷新費用加倍：1～5次100、6～10次200，依此類推。"""
+    refresh_count = int((profile.get("shop") or {}).get("paid_refresh_count", 0) or 0)
+    return 100 * (2 ** (refresh_count // 5))
+
+
 def refresh_shop(profile, paid=False):
+    paid_refresh_count = int(
+        (profile.get("shop") or {}).get("paid_refresh_count", 0) or 0
+    )
     if paid:
-        if profile["coins"] < 100:
+        refresh_cost = shop_paid_refresh_cost(profile)
+        if profile["coins"] < refresh_cost:
             return False
-        profile["coins"] -= 100
+        profile["coins"] -= refresh_cost
+        paid_refresh_count += 1
+    else:
+        # 每24小時的免費自動刷新會開始新一輪強制刷新計數。
+        paid_refresh_count = 0
     chapter_id = highest_shop_chapter(profile)
     profile["shop"] = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "items": [make_shop_item(profile, chapter_id) for _ in range(6)],
+        "paid_refresh_count": paid_refresh_count,
     }
     return True
 
@@ -4728,11 +4743,20 @@ elif st.session_state.screen == "economy":
             f"目前提供{CHAPTERS[highest_shop_chapter(profile)]['number']}強度的三星裝備；"
             f"每件500金幣。自動刷新剩餘約 {hours}小時{minutes}分。"
         )
-        if refresh_col.button("花100金幣強制刷新", disabled=profile["coins"] < 100, use_container_width=True):
+        refresh_cost = shop_paid_refresh_cost(profile)
+        paid_refresh_count = int(profile["shop"].get("paid_refresh_count", 0) or 0)
+        if refresh_col.button(
+            f"花{refresh_cost}金幣強制刷新",
+            disabled=profile["coins"] < refresh_cost,
+            use_container_width=True,
+        ):
             refresh_shop(profile, paid=True)
             save_profile(profile)
             st.session_state.shop_purchase_uid = None
             st.rerun()
+        refresh_col.caption(
+            f"本輪已刷新 {paid_refresh_count} 次；每5次費用加倍，24小時自動刷新後重設。"
+        )
         shop_entries = profile["shop"]["items"]
         for row_start in (0, 3):
             columns = st.columns(3)
