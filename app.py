@@ -69,6 +69,8 @@ BOSS_CONFIGS = {
     "3_elite": {"name": "烈焰龍王", "image": "flame-dragon-king.webp", "hp": 1200, "damage": 60, "interval": 1.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 50},
     "4_normal": {"name": "六尾雷狐", "image": "six-tail-thunder-fox.webp", "hp": 1200, "damage": 40, "interval": 2.0, "exp": 250, "defense_reduction": 20},
     "4_elite": {"name": "九尾天狐", "image": "nine-tail-celestial-fox.webp", "hp": 1600, "damage": 80, "interval": 1.5, "exp": 300, "skill": "天降雷劫", "skill_hp_threshold": 0.5, "true_damage": 70},
+    "5_normal": {"name": "寒冰巨鯰", "image": "ice-giant-catfish.webp", "hp": 1500, "damage": 50, "interval": 2.0, "exp": 300, "hero_speed_reduction": 0.4},
+    "5_elite": {"name": "暴風熊王", "image": "storm-bear-king.webp", "hp": 2000, "damage": 100, "interval": 1.5, "exp": 350, "skill": "狂風驟雨", "hero_damage_reduction": 0.25, "skill_at_start": True},
 }
 BOSS_MAX_HP = 400
 BOSS_DAMAGE = 30
@@ -150,6 +152,7 @@ CHAPTERS = {
     "2": {"number": "第二章", "name": "整數的乘除法"},
     "3": {"number": "第三章", "name": "小數的加減法"},
     "4": {"number": "第四章", "name": "小數乘除法"},
+    "5": {"number": "第五章", "name": "因倍數與分數"},
 }
 
 UNITS = {
@@ -213,6 +216,18 @@ UNITS = {
     "4-4": {
         "name": "一位小數除以一位小數（整除）", "slots": ["ring", "belt", "shield"],
         "description": "例如：1.2÷0.3（除數個位數為0）",
+    },
+    "5-1": {
+        "name": "最大公因數", "slots": ["helmet", "armor", "gloves"],
+        "description": "例如：（15，20）的最大公因數＝5",
+    },
+    "5-2": {
+        "name": "最小公倍數", "slots": ["weapon", "boots", "necklace"],
+        "description": "例如：（4，9）的最小公倍數＝36",
+    },
+    "5-3": {
+        "name": "最簡分數", "slots": ["ring", "belt", "shield"],
+        "description": "例如：78／65＝6／5",
     },
 }
 
@@ -295,6 +310,8 @@ DEFAULT_STATE = {
     "quiz_elapsed": 0.0,
     "question": None,
     "answer_input": None,
+    "answer_numerator": None,
+    "answer_denominator": None,
     "correct": 0,
     "attempts": 0,
     "combo": 0,
@@ -468,6 +485,16 @@ def init_db():
                 FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
             );
             CREATE TABLE IF NOT EXISTS chapter4_elite_rankings (
+                student_code TEXT PRIMARY KEY, hero_name TEXT NOT NULL, level INTEGER NOT NULL,
+                clear_time REAL NOT NULL, achieved_at TEXT NOT NULL,
+                FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS chapter5_rankings (
+                student_code TEXT PRIMARY KEY, hero_name TEXT NOT NULL, level INTEGER NOT NULL,
+                clear_time REAL NOT NULL, achieved_at TEXT NOT NULL,
+                FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS chapter5_elite_rankings (
                 student_code TEXT PRIMARY KEY, hero_name TEXT NOT NULL, level INTEGER NOT NULL,
                 clear_time REAL NOT NULL, achieved_at TEXT NOT NULL,
                 FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
@@ -731,6 +758,13 @@ def new_profile(name):
         "chapter4_reward_claimed": False,
         "chapter4_collection_reward_claimed": False,
         "chapter4_elite_reward_claimed": False,
+        "chapter5_boss_exp_claimed": False,
+        "chapter5_boss_wins": 0,
+        "chapter5_elite_boss_exp_claimed": False,
+        "chapter5_elite_boss_wins": 0,
+        "chapter5_reward_claimed": False,
+        "chapter5_collection_reward_claimed": False,
+        "chapter5_elite_reward_claimed": False,
     }
 
 
@@ -763,6 +797,8 @@ def normalize_profile(profile, name):
         catalog.update(f"3:3:{slot}" for slot in SLOT_NAMES)
     if profile.get("chapter4_collection_reward_claimed"):
         catalog.update(f"4:3:{slot}" for slot in SLOT_NAMES)
+    if profile.get("chapter5_collection_reward_claimed"):
+        catalog.update(f"5:3:{slot}" for slot in SLOT_NAMES)
     achievement_history = (
         ("chapter_reward_claimed", "chapter-1", "weapon"),
         ("collection_item_claimed", "chapter-1-collection", "necklace"),
@@ -776,6 +812,9 @@ def normalize_profile(profile, name):
         ("chapter4_reward_claimed", "chapter-4", "helmet"),
         ("chapter4_collection_reward_claimed", "chapter-4-collection", "boots"),
         ("chapter4_elite_reward_claimed", "chapter-4-elite", "weapon"),
+        ("chapter5_reward_claimed", "chapter-5", "armor"),
+        ("chapter5_collection_reward_claimed", "chapter-5-collection", "necklace"),
+        ("chapter5_elite_reward_claimed", "chapter-5-elite", "shield"),
     )
     for claimed_key, unit_key, slot in achievement_history:
         if profile.get(claimed_key):
@@ -798,6 +837,7 @@ def normalize_profile(profile, name):
         ("chapter2_elite_boss_wins", "別小看我！"),
         ("chapter3_elite_boss_wins", "一刀斬龍"),
         ("chapter4_elite_boss_wins", "渡雷劫方可成仙"),
+        ("chapter5_elite_boss_wins", "魚與熊掌我都要"),
     ]
     for wins_key, title in title_rewards:
         if profile.get(wins_key, 0) > 0 and title not in profile["titles"]:
@@ -853,6 +893,133 @@ def create_student(real_name, hero_name, pin):
     return {"student_code": code, "pin": pin, "hero_name": hero_name, "real_name": real_name}
 
 
+def teacher_four_star_reward_makers():
+    """Return every currently implemented four-star chapter reward maker.
+
+    The naming convention also lets future chapters join the teacher test grant
+    automatically as soon as their three reward maker functions are added.
+    """
+    makers = []
+    for chapter_id in CHAPTERS:
+        if chapter_id == "1":
+            names = ("make_chapter_reward", "make_collection_reward", "make_elite_reward")
+        else:
+            names = (
+                f"make_chapter{chapter_id}_reward",
+                f"make_chapter{chapter_id}_collection_reward",
+                f"make_chapter{chapter_id}_elite_reward",
+            )
+        for name in names:
+            maker = globals().get(name)
+            if callable(maker):
+                makers.append(maker)
+    return makers
+
+
+def teacher_maximum_progress_exp():
+    unit_exp = len(UNITS) * EXP_BY_STARS[3]
+    boss_exp = sum(
+        int(config.get("exp", 0))
+        for key, config in BOSS_CONFIGS.items()
+        if key.split("_", 1)[0] in CHAPTERS
+    )
+    full_collection_exp = len(CHAPTERS) * 100
+    return unit_exp + boss_exp + full_collection_exp
+
+
+def level_and_exp_from_total(total_exp):
+    level = 1
+    remaining = max(0, int(total_exp))
+    while level < 20 and remaining >= level * 100:
+        remaining -= level * 100
+        level += 1
+    return level, remaining
+
+
+def profile_total_exp(profile):
+    level = max(1, int(profile.get("level", 1)))
+    return sum(current_level * 100 for current_level in range(1, level)) + int(profile.get("exp", 0))
+
+
+def sync_teacher_test_profile(profile):
+    """Bring the teacher-only character up to the current testing baseline."""
+    changed = False
+    notices = []
+
+    owned_units = {
+        item.get("unit") for item in profile.get("inventory", [])
+        if int(item.get("stars", 0) or 0) == 4
+    }
+    granted_items = []
+    for maker in teacher_four_star_reward_makers():
+        preview = maker()
+        if preview.get("unit") in owned_units:
+            continue
+        profile["inventory"].append(preview)
+        owned_units.add(preview.get("unit"))
+        granted_items.append(preview.get("name", preview.get("unit", "四星裝備")))
+        changed = True
+    if granted_items:
+        notices.append(f"老師測試裝備補發：{'、'.join(granted_items)}")
+
+    if not profile.get("teacher_test_resources_granted_v1"):
+        profile["coins"] = int(profile.get("coins", 0)) + 10000
+        profile["slot_smelting_stones"] = int(profile.get("slot_smelting_stones", 0)) + 100
+        profile["basic_affix_smelting_stones"] = int(profile.get("basic_affix_smelting_stones", 0)) + 100
+        profile["advanced_affix_smelting_stones"] = int(profile.get("advanced_affix_smelting_stones", 0)) + 100
+        profile["teacher_test_resources_granted_v1"] = True
+        notices.append("老師測試資源補發：10000 金幣及三種特殊熔煉石各 100 顆")
+        changed = True
+
+    # The testing character represents maximum currently obtainable progress.
+    for unit_id in UNITS:
+        if profile["unit_best_stars"].get(unit_id, 0) < 3:
+            profile["unit_best_stars"][unit_id] = 3
+            changed = True
+    for chapter_id in CHAPTERS:
+        prefix = "" if chapter_id == "1" else f"chapter{chapter_id}_"
+        for boss_type in ("boss", "elite_boss"):
+            wins_key = f"{prefix}{boss_type}_wins"
+            exp_key = f"{prefix}{boss_type}_exp_claimed"
+            if int(profile.get(wins_key, 0) or 0) < 1:
+                profile[wins_key] = 1
+                changed = True
+            if not profile.get(exp_key):
+                profile[exp_key] = True
+                changed = True
+
+    claim_keys = {
+        "1": ("chapter_reward_claimed", "collection_reward_claimed", "elite_reward_claimed"),
+    }
+    for chapter_id in CHAPTERS:
+        keys = claim_keys.get(
+            chapter_id,
+            (
+                f"chapter{chapter_id}_reward_claimed",
+                f"chapter{chapter_id}_collection_reward_claimed",
+                f"chapter{chapter_id}_elite_reward_claimed",
+            ),
+        )
+        for key in keys:
+            if not profile.get(key):
+                profile[key] = True
+                changed = True
+    if not profile.get("collection_item_claimed"):
+        profile["collection_item_claimed"] = True
+        changed = True
+
+    target_total = teacher_maximum_progress_exp()
+    if profile_total_exp(profile) != target_total:
+        profile["level"], profile["exp"] = level_and_exp_from_total(target_total)
+        notices.append(f"老師測試等級已同步至 Lv{profile['level']}（EXP {profile['exp']}）")
+        changed = True
+
+    if notices:
+        profile.setdefault("retro_reward_notice", []).extend(notices)
+    sync_collection_catalog(profile)
+    return changed
+
+
 def ensure_teacher_profile(hero_name="老師測試勇者"):
     code = "__TEACHER__"
     with db_connection() as db:
@@ -860,6 +1027,7 @@ def ensure_teacher_profile(hero_name="老師測試勇者"):
         if row:
             profile = normalize_profile(json.loads(row["profile_json"]), hero_name)
             profile["name"] = hero_name
+            sync_teacher_test_profile(profile)
             db.execute(
                 "UPDATE players SET hero_name=?, profile_json=? WHERE student_code=?",
                 (hero_name, json.dumps(profile, ensure_ascii=False), code),
@@ -869,6 +1037,7 @@ def ensure_teacher_profile(hero_name="老師測試勇者"):
             profile = new_profile(hero_name)
             profile["task_rewards_initialized"] = True
             profile["elite_special_tasks_migrated"] = True
+            sync_teacher_test_profile(profile)
             db.execute(
                 "INSERT INTO players(student_code, hero_name, pin_salt, pin_hash, profile_json, created_at) "
                 "VALUES(?, ?, ?, ?, ?, ?)",
@@ -913,6 +1082,8 @@ def get_profile():
             cached_profile = normalize_profile(cached_profile, cached_profile.get("name", "勇者"))
             retroactively_grant_chapter3_rewards(cached_profile)
             save_profile(cached_profile)
+        if code == "__TEACHER__" and sync_teacher_test_profile(cached_profile):
+            save_profile(cached_profile)
         return cached_profile
     with db_connection() as db:
         row = db.execute("SELECT hero_name, profile_json FROM players WHERE student_code=?", (code,)).fetchone()
@@ -925,9 +1096,10 @@ def get_profile():
     profile = normalize_profile(raw_profile, row["hero_name"])
     retroactively_grant_tasks(profile, code)
     retroactively_grant_chapter3_rewards(profile)
+    teacher_synced = code == "__TEACHER__" and sync_teacher_test_profile(profile)
     normalized_changed = (
         json.dumps(profile, ensure_ascii=False, sort_keys=True) != original_profile_json
-    )
+    ) or teacher_synced
     if profile.get("collection_reward_claimed") and not achievement_item(profile, "chapter-1-collection"):
         profile["inventory"].append(make_collection_reward())
         profile["collection_item_claimed"] = True
@@ -946,6 +1118,9 @@ def get_profile():
         ("chapter-4", make_chapter4_reward),
         ("chapter-4-collection", make_chapter4_collection_reward),
         ("chapter-4-elite", make_chapter4_elite_reward),
+        ("chapter-5", make_chapter5_reward),
+        ("chapter-5-collection", make_chapter5_collection_reward),
+        ("chapter-5-elite", make_chapter5_elite_reward),
     ):
         migrated = sync_achievement_item(profile, unit_key, maker) or migrated
     if migrated or normalized_changed:
@@ -1481,6 +1656,7 @@ def save_best_ranking(profile, clear_time, boss_type="normal", chapter_id="1"):
         ("2", "normal"): "chapter2_rankings", ("2", "elite"): "chapter2_elite_rankings",
         ("3", "normal"): "chapter3_rankings", ("3", "elite"): "chapter3_elite_rankings",
         ("4", "normal"): "chapter4_rankings", ("4", "elite"): "chapter4_elite_rankings",
+        ("5", "normal"): "chapter5_rankings", ("5", "elite"): "chapter5_elite_rankings",
     }[(chapter_id, boss_type)]
     with db_connection() as db:
         row = db.execute(f"SELECT clear_time FROM {table} WHERE student_code=?", (code,)).fetchone()
@@ -1500,6 +1676,7 @@ def ranking_rows(boss_type="normal", chapter_id="1", include_private_identity=Fa
         ("2", "normal"): "chapter2_rankings", ("2", "elite"): "chapter2_elite_rankings",
         ("3", "normal"): "chapter3_rankings", ("3", "elite"): "chapter3_elite_rankings",
         ("4", "normal"): "chapter4_rankings", ("4", "elite"): "chapter4_elite_rankings",
+        ("5", "normal"): "chapter5_rankings", ("5", "elite"): "chapter5_elite_rankings",
     }[(chapter_id, boss_type)]
     with db_connection() as db:
         rows = db.execute(
@@ -1868,6 +2045,8 @@ def current_midnight_period():
 
 
 def highest_unlocked_chapter(profile):
+    if profile.get("chapter4_boss_wins", 0) > 0:
+        return "5"
     if profile.get("chapter3_boss_wins", 0) > 0:
         return "4"
     if profile.get("chapter2_boss_wins", 0) > 0:
@@ -1908,6 +2087,7 @@ def permanent_task_definitions():
         "2": ("chapter2_boss_wins", "chapter2_elite_boss_wins"),
         "3": ("chapter3_boss_wins", "chapter3_elite_boss_wins"),
         "4": ("chapter4_boss_wins", "chapter4_elite_boss_wins"),
+        "5": ("chapter5_boss_wins", "chapter5_elite_boss_wins"),
     }
     for chapter_id in CHAPTERS:
         for unit_id in chapter_unit_ids(chapter_id):
@@ -1946,6 +2126,7 @@ def special_task_definitions(code, profile=None):
         "2": ("chapter2_rankings", "chapter2_elite_rankings"),
         "3": ("chapter3_rankings", "chapter3_elite_rankings"),
         "4": ("chapter4_rankings", "chapter4_elite_rankings"),
+        "5": ("chapter5_rankings", "chapter5_elite_rankings"),
     }
     clear_times = {}
     union_parts = []
@@ -2070,6 +2251,7 @@ def boss_is_unlocked(profile, chapter_id, boss_type):
         )
     normal_wins_key = {
         "1": "boss_wins", "2": "chapter2_boss_wins", "3": "chapter3_boss_wins", "4": "chapter4_boss_wins",
+        "5": "chapter5_boss_wins",
     }[chapter_id]
     return profile.get(normal_wins_key, 0) > 0
 
@@ -2351,6 +2533,33 @@ def make_chapter4_elite_reward():
         "stars": 4, "name": "九尾天雷刃", "fixed_stat": "attack",
         "fixed_value": fixed_value_for("4", "weapon", 4)[1],
         "affix_stat": "critical_rate", "affix_value": 0.25, "achievement": True,
+    }
+
+
+def make_chapter5_reward():
+    return {
+        "uid": uuid.uuid4().hex, "unit": "chapter-5", "chapter": "5", "slot": "armor",
+        "stars": 4, "name": "冰河守護鎧", "fixed_stat": "defense",
+        "fixed_value": fixed_value_for("5", "armor", 4)[1],
+        "affix_stat": "defense_pct", "affix_value": 0.25, "achievement": True,
+    }
+
+
+def make_chapter5_collection_reward():
+    return {
+        "uid": uuid.uuid4().hex, "unit": "chapter-5-collection", "chapter": "5", "slot": "necklace",
+        "stars": 4, "name": "極寒潮汐項鍊", "fixed_stat": "boss_hp_reduction",
+        "fixed_value": fixed_value_for("5", "necklace", 4)[1],
+        "affix_stat": "damage_reduction_pct", "affix_value": 0.25, "achievement": True,
+    }
+
+
+def make_chapter5_elite_reward():
+    return {
+        "uid": uuid.uuid4().hex, "unit": "chapter-5-elite", "chapter": "5", "slot": "shield",
+        "stars": 4, "name": "暴風王盾", "fixed_stat": "defense",
+        "fixed_value": fixed_value_for("5", "shield", 4)[1],
+        "affix_stat": "boss_damage_pct", "affix_value": 0.25, "achievement": True,
     }
 
 
@@ -2693,12 +2902,54 @@ def unit_unlocked(profile, unit_id):
         return False
     if chapter_id == "4" and profile.get("chapter3_boss_wins", 0) <= 0 and st.session_state.active_player != "__TEACHER__":
         return False
+    if chapter_id == "5" and profile.get("chapter4_boss_wins", 0) <= 0 and st.session_state.active_player != "__TEACHER__":
+        return False
     order = chapter_unit_ids(chapter_id)
     index = order.index(unit_id)
     return index == 0 or profile["unit_best_stars"][order[index - 1]] > 0
 
 
 def make_question(unit_id):
+    if unit_id == "5-1":
+        while True:
+            common = random.randint(1, 30)
+            left_factor, right_factor = random.sample(range(1, 16), 2)
+            if math.gcd(left_factor, right_factor) != 1:
+                continue
+            left, right = common * left_factor, common * right_factor
+            if left <= 200 and right <= 200:
+                return {
+                    "text": f"（{left}，{right}）的最大公因數 ＝ ?",
+                    "answer": common,
+                }
+    if unit_id == "5-2":
+        while True:
+            left, right = random.sample(range(2, 51), 2)
+            answer = math.lcm(left, right)
+            if answer <= 200:
+                return {
+                    "text": f"（{left}，{right}）的最小公倍數 ＝ ?",
+                    "answer": answer,
+                }
+    if unit_id == "5-3":
+        while True:
+            answer_numerator = random.randint(1, 50)
+            answer_denominator = random.randint(2, 50)
+            if math.gcd(answer_numerator, answer_denominator) != 1:
+                continue
+            max_factor = min(100 // answer_numerator, 100 // answer_denominator)
+            if max_factor < 2:
+                continue
+            factor = random.randint(2, max_factor)
+            numerator = answer_numerator * factor
+            denominator = answer_denominator * factor
+            return {
+                "text": f"{numerator}／{denominator} ＝（　）／（　）",
+                "answer": answer_numerator / answer_denominator,
+                "answer_numerator": answer_numerator,
+                "answer_denominator": answer_denominator,
+                "fraction": True,
+            }
     if unit_id == "4-1":
         a_tenths, multiplier = random.randint(1, 99), random.randint(2, 9)
         return {"text": f"{a_tenths / 10:.1f} × {multiplier} ＝ ?", "answer": round(a_tenths * multiplier / 10, 2)}
@@ -2762,7 +3013,9 @@ def focus_answer_input():
         const focusAnswer = () => {
             const doc = parent.window.document;
             const answer = doc.querySelector('input[aria-label="你的答案"]')
-                || doc.querySelector('input[placeholder="輸入後按 Enter"]');
+                || doc.querySelector('input[placeholder="輸入後按 Enter"]')
+                || doc.querySelector('input[aria-label="分子"]')
+                || doc.querySelector('input[placeholder="分子"]');
             if (answer) {
                 answer.focus({preventScroll: true});
                 answer.click();
@@ -2835,7 +3088,28 @@ def force_top_before_navigation():
     )
 
 
-def stars_for_combo(combo):
+def uses_advanced_combo_rules(unit_id=None):
+    """Chapter 5 onward uses the shorter combo thresholds."""
+    unit_id = unit_id or st.session_state.get("selected_unit", "1-1")
+    try:
+        return int(str(unit_id).split("-", 1)[0]) >= 5
+    except (TypeError, ValueError):
+        return False
+
+
+def combo_auto_clear_target(unit_id=None):
+    return 8 if uses_advanced_combo_rules(unit_id) else 10
+
+
+def stars_for_combo(combo, unit_id=None):
+    if uses_advanced_combo_rules(unit_id):
+        if combo >= 7:
+            return 3
+        if combo >= 4:
+            return 2
+        if combo >= 1:
+            return 1
+        return 0
     if combo >= 10:
         return 3
     if combo >= 5:
@@ -2860,6 +3134,8 @@ def start_quiz(unit_id):
     st.session_state.quiz_elapsed = 0.0
     st.session_state.question = make_question(unit_id)
     st.session_state.answer_input = None
+    st.session_state.answer_numerator = None
+    st.session_state.answer_denominator = None
     st.session_state.correct = 0
     st.session_state.attempts = 0
     st.session_state.combo = 0
@@ -2881,7 +3157,10 @@ def start_quiz(unit_id):
 
 
 def finish_quiz():
-    st.session_state.stars = stars_for_combo(st.session_state.max_combo)
+    st.session_state.stars = stars_for_combo(
+        st.session_state.max_combo,
+        st.session_state.selected_unit,
+    )
     if st.session_state.quiz_started_at:
         st.session_state.quiz_elapsed = time.time() - st.session_state.quiz_started_at
     st.session_state.deadline = None
@@ -2899,24 +3178,48 @@ def leave_quiz():
 def submit_quiz_answer():
     if st.session_state.screen != "quiz" or st.session_state.attempts >= MAX_QUESTIONS:
         return
-    answer = st.session_state.answer_input
-    if answer is None:
-        return
     question_text = st.session_state.question["text"]
     correct_answer = st.session_state.question["answer"]
-    submitted_answer = float(answer)
+    if st.session_state.question.get("fraction"):
+        numerator = st.session_state.answer_numerator
+        denominator = st.session_state.answer_denominator
+        if numerator is None or denominator in (None, 0):
+            return
+        submitted_answer = float(numerator) / float(denominator)
+        submitted_text = f"{int(numerator)}/{int(denominator)}"
+        correct_text = (
+            f"{st.session_state.question['answer_numerator']}/"
+            f"{st.session_state.question['answer_denominator']}"
+        )
+    else:
+        answer = st.session_state.answer_input
+        if answer is None:
+            return
+        submitted_answer = float(answer)
+        submitted_text = submitted_answer
+        correct_text = correct_answer
     st.session_state.attempts += 1
-    is_correct = math.isclose(submitted_answer, float(correct_answer), abs_tol=1e-9)
+    if st.session_state.question.get("fraction"):
+        # 最簡分數必須分子、分母皆完全正確；等值但未約分的答案不算答對。
+        is_correct = (
+            int(numerator) == st.session_state.question["answer_numerator"]
+            and int(denominator) == st.session_state.question["answer_denominator"]
+        )
+    else:
+        is_correct = math.isclose(submitted_answer, float(correct_answer), abs_tol=1e-9)
     if is_correct:
         st.session_state.correct += 1
         st.session_state.combo += 1
         st.session_state.max_combo = max(st.session_state.max_combo, st.session_state.combo)
         st.session_state.message = f"✅ 連擊{st.session_state.combo}！"
     else:
-        st.session_state.message = f"❌ 答案是{st.session_state.question['answer']}，連擊中斷。"
+        st.session_state.message = f"❌ 答案是{correct_text}，連擊中斷。"
         st.session_state.combo = 0
     answer_row = {
-        "question_text": question_text,
+        "question_text": (
+            f"{question_text}（學生填答：{submitted_text}）"
+            if st.session_state.question.get("fraction") else question_text
+        ),
         "submitted_answer": submitted_answer,
         "correct_answer": correct_answer,
         "is_correct": is_correct,
@@ -2927,7 +3230,12 @@ def submit_quiz_answer():
     st.session_state.answer_history.append(answer_row)
     log_question_answer(st.session_state.selected_unit, answer_row)
     st.session_state.answer_input = None
-    if st.session_state.max_combo >= 10 or st.session_state.attempts >= MAX_QUESTIONS:
+    st.session_state.answer_numerator = None
+    st.session_state.answer_denominator = None
+    if (
+        st.session_state.max_combo >= combo_auto_clear_target(st.session_state.selected_unit)
+        or st.session_state.attempts >= MAX_QUESTIONS
+    ):
         finish_quiz()
     else:
         st.session_state.question = make_question(st.session_state.selected_unit)
@@ -3029,6 +3337,24 @@ def process_rewards():
         st.session_state.extra_reward_messages.append(
             f"第四章九部位收藏完成，獲得100 EXP與：{item_text(reward)}"
         )
+    if (
+        all(profile["unit_best_stars"][uid] == 3 for uid in chapter_unit_ids("5"))
+        and not profile["chapter5_reward_claimed"]
+    ):
+        reward = make_chapter5_reward()
+        profile["inventory"].append(reward)
+        profile["chapter5_reward_claimed"] = True
+        st.session_state.extra_reward_messages.append(f"第五章滿星獎勵：{item_text(reward)}")
+    if has_full_three_star_set(profile, "5") and not profile["chapter5_collection_reward_claimed"]:
+        collection_levels = add_exp(profile, 100)
+        reward = make_chapter5_collection_reward()
+        profile["inventory"].append(reward)
+        profile["chapter5_collection_reward_claimed"] = True
+        if collection_levels:
+            st.session_state.collection_level_up_to = profile["level"]
+        st.session_state.extra_reward_messages.append(
+            f"第五章九部位收藏完成，獲得100 EXP與：{item_text(reward)}"
+        )
     st.session_state.earned_exp = exp_gain
     st.session_state.result_processed = True
     save_profile(profile)
@@ -3047,7 +3373,10 @@ def simulate_battle(stats, boss_type="normal", chapter_id=None):
     core_hp = stats["hp"]
     shield_hp = stats["hp"] * stats["shield_pct"]
     player_hp = core_hp + shield_hp
-    hero_interval = 1 / stats["attack_speed"]
+    effective_attack_speed = max(
+        0.1, stats["attack_speed"] - config.get("hero_speed_reduction", 0.0)
+    )
+    hero_interval = 1 / effective_attack_speed
     boss_interval = config["interval"] * (1 + elite_boss_slow)
     effective_defense = max(0.0, stats["defense"] - config.get("defense_reduction", 0))
     received = (
@@ -3061,12 +3390,24 @@ def simulate_battle(stats, boss_type="normal", chapter_id=None):
     next_hero, next_boss = 0.0, boss_interval
     hero_hits = boss_hits = 0
     events = [{"time": 0.0, "boss_hp": boss_hp, "player_hp": player_hp, "text": "戰鬥開始"}]
+    if config.get("skill_at_start"):
+        events.append({
+            "time": 0.0, "boss_hp": boss_hp, "player_hp": player_hp,
+            "text": (
+                f"技能「{config['skill']}」已生效："
+                f"勇者造成的傷害降低{config.get('hero_damage_reduction', 0):.0%}"
+            ),
+        })
     for _ in range(10000):
         if next_hero <= next_boss and next_hero <= next_skill:
             now = next_hero
             hero_hits += 1
             is_critical = bool(critical_every and hero_hits % critical_every == 0)
-            normal_damage = stats["attack"] * (1 + elite_boss_damage)
+            damage_multiplier = max(
+                0.0,
+                1 + elite_boss_damage - config.get("hero_damage_reduction", 0.0),
+            )
+            normal_damage = stats["attack"] * damage_multiplier
             if is_critical:
                 normal_damage *= 1.5 + stats["critical_damage"]
             damage = normal_damage + (boss_max * elite_first_hit if hero_hits == 1 else 0)
@@ -3144,6 +3485,8 @@ def finish_battle(result):
             ("3", "elite"): ("chapter3_elite_boss_wins", "chapter3_elite_boss_exp_claimed"),
             ("4", "normal"): ("chapter4_boss_wins", "chapter4_boss_exp_claimed"),
             ("4", "elite"): ("chapter4_elite_boss_wins", "chapter4_elite_boss_exp_claimed"),
+            ("5", "normal"): ("chapter5_boss_wins", "chapter5_boss_exp_claimed"),
+            ("5", "elite"): ("chapter5_elite_boss_wins", "chapter5_elite_boss_exp_claimed"),
         }
         wins_key, exp_key = key_map[(chapter_id, boss_type)]
         profile[wins_key] += 1
@@ -3158,6 +3501,7 @@ def finish_battle(result):
             "2": "chapter2_elite_reward_claimed",
             "3": "chapter3_elite_reward_claimed",
             "4": "chapter4_elite_reward_claimed",
+            "5": "chapter5_elite_reward_claimed",
         }.get(chapter_id)
         if boss_type == "elite" and reward_claimed_key and not profile[reward_claimed_key]:
             reward = {
@@ -3165,16 +3509,18 @@ def finish_battle(result):
                 "2": make_chapter2_elite_reward,
                 "3": make_chapter3_elite_reward,
                 "4": make_chapter4_elite_reward,
+                "5": make_chapter5_elite_reward,
             }[chapter_id]()
             profile["inventory"].append(reward)
             profile[reward_claimed_key] = True
             reward_item_uid = reward["uid"]
-        if boss_type == "elite" and chapter_id in ("1", "2", "3", "4"):
+        if boss_type == "elite" and chapter_id in ("1", "2", "3", "4", "5"):
             earned_title = {
                 "1": "好像有點勇哦",
                 "2": "別小看我！",
                 "3": "一刀斬龍",
                 "4": "渡雷劫方可成仙",
+                "5": "魚與熊掌我都要",
             }[chapter_id]
             if earned_title not in profile["titles"]:
                 profile["titles"].append(earned_title)
@@ -3295,6 +3641,8 @@ BOSS_WIN_KEYS = {
     ("3", "elite"): "chapter3_elite_boss_wins",
     ("4", "normal"): "chapter4_boss_wins",
     ("4", "elite"): "chapter4_elite_boss_wins",
+    ("5", "normal"): "chapter5_boss_wins",
+    ("5", "elite"): "chapter5_elite_boss_wins",
 }
 SKILL_CINEMATIC_SECONDS = 1.5
 SKILL_DRAGON_FLIGHT_SECONDS = 2.0
@@ -3572,8 +3920,19 @@ def render_chapter_boss_card(chapter_id, boss_type, unlocked):
             abilities.append(
                 f"被動：戰鬥期間勇者防禦降低 {config['defense_reduction']}（最低為0；傷害減免仍有效）"
             )
+        if config.get("hero_speed_reduction"):
+            abilities.append(
+                f"被動：戰鬥期間勇者攻擊速度降低 {config['hero_speed_reduction']:.3f} 次／秒（最低保留0.100次／秒）"
+            )
+        if config.get("hero_damage_reduction"):
+            abilities.append(
+                f"技能「{config['skill']}」：戰鬥開始立即發動，勇者造成的傷害降低 "
+                f"{config['hero_damage_reduction']:.0%}；可與對菁英BOSS傷害加成互相抵銷"
+            )
         if config.get("skill"):
-            if config.get("skill_hp_threshold") is not None:
+            if config.get("skill_at_start"):
+                pass
+            elif config.get("skill_hp_threshold") is not None:
                 threshold_damage = config.get("true_damage", config.get("skill_damage", 0))
                 abilities.append(
                     f"技能「{config['skill']}」：血量首次低於 {config['skill_hp_threshold']:.0%} 時，"
@@ -3914,6 +4273,8 @@ elif st.session_state.screen == "admin_panel":
                     f"第三章菁英BOSS：{detail_profile.get('chapter3_elite_boss_wins', 0)}次",
                     f"第四章一般BOSS：{detail_profile.get('chapter4_boss_wins', 0)}次",
                     f"第四章菁英BOSS：{detail_profile.get('chapter4_elite_boss_wins', 0)}次",
+                    f"第五章一般BOSS：{detail_profile.get('chapter5_boss_wins', 0)}次",
+                    f"第五章菁英BOSS：{detail_profile.get('chapter5_elite_boss_wins', 0)}次",
                 ]
                 st.caption("｜".join(boss_progress))
 
@@ -4686,7 +5047,10 @@ elif st.session_state.screen == "menu":
             cols[2].button("🔒 尚未解鎖", disabled=True, key=f"locked_{unit_id}", use_container_width=True)
             cols[3].button("🎫 尚未通關", disabled=True, key=f"sweep_locked_{unit_id}", use_container_width=True)
     boss_unlocked = all(profile["unit_best_stars"][uid] == 3 for uid in current_unit_ids)
-    normal_win_keys = {"1": "boss_wins", "2": "chapter2_boss_wins", "3": "chapter3_boss_wins", "4": "chapter4_boss_wins"}
+    normal_win_keys = {
+        "1": "boss_wins", "2": "chapter2_boss_wins", "3": "chapter3_boss_wins",
+        "4": "chapter4_boss_wins", "5": "chapter5_boss_wins",
+    }
     elite_unlocked = profile.get(normal_win_keys[chapter_id], 0) > 0
     st.write("### 章節 BOSS")
     render_chapter_boss_card(chapter_id, "normal", boss_unlocked)
@@ -4716,13 +5080,20 @@ elif st.session_state.screen == "menu":
             st.success("第三章三星全裝收藏已完成：100 EXP＋★★★★ 龍心腰帶｜固定：HP +25｜詞條：HP +25%")
         if profile["chapter3_elite_reward_claimed"]:
             st.success("第三章菁英征服已完成：★★★★ 烈焰龍王戒｜第一擊額外扣除菁英BOSS血量17%｜對菁英BOSS傷害 +25%")
-    else:
+    elif chapter_id == "4":
         if profile["chapter4_reward_claimed"]:
             st.success(f"第四章滿星成就已完成：★★★★ 雷狐靈冠｜固定：HP +{fixed_value_for('4', 'helmet', 4)[1]:g}｜詞條：HP +25%")
         if profile["chapter4_collection_reward_claimed"]:
             st.success(f"第四章三星全裝收藏已完成：100 EXP＋★★★★ 紫電踏雲靴｜固定：攻擊速度 +{fixed_value_for('4', 'boots', 4)[1]:.2f}/秒｜詞條：攻擊速度 +25%")
         if profile["chapter4_elite_reward_claimed"]:
             st.success(f"第四章菁英征服已完成：★★★★ 九尾天雷刃｜固定：攻擊力 +{fixed_value_for('4', 'weapon', 4)[1]:g}｜詞條：暴擊率 +25%")
+    elif chapter_id == "5":
+        if profile["chapter5_reward_claimed"]:
+            st.success(f"第五章滿星成就已完成：★★★★ 冰河守護鎧｜固定：防禦力 +{fixed_value_for('5', 'armor', 4)[1]:g}｜詞條：防禦力 +25%")
+        if profile["chapter5_collection_reward_claimed"]:
+            st.success(f"第五章三星全裝收藏已完成：100 EXP＋★★★★ 極寒潮汐項鍊｜固定：菁英BOSS初始血量降低 {fixed_value_for('5', 'necklace', 4)[1]:.0%}｜詞條：受到傷害降低 +25%")
+        if profile["chapter5_elite_reward_claimed"]:
+            st.success(f"第五章菁英征服已完成：★★★★ 暴風王盾｜固定：防禦力 +{fixed_value_for('5', 'shield', 4)[1]:g}｜詞條：對菁英BOSS傷害 +25%")
     if st.session_state.active_player == "__TEACHER__":
         if st.button("返回老師管理後台"):
             st.session_state.active_player = None
@@ -5385,6 +5756,11 @@ elif st.session_state.screen in {"backpack", "gallery"}:
                     ("chapter-4-collection", "紫電踏雲靴", "boots", "收集第四章九部位三星", "collection"),
                     ("chapter-4-elite", "九尾天雷刃", "weapon", "首次擊敗第四章菁英BOSS「九尾天狐」", "elite"),
                 ],
+                "5": [
+                    ("chapter-5", "冰河守護鎧", "armor", "完成第五章所有三星單元", "unit"),
+                    ("chapter-5-collection", "極寒潮汐項鍊", "necklace", "收集第五章九部位三星", "collection"),
+                    ("chapter-5-elite", "暴風王盾", "shield", "首次擊敗第五章菁英BOSS「暴風熊王」", "elite"),
+                ],
             }
             owned_four_slots = collected_achievement_slots(profile, 4)
             st.write(f"#### 全系列四星部位 {len(owned_four_slots)}/9")
@@ -5418,6 +5794,7 @@ elif st.session_state.screen in {"backpack", "gallery"}:
                         "2": "chapter2_boss_wins",
                         "3": "chapter3_boss_wins",
                         "4": "chapter4_boss_wins",
+                        "5": "chapter5_boss_wins",
                     }[gallery_chapter], 0) > 0
                     if col.button("前往菁英BOSS", key=f"elite_go_{unit_key}", disabled=not elite_ready, use_container_width=True):
                         st.session_state.selected_chapter = gallery_chapter
@@ -5436,7 +5813,10 @@ elif st.session_state.screen == "quiz":
 
     unit = UNITS[st.session_state.selected_unit]
     st.subheader(f"單元{st.session_state.selected_unit}：{unit['name']}")
-    st.caption("星級規則：最高連擊1～4為一星、5～9為二星；達成10連擊立即三星通關。最多作答20題。")
+    if uses_advanced_combo_rules(st.session_state.selected_unit):
+        st.caption("星級規則：最高連擊1～3為一星、4～6為二星、7～8為三星；達成8連擊立即三星通關。最多作答20題。")
+    else:
+        st.caption("星級規則：最高連擊1～4為一星、5～9為二星；達成10連擊立即三星通關。最多作答20題。")
     @st.fragment
     def quiz_panel():
         if st.session_state.screen != "quiz":
@@ -5449,13 +5829,25 @@ elif st.session_state.screen == "quiz":
         st.progress(min(1.0, st.session_state.attempts / MAX_QUESTIONS))
         st.markdown(f"## {st.session_state.question['text']}")
         with st.form("answer_form"):
-            st.number_input(
-                "你的答案", value=None,
-                step=0.01 if st.session_state.selected_unit.startswith(("3-", "4-")) else 1.0,
-                format="%.2f" if st.session_state.selected_unit.startswith(("3-", "4-")) else "%.0f",
-                key="answer_input",
-                placeholder="輸入後按 Enter",
-            )
+            if st.session_state.question.get("fraction"):
+                numerator_col, slash_col, denominator_col = st.columns([4, 1, 4])
+                numerator_col.number_input(
+                    "分子", value=None, step=1, format="%d",
+                    key="answer_numerator", placeholder="分子",
+                )
+                slash_col.markdown("## ／")
+                denominator_col.number_input(
+                    "分母", value=None, step=1, min_value=1, format="%d",
+                    key="answer_denominator", placeholder="分母",
+                )
+            else:
+                st.number_input(
+                    "你的答案", value=None,
+                    step=0.01 if st.session_state.selected_unit.startswith(("3-", "4-")) else 1.0,
+                    format="%.2f" if st.session_state.selected_unit.startswith(("3-", "4-")) else "%.0f",
+                    key="answer_input",
+                    placeholder="輸入後按 Enter",
+                )
             st.form_submit_button(
                 "送出", type="primary", on_click=submit_quiz_answer
             )
@@ -5584,8 +5976,20 @@ elif st.session_state.screen == "boss_ready":
             f"⚡ BOSS被動：戰鬥期間勇者防禦降低 {config['defense_reduction']}（最低為0）；"
             "受到傷害降低詞條仍可生效。"
         )
+    if config.get("hero_speed_reduction"):
+        st.warning(
+            f"❄️ BOSS被動：戰鬥期間勇者攻擊速度降低"
+            f" {config['hero_speed_reduction']:.3f}次／秒，直到戰鬥結束。"
+        )
+    if config.get("hero_damage_reduction"):
+        st.error(
+            f"🌪️ BOSS技能「{config['skill']}」：戰鬥開始立即發動，勇者造成的傷害降低"
+            f" {config['hero_damage_reduction']:.0%}；可與對菁英BOSS傷害加成互相抵銷。"
+        )
     if config.get("skill"):
-        if config.get("skill_hp_threshold") is not None:
+        if config.get("skill_at_start"):
+            pass
+        elif config.get("skill_hp_threshold") is not None:
             threshold_damage = config.get("true_damage", config.get("skill_damage", 0))
             st.error(
                 f"⚡ BOSS技能「{config['skill']}」：BOSS血量首次低於"
