@@ -606,6 +606,16 @@ def verify_short_login_token(token):
         return None
 
 
+def student_login_is_open(now=None):
+    """學生可於台灣時間08:00（含）至22:00前登入。"""
+    current = now or datetime.now(TAIPEI_TZ)
+    return 8 <= current.hour < 22
+
+
+def student_login_closed_message():
+    return "🌙 每日晚上10點至隔日上午8點為休息時間，暫停學生登入與建立新勇者。"
+
+
 def remember_short_login(student_code):
     st.query_params["resume"] = make_short_login_token(student_code)
 
@@ -1707,6 +1717,15 @@ def set_announcement_active(announcement_id, is_active):
         db.execute(
             "UPDATE announcements SET is_active=? WHERE id=?",
             (1 if is_active else 0, announcement_id),
+        )
+
+
+def update_and_activate_announcement(announcement_id, title, content):
+    """儲存舊公告的修改內容、更新發布時間並立即重新啟用。"""
+    with db_connection() as db:
+        db.execute(
+            "UPDATE announcements SET title=?, content=?, is_active=1, created_at=? WHERE id=?",
+            (title.strip(), content.strip(), database_timestamp(), announcement_id),
         )
 
 
@@ -3529,11 +3548,15 @@ def render_chapter_boss_card(chapter_id, boss_type, unlocked):
 init_db()
 migrate_all_profiles_fixed_values()
 if not st.session_state.get("active_player") and st.query_params.get("resume"):
-    resumed_player = verify_short_login_token(st.query_params.get("resume"))
-    if resumed_player:
-        st.session_state.active_player = resumed_player
-        st.session_state.screen = "home"
+    if student_login_is_open():
+        resumed_player = verify_short_login_token(st.query_params.get("resume"))
+        if resumed_player:
+            st.session_state.active_player = resumed_player
+            st.session_state.screen = "home"
+        else:
+            clear_short_login()
     else:
+        # 休息時段不可透過5分鐘登入憑證繞過限制。
         clear_short_login()
 if USE_POSTGRES and not ADMIN_PIN_SECRET:
     st.error("公開版尚未設定 ADMIN_PIN，已停止登入以保護老師後台。")
@@ -3608,6 +3631,9 @@ elif st.session_state.screen == "login":
     apply_login_background()
     role = st.radio("登入身分", ["學生", "老師"], horizontal=True)
     if role == "學生":
+        login_open = student_login_is_open()
+        if not login_open:
+            st.warning(student_login_closed_message())
         login_tab, register_tab = st.tabs(["登入", "建立新勇者"])
         with login_tab:
             with st.container(key="login_fields_row"):
@@ -3619,26 +3645,37 @@ elif st.session_state.screen == "login":
                 keep_signed_in = remember_col.checkbox(
                     "5分鐘保持登入", value=True, key="keep_student_signed_in"
                 )
-                login_pressed = login_col.button("學生登入", type="primary")
+                login_pressed = login_col.button(
+                    "學生登入", type="primary", disabled=not login_open
+                )
             if login_pressed:
-                valid, result = verify_student(code, pin)
-                if valid:
-                    st.session_state.active_player = result
-                    if keep_signed_in:
-                        remember_short_login(result)
-                    else:
-                        clear_short_login()
-                    st.session_state.screen = "home"
-                    st.rerun()
+                if not student_login_is_open():
+                    st.warning(student_login_closed_message())
                 else:
-                    st.error(result)
+                    valid, result = verify_student(code, pin)
+                    if valid:
+                        st.session_state.active_player = result
+                        if keep_signed_in:
+                            remember_short_login(result)
+                        else:
+                            clear_short_login()
+                        st.session_state.screen = "home"
+                        st.rerun()
+                    else:
+                        st.error(result)
         with register_tab:
             if setting_get("registration_enabled") == "1":
                 real_name = st.text_input("正式姓名（僅老師後台可見）", max_chars=30, key="register_real_name").strip()
                 hero_name = st.text_input("設定勇者名稱", max_chars=12, key="register_hero").strip()
                 new_pin = st.text_input("設定6位數字PIN", type="password", max_chars=6, key="register_pin")
                 new_pin_again = st.text_input("再次輸入PIN", type="password", max_chars=6, key="register_pin_again")
-                if st.button("建立新勇者", type="primary", use_container_width=True):
+                if st.button(
+                    "建立新勇者", type="primary", use_container_width=True,
+                    disabled=not login_open,
+                ):
+                    if not student_login_is_open():
+                        st.warning(student_login_closed_message())
+                        st.stop()
                     name_error = validate_hero_name(hero_name)
                     if not real_name:
                         st.warning("請輸入正式姓名，方便老師辨識身分。")
@@ -3919,6 +3956,8 @@ elif st.session_state.screen == "admin_panel":
             st.info("目前尚無答題紀錄。")
     if admin_section == "公告管理":
         st.write("### 📢 公告管理")
+        if st.session_state.get("admin_announcement_notice"):
+            st.success(st.session_state.pop("admin_announcement_notice"))
         with st.form("create_announcement_form", clear_on_submit=True):
             announcement_title = st.text_input("公告標題", max_chars=80)
             announcement_content = st.text_area(
@@ -3944,6 +3983,32 @@ elif st.session_state.screen == "admin_panel":
                     f"{announcement['title']}｜{status}｜{announcement['created_at_text']}"
                 ):
                     render_announcement_content(announcement["content"])
+                    st.divider()
+                    st.write("#### 編輯這則公告")
+                    with st.form(f"edit_announcement_{announcement['id']}"):
+                        edited_title = st.text_input(
+                            "公告標題", value=announcement["title"], max_chars=80,
+                            key=f"edit_announcement_title_{announcement['id']}",
+                        )
+                        edited_content = st.text_area(
+                            "公告內容", value=announcement["content"], height=220,
+                            max_chars=3000,
+                            key=f"edit_announcement_content_{announcement['id']}",
+                        )
+                        save_announcement_edit = st.form_submit_button(
+                            "儲存修改並啟用", type="primary", use_container_width=True
+                        )
+                    if save_announcement_edit:
+                        if not edited_title.strip() or not edited_content.strip():
+                            st.warning("公告標題與內容都必須填寫。")
+                        else:
+                            update_and_activate_announcement(
+                                announcement["id"], edited_title, edited_content
+                            )
+                            st.session_state.admin_announcement_notice = (
+                                f"公告「{edited_title.strip()}」已更新並重新啟用。"
+                            )
+                            st.rerun()
                     action_col, confirm_col, delete_col = st.columns([1, 1.2, 1])
                     if action_col.button(
                         "停用" if announcement["is_active"] else "重新發布",
