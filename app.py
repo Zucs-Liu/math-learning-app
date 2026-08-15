@@ -4326,6 +4326,15 @@ if st.session_state.screen not in {"login", "bootstrap", "boss_watch"}:
     st.markdown(
         """
         <style>
+        /* 橫屏與電腦版：移除 Streamlit 預設的大段頂部留白，
+           只把整個內容區上移，不改變各元件彼此的相對位置。 */
+        @media (min-width: 901px), (orientation: landscape) {
+            [data-testid="stMainBlockContainer"],
+            .stMainBlockContainer,
+            .block-container {
+                padding-top: 0.35rem !important;
+            }
+        }
         @media (max-width: 900px) and (orientation: portrait) {
             [data-testid="stMainBlockContainer"] h1:first-of-type,
             .stMainBlockContainer h1:first-of-type,
