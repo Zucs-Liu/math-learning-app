@@ -1183,6 +1183,14 @@ def login_background_data_uri(animated=True):
     return _login_background_data_uri(filename, image_path.stat().st_mtime_ns)
 
 
+def login_landscape_background_data_uri():
+    filename = "heroes-vs-demon-landscape-v1.webp"
+    image_path = Path(__file__).parent / "assets" / "login" / filename
+    if not image_path.exists():
+        return ""
+    return _login_background_data_uri(filename, image_path.stat().st_mtime_ns)
+
+
 @st.cache_data(show_spinner=False)
 def _login_background_video_data_uri(filename, modified_ns):
     """Cache the MP4 data URI; modified_ns refreshes it when the file is replaced."""
@@ -1202,6 +1210,7 @@ def login_background_video_data_uri():
 
 def apply_login_background():
     static_background = login_background_data_uri(animated=False)
+    landscape_background = login_landscape_background_data_uri()
     video_background = login_background_video_data_uri()
     background = static_background or login_background_data_uri(animated=True)
     if not background and not video_background:
@@ -1217,6 +1226,7 @@ def apply_login_background():
     st.markdown(
         f"""
         {video_html}
+        <div class="login-landscape-background" aria-hidden="true"></div>
         <style>
         .stApp {{
             background: #090a18;
@@ -1232,6 +1242,16 @@ def apply_login_background():
             object-fit: contain;
             object-position: center top;
             background: #090a18;
+        }}
+        .login-landscape-background {{
+            display: none;
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+            background: #090a18 url('{landscape_background or static_background or background}') center center / cover no-repeat;
         }}
         .stApp::before {{
             content: "";
@@ -1426,6 +1446,27 @@ def apply_login_background():
                 background: rgba(255,255,255,.90) !important;
                 border: 1px solid rgba(255,255,255,.82) !important;
                 box-shadow: 0 5px 18px rgba(0,0,0,.20);
+            }}
+        }}
+        @media (orientation: landscape) {{
+            .login-video-background {{
+                display: none !important;
+            }}
+            .login-landscape-background {{
+                display: block !important;
+            }}
+            .stMainBlockContainer, [data-testid="stMainBlockContainer"] {{
+                width: min(560px, 46vw);
+                max-width: 560px;
+                margin: 70px auto 24px 5vw !important;
+                padding: .75rem 1rem 1.25rem !important;
+            }}
+            .stMainBlockContainer h1, [data-testid="stMainBlockContainer"] h1 {{
+                top: 4.05rem;
+                left: 1rem;
+            }}
+            .stApp::before {{
+                background: linear-gradient(90deg, rgba(7,10,25,.32) 0%, rgba(7,10,25,.14) 48%, rgba(7,10,25,.04) 100%);
             }}
         }}
         @media (prefers-reduced-motion: reduce) {{
@@ -1842,6 +1883,16 @@ def mark_mail_read(mail_id, student_code):
             "UPDATE mailbox SET is_read=1 WHERE id=? AND student_code=?",
             (mail_id, student_code),
         )
+
+
+def mark_all_mail_read(student_code):
+    """將指定勇者的所有未讀信件標為已讀，不變更附件領取狀態。"""
+    with db_connection() as db:
+        result = db.execute(
+            "UPDATE mailbox SET is_read=1 WHERE student_code=? AND is_read=0",
+            (student_code,),
+        )
+        return max(0, int(result.rowcount or 0))
 
 
 def claim_mail_reward(mail_id, student_code):
@@ -5026,6 +5077,19 @@ elif st.session_state.screen == "mailbox":
     mailbox_filter = st.radio(
         "信件分類", ["未閱讀", "已閱讀"], horizontal=True, key="mailbox_filter"
     )
+    unread_count = sum(1 for mail in mails if not mail["is_read"])
+    if st.button(
+        f"✅ 一鍵全部已讀（{unread_count}）",
+        key="mailbox_mark_all_read",
+        disabled=unread_count == 0,
+        use_container_width=True,
+    ):
+        marked_count = mark_all_mail_read(st.session_state.active_player)
+        st.session_state.mailbox_notice = f"已將 {marked_count} 封信件標示為已讀。"
+        st.rerun()
+    mailbox_notice = st.session_state.pop("mailbox_notice", None)
+    if mailbox_notice:
+        st.success(mailbox_notice)
     visible_mails = [
         mail for mail in mails
         if bool(mail["is_read"]) == (mailbox_filter == "已閱讀")
