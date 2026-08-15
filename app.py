@@ -1260,7 +1260,7 @@ def apply_login_background():
             height: 100vh;
             z-index: 0;
             pointer-events: none;
-            background: #090a18 url('{landscape_background or static_background or background}') center center / cover no-repeat;
+            background: #090a18 url('{landscape_background or landscape_static_background or static_background or background}') center center / cover no-repeat;
         }}
         .stApp::before {{
             content: "";
