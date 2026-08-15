@@ -3093,6 +3093,42 @@ def scroll_page_to_top(state_key):
     st.session_state[state_key] = False
 
 
+def remove_stale_elements_before(marker_id):
+    """清除 Streamlit 換頁時偶爾殘留在新頁內容上方的舊按鈕列與分頁列。"""
+    st.markdown(f'<div id="{marker_id}"></div>', unsafe_allow_html=True)
+    components.html(
+        f"""
+        <script>
+        const clearStaleElements = () => {{
+            const doc = parent.document;
+            const marker = doc.getElementById('{marker_id}');
+            if (!marker) return;
+            const markerTop = marker.getBoundingClientRect().top;
+
+            doc.querySelectorAll('[data-testid="stTabs"]').forEach(tabs => {{
+                const rect = tabs.getBoundingClientRect();
+                if (rect.bottom > 0 && rect.top < markerTop - 2) tabs.remove();
+            }});
+
+            doc.querySelectorAll('button').forEach(button => {{
+                if (button.closest('header[data-testid="stHeader"]')) return;
+                const rect = button.getBoundingClientRect();
+                if (rect.bottom <= 0 || rect.top >= markerTop - 2) return;
+                const row = button.closest('[data-testid="stHorizontalBlock"]');
+                const element = row || button.closest('[data-testid="stElementContainer"]');
+                if (element) element.remove();
+            }});
+        }};
+        [0, 40, 100, 220, 450, 800, 1300].forEach(
+            delay => setTimeout(clearStaleElements, delay)
+        );
+        </script>
+        """,
+        height=0,
+        scrolling=False,
+    )
+
+
 def force_top_before_navigation():
     """在按鈕切換 screen 前立即重設手機瀏覽器的捲動位置。"""
     components.html(
@@ -4914,6 +4950,7 @@ elif st.session_state.screen == "home":
     mail_count = unread_mail_count(st.session_state.active_player)
     mail_label = f"📬 勇者信箱（{mail_count}）" if mail_count else "📭 勇者信箱"
     if nav3[2].button(mail_label, use_container_width=True):
+        st.session_state.scroll_mailbox_to_top = True
         st.session_state.screen = "mailbox"
         st.rerun()
 
@@ -4983,6 +5020,7 @@ elif st.session_state.screen == "feedback":
 
 elif st.session_state.screen == "mailbox":
     scroll_page_to_top("scroll_mailbox_to_top")
+    remove_stale_elements_before("mailbox-page-start")
     st.subheader("📬 勇者信箱")
     mails = mailbox_rows(st.session_state.active_player)
     mailbox_filter = st.radio(
