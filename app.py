@@ -62,15 +62,15 @@ PROFILE_CACHE_SECONDS = 300
 SHORT_LOGIN_SECONDS = 300
 BOSS_CONFIGS = {
     "1_normal": {"name": "荒野魔狼", "image": "wild-wolf.webp", "hp": 300, "damage": 10, "interval": 2.0, "exp": 100},
-    "1_elite": {"name": "血月狼人", "image": "blood-moon-werewolf.webp", "hp": 400, "damage": 20, "interval": 1.5, "exp": 150},
+    "1_elite": {"name": "血月狼人", "image": "blood-moon-werewolf.webp", "hp": 400, "damage": 30, "interval": 1.5, "exp": 150},
     "2_normal": {"name": "刺甲蜘蛛", "image": "thorn-armor-spider.webp", "hp": 600, "damage": 20, "interval": 2.0, "exp": 150},
-    "2_elite": {"name": "魅惑影蛛", "image": "charming-shadow-spider.webp", "hp": 800, "damage": 40, "interval": 1.5, "exp": 200},
+    "2_elite": {"name": "魅惑影蛛", "image": "charming-shadow-spider.webp", "hp": 800, "damage": 60, "interval": 1.5, "exp": 200},
     "3_normal": {"name": "深淵魔龍", "image": "abyss-dragon.webp", "hp": 900, "damage": 30, "interval": 2.0, "exp": 200, "critical_rate": 0.50},
-    "3_elite": {"name": "烈焰龍王", "image": "flame-dragon-king.webp", "hp": 1200, "damage": 60, "interval": 1.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 50},
+    "3_elite": {"name": "烈焰龍王", "image": "flame-dragon-king.webp", "hp": 1200, "damage": 90, "interval": 1.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 50},
     "4_normal": {"name": "六尾雷狐", "image": "six-tail-thunder-fox.webp", "hp": 1200, "damage": 40, "interval": 2.0, "exp": 250, "defense_reduction": 20},
-    "4_elite": {"name": "九尾天狐", "image": "nine-tail-celestial-fox.webp", "hp": 1600, "damage": 80, "interval": 1.5, "exp": 300, "skill": "天降雷劫", "skill_hp_threshold": 0.5, "true_damage": 70},
+    "4_elite": {"name": "九尾天狐", "image": "nine-tail-celestial-fox.webp", "hp": 1600, "damage": 120, "interval": 1.5, "exp": 300, "skill": "天降雷劫", "skill_hp_threshold": 0.5, "true_damage": 70},
     "5_normal": {"name": "寒冰巨鯰", "image": "ice-giant-catfish.webp", "hp": 1500, "damage": 50, "interval": 2.0, "exp": 300, "hero_speed_reduction": 0.4},
-    "5_elite": {"name": "暴風熊王", "image": "storm-bear-king.webp", "hp": 2000, "damage": 100, "interval": 1.5, "exp": 350, "skill": "狂風驟雨", "hero_damage_reduction": 0.25, "skill_at_start": True},
+    "5_elite": {"name": "暴風熊王", "image": "storm-bear-king.webp", "hp": 2000, "damage": 150, "interval": 1.5, "exp": 350, "skill": "狂風驟雨", "hero_damage_reduction": 0.40, "skill_at_start": True},
 }
 BOSS_MAX_HP = 400
 BOSS_DAMAGE = 30
@@ -2946,6 +2946,8 @@ def make_question(unit_id):
             return {
                 "text": f"{numerator}／{denominator} ＝（　）／（　）",
                 "answer": answer_numerator / answer_denominator,
+                "question_numerator": numerator,
+                "question_denominator": denominator,
                 "answer_numerator": answer_numerator,
                 "answer_denominator": answer_denominator,
                 "fraction": True,
@@ -2966,7 +2968,7 @@ def make_question(unit_id):
         quotient = random.randint(1, max(1, 99 // divisor_tenths))
         dividend_tenths = divisor_tenths * quotient
         return {"text": f"{dividend_tenths / 10:.1f} ÷ {divisor_tenths / 10:.1f} ＝ ?", "answer": quotient}
-    if unit_id in ("3-1", "3-2"):
+    if unit_id == "3-1":
         add = random.choice([True, False])
         a = random.randint(10, 199) / 10
         b = random.randint(1, 99) / 10 if unit_id == "3-1" else random.randint(1, 999) / 100
@@ -2977,6 +2979,27 @@ def make_question(unit_id):
         a_text = f"{a:.1f}"
         b_text = f"{b:.1f}" if unit_id == "3-1" else f"{b:.2f}"
         return {"text": f"{a_text} {symbol} {b_text} ＝ ?", "answer": round(answer, 2)}
+    if unit_id == "3-2":
+        add = random.choice([True, False])
+        # Generate and calculate in integer hundredths so displayed values and
+        # the stored answer can never diverge because of formatting/rounding.
+        a_hundredths = random.randint(10, 199) * 10
+        max_b = 999 if add else min(999, a_hundredths)
+        # Avoid a zero hundredths digit (for example 1.10 or 8.60).
+        b_hundredths = random.choice(
+            [value for value in range(1, max_b + 1) if value % 10 != 0]
+        )
+        answer_hundredths = (
+            a_hundredths + b_hundredths if add else a_hundredths - b_hundredths
+        )
+        symbol = "+" if add else "−"
+        return {
+            "text": (
+                f"{a_hundredths / 100:.1f} {symbol} "
+                f"{b_hundredths / 100:.2f} = ?"
+            ),
+            "answer": answer_hundredths / 100,
+        }
     if unit_id == "2-1":
         a, b = random.randint(10, 99), random.randint(2, 9)
         return {"text": f"{a} × {b} ＝ ?", "answer": a * b}
@@ -3394,7 +3417,7 @@ def simulate_battle(stats, boss_type="normal", chapter_id=None):
         events.append({
             "time": 0.0, "boss_hp": boss_hp, "player_hp": player_hp,
             "text": (
-                f"技能「{config['skill']}」已生效："
+                f"BOSS施放技能「{config['skill']}」："
                 f"勇者造成的傷害降低{config.get('hero_damage_reduction', 0):.0%}"
             ),
         })
@@ -3717,6 +3740,9 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
     skill_phase = active_skill.get("presentation_phase") if active_skill else None
     skill_flight = skill_phase == "dragon_flight"
     skill_impact = skill_phase == "aftermath"
+    active_skill_text = active_skill.get("text", "") if active_skill else ""
+    is_lightning_skill = "天降雷劫" in active_skill_text
+    is_wind_skill = "狂風驟雨" in active_skill_text
     hero_attacking = event["text"].startswith("勇者") and active_skill is None
     boss_attacking = ("BOSS第" in event["text"] or "BOSS發動" in event["text"]) and active_skill is None
     critical_hit = "暴擊" in event["text"]
@@ -3732,7 +3758,7 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
         hero_class += " defeated"
     if boss_defeated:
         boss_class += " defeated"
-    hero_hit = boss_attacking or skill_impact
+    hero_hit = boss_attacking or (skill_impact and not is_wind_skill)
     boss_hit = hero_attacking
     if hero_hit and not hero_defeated:
         hero_class += " hit-shake"
@@ -3761,28 +3787,62 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
         if boss_image else '<div class="boss-fallback">🐉</div>'
     )
     skill_overlay = ""
-    is_lightning_skill = bool(active_skill and "天降雷劫" in active_skill.get("text", ""))
     if skill_phase == "announcement":
+        cinematic_class = (
+            "lightning-cinematic" if is_lightning_skill
+            else "wind-cinematic" if is_wind_skill else ""
+        )
+        skill_icon = "⚡" if is_lightning_skill else "🌪️" if is_wind_skill else "🔥"
         skill_overlay = (
-            f'<div class="skill-cinematic {"lightning-cinematic" if is_lightning_skill else ""}"><div class="skill-flame">{"⚡" if is_lightning_skill else "🔥"}</div>'
+            f'<div class="skill-cinematic {cinematic_class}"><div class="skill-flame">{skill_icon}</div>'
             f'<strong>{active_skill["text"]}</strong><div>戰鬥計時暫停</div></div>'
         )
     elif skill_impact:
-        skill_damage = re.search(r"造成\s*([0-9.]+)", active_skill["text"])
-        skill_damage_text = skill_damage.group(1) if skill_damage else ""
+        if is_wind_skill:
+            impact_text = "勇者造成傷害 -40%"
+        else:
+            skill_damage = re.search(r"造成\s*([0-9.]+)", active_skill["text"])
+            skill_damage_text = skill_damage.group(1) if skill_damage else ""
+            impact_text = (
+                f"{'雷劫傷害' if is_lightning_skill else '真實傷害'} -{skill_damage_text}"
+            )
         skill_overlay = (
             '<div class="skill-aftermath-layer">'
-            f'<div class="true-damage-number">{"雷劫傷害" if is_lightning_skill else "真實傷害"} -{skill_damage_text}</div>'
+            f'<div class="true-damage-number">{impact_text}</div>'
             '</div>'
         )
     elif skill_flight:
         if is_lightning_skill:
             skill_overlay = (
                 '<div class="dragon-skill-layer lightning-skill-layer">'
-                '<div class="lightning-bolt main-bolt"></div>'
-                '<div class="lightning-bolt side-bolt left-bolt"></div>'
-                '<div class="lightning-bolt side-bolt right-bolt"></div>'
+                '<div class="storm-cloud cloud-left"></div>'
+                '<div class="storm-cloud cloud-right"></div>'
+                '<svg class="lightning-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none">'
+                '<defs><filter id="lightning-glow"><feGaussianBlur stdDeviation="8" result="blur"/>'
+                '<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>'
+                '<path class="lightning-path main-lightning" pathLength="1" d="M535,-30 L470,155 L545,230 L420,390 L505,470 L350,650 L455,705 L315,1010"/>'
+                '<path class="lightning-path lightning-branch branch-one" pathLength="1" d="M474,156 L335,260 L245,390"/>'
+                '<path class="lightning-path lightning-branch branch-two" pathLength="1" d="M424,390 L620,455 L710,590"/>'
+                '<path class="lightning-path lightning-branch branch-three" pathLength="1" d="M353,650 L190,720 L105,870"/>'
+                '<path class="lightning-path lightning-branch branch-four" pathLength="1" d="M456,705 L650,760 L785,930"/>'
+                '</svg>'
+                '<div class="lightning-screen-flash"></div>'
                 '<div class="lightning-impact-glow"></div></div>'
+            )
+        elif is_wind_skill:
+            skill_overlay = (
+                '<div class="dragon-skill-layer wind-skill-layer">'
+                '<div class="wind-cloud wind-cloud-one"></div>'
+                '<div class="wind-cloud wind-cloud-two"></div>'
+                '<div class="wind-streak streak-one"></div>'
+                '<div class="wind-streak streak-two"></div>'
+                '<div class="wind-streak streak-three"></div>'
+                '<div class="tornado-funnel">'
+                '<i></i><i></i><i></i><i></i><i></i><i></i><i></i>'
+                '</div><div class="wind-debris debris-one">◆</div>'
+                '<div class="wind-debris debris-two">●</div>'
+                '<div class="wind-debris debris-three">▲</div>'
+                '</div>'
             )
         else:
             fire_dragon_image = effect_image_data_uri("fire-dragon-strike.webp")
@@ -3793,7 +3853,7 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
             skill_overlay = f'<div class="dragon-skill-layer">{dragon_visual}</div>'
     if skill_flight:
         arena_class = "battle-arena skill-flight-arena"
-    elif skill_impact:
+    elif skill_impact and not is_wind_skill:
         arena_class = "battle-arena skill-impact-arena"
     else:
         arena_class = "battle-arena"
@@ -3829,6 +3889,7 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
           background:radial-gradient(circle,#ff7a18dd,#8b0000ee);animation:skillFlash .55s ease-in-out infinite alternate;}}
         .skill-flame {{font-size:82px;animation:flameGrow .5s ease-in-out infinite alternate;}}
         .lightning-cinematic {{background:radial-gradient(circle,#8a5cffdd,#17002fee);}}
+        .wind-cinematic {{background:radial-gradient(circle at 50% 45%,#55758ddd,#07131fee 72%);}}
         .skill-flight-arena {{background:#000;border-color:#000;box-shadow:none;overflow:visible;perspective:none;}}
         .skill-flight-arena:after {{display:none;}}
         .skill-flight-arena > .fighter {{visibility:hidden;}}
@@ -3839,6 +3900,21 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
         .fire-dragon-fallback {{position:absolute;left:100%;top:-20%;font-size:150px;
           animation:dragonRush{event_sequence} 2s linear forwards;}}
         .lightning-skill-layer {{background:#000;}}
+        .lightning-svg {{position:absolute;inset:-2% 0 0;width:100%;height:104%;overflow:visible;
+          filter:drop-shadow(0 0 7px #fff) drop-shadow(0 0 22px #8a46ff);}}
+        .lightning-path {{fill:none;stroke:#f8f3ff;stroke-linecap:round;stroke-linejoin:round;
+          filter:url(#lightning-glow);stroke-dasharray:1;stroke-dashoffset:1;
+          animation:lightningTrace{event_sequence} 2s cubic-bezier(.12,.72,.25,1) forwards;}}
+        .main-lightning {{stroke-width:18;}}
+        .lightning-branch {{stroke:#cdafff;stroke-width:8;}}
+        .branch-one {{animation-delay:.18s;}} .branch-two {{animation-delay:.32s;}}
+        .branch-three {{animation-delay:.46s;}} .branch-four {{animation-delay:.58s;}}
+        .storm-cloud {{position:absolute;top:-8%;width:62%;height:30%;border-radius:50%;
+          background:radial-gradient(ellipse at center,#695088 0 18%,#291b45 48%,transparent 72%);
+          filter:blur(16px);opacity:0;animation:stormCloudIn{event_sequence} 2s ease-out forwards;}}
+        .cloud-left {{left:-8%;}} .cloud-right {{right:-8%;animation-delay:.12s;}}
+        .lightning-screen-flash {{position:absolute;inset:0;background:#e8dcff;opacity:0;
+          animation:lightningScreenFlash{event_sequence} 2s steps(1,end) forwards;}}
         .lightning-bolt {{position:absolute;top:-15%;left:50%;width:18px;height:125%;
           background:linear-gradient(90deg,#6f2cff,#fff 42%,#d7b8ff 62%,#7028ff);
           box-shadow:0 0 18px #9d55ff,0 0 50px #6e20ff,0 0 90px #b279ff;
@@ -3850,6 +3926,34 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
         .lightning-impact-glow {{position:absolute;left:50%;bottom:-12%;width:42vw;height:25vh;
           transform:translateX(-50%);border-radius:50%;background:radial-gradient(ellipse,#fff 0 5%,#a55cffaa 22%,transparent 70%);
           opacity:0;animation:lightningGlow{event_sequence} 2s ease-out forwards;}}
+        .wind-skill-layer {{background:radial-gradient(circle at 50% 45%,#1a3344 0,#05090d 72%);}}
+        .wind-cloud {{position:absolute;width:75vw;height:35vh;border-radius:50%;filter:blur(24px);
+          background:radial-gradient(ellipse,#b4cbd0aa 0 12%,#47657299 35%,transparent 72%);
+          opacity:0;animation:windCloudSweep{event_sequence} 2s ease-in-out forwards;}}
+        .wind-cloud-one {{left:-55vw;top:5vh;}} .wind-cloud-two {{right:-55vw;bottom:4vh;animation-delay:.16s;}}
+        .wind-streak {{position:absolute;left:-35%;width:52%;height:8px;border-radius:50%;
+          background:linear-gradient(90deg,transparent,#d9fbff,#7cdcec88,transparent);
+          box-shadow:0 0 15px #bff8ff;transform:skewX(-28deg);opacity:0;
+          animation:windStreakRush{event_sequence} .62s linear infinite;}}
+        .streak-one {{top:25%;}} .streak-two {{top:52%;animation-delay:.18s;}}
+        .streak-three {{top:76%;animation-delay:.36s;}}
+        .tornado-funnel {{position:absolute;left:50%;top:7%;width:min(60vw,520px);height:88%;
+          transform:translateX(-50%);filter:drop-shadow(0 0 22px #8edce8);}}
+        .tornado-funnel i {{position:absolute;left:50%;height:9%;border:7px solid #dffcff;
+          border-left-color:transparent;border-right-color:transparent;border-radius:50%;opacity:0;
+          transform:translateX(-50%);animation:tornadoSpin{event_sequence} .48s linear infinite,
+          tornadoAppear{event_sequence} 2s ease-in-out forwards;}}
+        .tornado-funnel i:nth-child(1) {{top:3%;width:100%;}}
+        .tornado-funnel i:nth-child(2) {{top:16%;width:88%;animation-delay:.05s;}}
+        .tornado-funnel i:nth-child(3) {{top:29%;width:76%;animation-delay:.10s;}}
+        .tornado-funnel i:nth-child(4) {{top:42%;width:64%;animation-delay:.15s;}}
+        .tornado-funnel i:nth-child(5) {{top:55%;width:51%;animation-delay:.20s;}}
+        .tornado-funnel i:nth-child(6) {{top:68%;width:36%;animation-delay:.25s;}}
+        .tornado-funnel i:nth-child(7) {{top:81%;width:20%;animation-delay:.30s;}}
+        .wind-debris {{position:absolute;color:#d7f7ef;font-size:22px;opacity:0;
+          animation:debrisSpiral{event_sequence} 1.1s linear infinite;}}
+        .debris-one {{left:18%;top:30%;}} .debris-two {{right:16%;top:48%;animation-delay:.25s;}}
+        .debris-three {{left:28%;bottom:18%;animation-delay:.5s;}}
         .skill-aftermath-layer {{position:absolute;inset:0;z-index:10;pointer-events:none;}}
         .true-damage-number {{position:absolute;left:10%;top:20%;font-size:30px;font-weight:900;color:#fff3a0;
           text-shadow:0 2px 2px #500,0 0 10px #ff2700;opacity:0;animation:trueDamage{event_sequence} 1s ease-out forwards;}}
@@ -3874,7 +3978,15 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
         @keyframes flameGrow {{to{{transform:scale(1.35) rotate(8deg);}}}}
         @keyframes dragonRush{event_sequence} {{0%{{opacity:0;transform:translate(10%,-12%) scale(.58) rotate(-8deg);}}8%{{opacity:1;}}48%{{opacity:1;transform:translate(-105%,58%) scale(1.05) rotate(-8deg);}}88%{{opacity:1;transform:translate(-205%,138%) scale(1.22) rotate(-8deg);}}100%{{opacity:0;transform:translate(-235%,158%) scale(1.3) rotate(-8deg);}}}}
         @keyframes lightningDrop{event_sequence} {{0%{{opacity:0;transform:translateY(-105%) scaleY(.25);}}12%{{opacity:1;}}48%{{opacity:1;transform:translateY(0) scaleY(1);}}62%{{opacity:.35;}}70%{{opacity:1;filter:brightness(1.8);}}100%{{opacity:0;transform:translateY(8%) scaleY(1.04);}}}}
+        @keyframes lightningTrace{event_sequence} {{0%{{stroke-dashoffset:1;opacity:0;}}12%{{opacity:1;}}52%{{stroke-dashoffset:0;opacity:1;}}68%{{opacity:.35;}}76%{{opacity:1;stroke-width:24;}}100%{{stroke-dashoffset:0;opacity:0;}}}}
+        @keyframes stormCloudIn{event_sequence} {{0%{{opacity:0;transform:translateY(-35%) scale(.7);}}25%{{opacity:.8;}}72%{{opacity:1;transform:translateY(10%) scale(1.25);}}100%{{opacity:0;transform:translateY(18%) scale(1.4);}}}}
+        @keyframes lightningScreenFlash{event_sequence} {{0%,43%,55%,72%,100%{{opacity:0;}}45%,57%,74%{{opacity:.52;}}}}
         @keyframes lightningGlow{event_sequence} {{0%,35%{{opacity:0;transform:translateX(-50%) scale(.2);}}52%{{opacity:1;transform:translateX(-50%) scale(1.4);}}100%{{opacity:0;transform:translateX(-50%) scale(2);}}}}
+        @keyframes windCloudSweep{event_sequence} {{0%{{opacity:0;transform:translateX(0) scale(.6);}}18%{{opacity:.85;}}70%{{opacity:1;transform:translateX(70vw) scale(1.25);}}100%{{opacity:0;transform:translateX(115vw) scale(1.45);}}}}
+        @keyframes windStreakRush{event_sequence} {{0%{{left:-45%;opacity:0;}}15%{{opacity:1;}}100%{{left:115%;opacity:0;}}}}
+        @keyframes tornadoSpin{event_sequence} {{from{{transform:translateX(-50%) rotate(0deg) skewX(-8deg);}}to{{transform:translateX(-50%) rotate(360deg) skewX(-8deg);}}}}
+        @keyframes tornadoAppear{event_sequence} {{0%{{opacity:0;}}18%{{opacity:.85;}}72%{{opacity:1;}}100%{{opacity:0;}}}}
+        @keyframes debrisSpiral{event_sequence} {{0%{{opacity:0;transform:rotate(0) translateX(20px) scale(.5);}}20%{{opacity:1;}}100%{{opacity:0;transform:rotate(720deg) translateX(180px) scale(1.2);}}}}
         @keyframes trueDamage{event_sequence} {{0%{{opacity:0;transform:translateY(25px) scale(.5);}}18%{{opacity:1;transform:translateY(0) scale(1.25);}}100%{{opacity:0;transform:translateY(-38px) scale(.95);}}}}
         @keyframes arenaImpact{event_sequence} {{0%,100%{{transform:translate(0,0);filter:none;}}8%{{transform:translate(-12px,6px);filter:brightness(1.5);}}18%{{transform:translate(12px,-6px);}}30%{{transform:translate(-9px,-5px);}}44%{{transform:translate(8px,5px);}}62%{{transform:translate(-5px,0);filter:brightness(1.15);}}}}
         @media (max-width:600px) {{
@@ -5575,7 +5687,43 @@ elif st.session_state.screen in {"backpack", "gallery"}:
                 st.session_state.bulk_dismantle_mode = not bulk_mode
                 st.rerun()
             st.caption("背包只顯示未穿戴裝備；點擊格子可查看、裝備或分解。每列5格，超過25件可繼續往下瀏覽。")
-            sorted_items = sorted(backpack_items, key=lambda x: (-x["stars"], list(SLOT_NAMES).index(x["slot"])))
+            filter_col, star_col, sort_col = st.columns(3)
+            selected_slot_filter = filter_col.selectbox(
+                "部位篩選",
+                options=["all", *SLOT_NAMES.keys()],
+                format_func=lambda slot: "全部部位" if slot == "all" else SLOT_NAMES[slot],
+                key="backpack_slot_filter",
+            )
+            selected_star_filter = star_col.selectbox(
+                "星級篩選",
+                options=[0, 4, 3, 2, 1],
+                format_func=lambda stars: "全部星級" if stars == 0 else f"{stars} 星",
+                key="backpack_star_filter",
+            )
+            selected_gear_sort = sort_col.selectbox(
+                "排列方式",
+                options=["star_desc", "star_asc", "slot"],
+                format_func=lambda value: {
+                    "star_desc": "星級：高到低",
+                    "star_asc": "星級：低到高",
+                    "slot": "依部位排列",
+                }[value],
+                key="backpack_gear_sort",
+            )
+            visible_items = [
+                item for item in backpack_items
+                if (selected_slot_filter == "all" or item["slot"] == selected_slot_filter)
+                and (selected_star_filter == 0 or item["stars"] == selected_star_filter)
+            ]
+            slot_order = {slot: index for index, slot in enumerate(SLOT_NAMES)}
+            if selected_gear_sort == "star_asc":
+                sort_key = lambda item: (item["stars"], slot_order[item["slot"]], item["name"])
+            elif selected_gear_sort == "slot":
+                sort_key = lambda item: (slot_order[item["slot"]], -item["stars"], item["name"])
+            else:
+                sort_key = lambda item: (-item["stars"], slot_order[item["slot"]], item["name"])
+            sorted_items = sorted(visible_items, key=sort_key)
+            st.caption(f"目前顯示 {len(sorted_items)}／{len(backpack_items)} 件未裝備物品。")
             if bulk_mode:
                 eligible_bulk_items = [item for item in sorted_items if item["stars"] in (1, 2, 3)]
                 selected_bulk_items = [
@@ -5806,6 +5954,41 @@ elif st.session_state.screen in {"backpack", "gallery"}:
     render_bottom_home_button(inventory_view)
 
 elif st.session_state.screen == "quiz":
+    st.markdown(
+        """
+        <style>
+        @media (max-width: 768px) and (orientation: portrait) {
+            .st-key-quiz-mobile-stats [data-testid="stHorizontalBlock"] {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+                gap: .2rem !important;
+            }
+            .st-key-quiz-mobile-stats [data-testid="stColumn"] {
+                flex: 1 1 25% !important;
+                width: 25% !important;
+                min-width: 0 !important;
+            }
+            .st-key-quiz-mobile-stats [data-testid="stMetric"] {
+                padding: .2rem .1rem !important;
+            }
+            .st-key-quiz-mobile-stats [data-testid="stMetricLabel"] {
+                font-size: .72rem !important;
+                line-height: 1.1 !important;
+                white-space: nowrap !important;
+            }
+            .st-key-quiz-mobile-stats [data-testid="stMetricValue"] {
+                font-size: 1.15rem !important;
+                line-height: 1.2 !important;
+            }
+            .st-key-quiz-mobile-stats [data-testid="stMetricValue"] > div {
+                font-size: inherit !important;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     if st.button("← 返回章節（離開本次測驗）", key="leave_quiz_button"):
         leave_quiz()
         st.session_state.scroll_menu_to_top = True
@@ -5821,22 +6004,73 @@ elif st.session_state.screen == "quiz":
     def quiz_panel():
         if st.session_state.screen != "quiz":
             st.rerun(scope="app")
-        cols = st.columns(4)
-        cols[0].metric("作答進度", f"{st.session_state.attempts}/{MAX_QUESTIONS}題")
-        cols[1].metric("目前連擊", st.session_state.combo)
-        cols[2].metric("最高連擊", st.session_state.max_combo)
-        cols[3].metric("答對", st.session_state.correct)
+        with st.container(key="quiz-mobile-stats"):
+            cols = st.columns(4)
+            cols[0].metric("作答進度", f"{st.session_state.attempts}/{MAX_QUESTIONS}題")
+            cols[1].metric("目前連擊", st.session_state.combo)
+            cols[2].metric("最高連擊", st.session_state.max_combo)
+            cols[3].metric("答對", st.session_state.correct)
         st.progress(min(1.0, st.session_state.attempts / MAX_QUESTIONS))
-        st.markdown(f"## {st.session_state.question['text']}")
+        if st.session_state.question.get("fraction"):
+            question = st.session_state.question
+            source_numbers = re.findall(r"\d+", str(question.get("text", "")))
+            source_numerator = question.get(
+                "question_numerator", source_numbers[0] if source_numbers else "?"
+            )
+            source_denominator = question.get(
+                "question_denominator", source_numbers[1] if len(source_numbers) > 1 else "?"
+            )
+            st.markdown(
+                f"""
+                <style>
+                .fraction-question {{
+                    display:flex;align-items:center;justify-content:flex-start;
+                    gap:1rem;font-size:2.2rem;font-weight:700;margin:.7rem 0 1rem;
+                }}
+                .vertical-fraction {{
+                    display:inline-flex;flex-direction:column;align-items:center;
+                    justify-content:center;min-width:3.4rem;line-height:1.05;
+                }}
+                .vertical-fraction .fraction-top {{
+                    width:100%;text-align:center;border-bottom:3px solid currentColor;
+                    padding:0 .45rem .22rem;
+                }}
+                .vertical-fraction .fraction-bottom {{
+                    width:100%;text-align:center;padding:.22rem .45rem 0;
+                }}
+                @media (max-width:768px) and (orientation:portrait) {{
+                    .fraction-question {{font-size:1.75rem;gap:.65rem;justify-content:center;}}
+                    .vertical-fraction {{min-width:2.8rem;}}
+                }}
+                </style>
+                <div class="fraction-question">
+                    <span class="vertical-fraction">
+                        <span class="fraction-top">{source_numerator}</span>
+                        <span class="fraction-bottom">{source_denominator}</span>
+                    </span>
+                    <span>＝</span>
+                    <span class="vertical-fraction">
+                        <span class="fraction-top">（　）</span>
+                        <span class="fraction-bottom">（　）</span>
+                    </span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(f"## {st.session_state.question['text']}")
         with st.form("answer_form"):
             if st.session_state.question.get("fraction"):
-                numerator_col, slash_col, denominator_col = st.columns([4, 1, 4])
-                numerator_col.number_input(
+                fraction_col = st.columns([1, 2, 1])[1]
+                fraction_col.number_input(
                     "分子", value=None, step=1, format="%d",
                     key="answer_numerator", placeholder="分子",
                 )
-                slash_col.markdown("## ／")
-                denominator_col.number_input(
+                fraction_col.markdown(
+                    "<div style='height:3px;background:currentColor;margin:-.25rem 0 .4rem;'></div>",
+                    unsafe_allow_html=True,
+                )
+                fraction_col.number_input(
                     "分母", value=None, step=1, min_value=1, format="%d",
                     key="answer_denominator", placeholder="分母",
                 )
