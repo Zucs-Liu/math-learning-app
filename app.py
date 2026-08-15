@@ -4058,14 +4058,50 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
                 '<div class="dragon-skill-layer wind-skill-layer">'
                 '<div class="wind-cloud wind-cloud-one"></div>'
                 '<div class="wind-cloud wind-cloud-two"></div>'
+                '<div class="wind-rain-curtain"></div>'
                 '<div class="wind-streak streak-one"></div>'
                 '<div class="wind-streak streak-two"></div>'
                 '<div class="wind-streak streak-three"></div>'
-                '<div class="tornado-funnel">'
-                '<i></i><i></i><i></i><i></i><i></i><i></i><i></i>'
-                '</div><div class="wind-debris debris-one">◆</div>'
+                '<div class="tornado-stage">'
+                '<div class="tornado-backwash"></div>'
+                '<svg class="tornado-svg" viewBox="0 0 700 1000" preserveAspectRatio="xMidYMid meet">'
+                '<defs>'
+                '<linearGradient id="windBodyGradient" x1="0" y1="0" x2="1" y2="1">'
+                '<stop offset="0" stop-color="#dff9ff" stop-opacity=".88"/>'
+                '<stop offset=".28" stop-color="#7899a5" stop-opacity=".75"/>'
+                '<stop offset=".60" stop-color="#263c47" stop-opacity=".9"/>'
+                '<stop offset="1" stop-color="#bdebf2" stop-opacity=".68"/>'
+                '</linearGradient>'
+                '<filter id="windRough" x="-30%" y="-20%" width="160%" height="150%">'
+                '<feTurbulence type="fractalNoise" baseFrequency=".012 .035" numOctaves="3" seed="8" result="noise">'
+                '<animate attributeName="baseFrequency" dur=".65s" values=".012 .035;.020 .055;.012 .035" repeatCount="indefinite"/>'
+                '</feTurbulence>'
+                '<feDisplacementMap in="SourceGraphic" in2="noise" scale="34" xChannelSelector="R" yChannelSelector="B"/>'
+                '</filter>'
+                '</defs>'
+                '<path class="tornado-body" filter="url(#windRough)" fill="url(#windBodyGradient)" '
+                'd="M60 82 C155 14 545 14 640 82 C620 170 565 225 550 325 '
+                'C530 440 475 500 454 610 C435 720 400 810 371 938 '
+                'C363 976 337 976 329 938 C300 810 265 720 246 610 '
+                'C225 500 170 440 150 325 C135 225 80 170 60 82 Z"/>'
+                '<g class="tornado-ribbons">'
+                '<path d="M72 112 C210 38 525 40 628 125 C518 205 205 215 100 151"/>'
+                '<path d="M122 245 C240 181 495 188 566 263 C474 330 225 338 155 285"/>'
+                '<path d="M158 378 C252 325 459 330 520 398 C432 460 250 462 190 419"/>'
+                '<path d="M207 515 C280 471 425 477 470 535 C399 585 284 590 231 552"/>'
+                '<path d="M245 646 C302 612 397 615 431 663 C381 704 300 709 263 680"/>'
+                '<path d="M282 770 C318 745 379 748 402 785 C369 817 315 821 294 798"/>'
+                '<path d="M314 884 C335 868 371 871 383 897 C362 918 332 920 320 905"/>'
+                '</g></svg>'
+                '<div class="tornado-ground-shadow"></div>'
+                '<div class="tornado-dust dust-far"></div>'
+                '<div class="tornado-dust dust-near"></div>'
+                '<div class="wind-debris debris-one">◆</div>'
                 '<div class="wind-debris debris-two">●</div>'
                 '<div class="wind-debris debris-three">▲</div>'
+                '<div class="wind-debris debris-four">▰</div>'
+                '<div class="wind-debris debris-five">◆</div>'
+                '</div><div class="wind-vignette"></div>'
                 '</div>'
             )
         else:
@@ -4150,34 +4186,53 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
         .lightning-impact-glow {{position:absolute;left:50%;bottom:-12%;width:42vw;height:25vh;
           transform:translateX(-50%);border-radius:50%;background:radial-gradient(ellipse,#fff 0 5%,#a55cffaa 22%,transparent 70%);
           opacity:0;animation:lightningGlow{event_sequence} 2s ease-out forwards;}}
-        .wind-skill-layer {{background:radial-gradient(circle at 50% 45%,#1a3344 0,#05090d 72%);}}
+        .wind-skill-layer {{background:radial-gradient(circle at 50% 42%,#274957 0,#0d1b24 45%,#020508 88%);}}
         .wind-cloud {{position:absolute;width:75vw;height:35vh;border-radius:50%;filter:blur(24px);
           background:radial-gradient(ellipse,#b4cbd0aa 0 12%,#47657299 35%,transparent 72%);
           opacity:0;animation:windCloudSweep{event_sequence} 2s ease-in-out forwards;}}
         .wind-cloud-one {{left:-55vw;top:5vh;}} .wind-cloud-two {{right:-55vw;bottom:4vh;animation-delay:.16s;}}
+        .wind-rain-curtain {{position:absolute;inset:-30% -20%;opacity:0;
+          background:repeating-linear-gradient(111deg,transparent 0 24px,#c8f7ff99 25px 27px,transparent 29px 52px);
+          filter:blur(.5px);animation:windRain{event_sequence} .32s linear infinite,
+          windRainIn{event_sequence} 2s ease-in-out forwards;}}
         .wind-streak {{position:absolute;left:-35%;width:52%;height:8px;border-radius:50%;
           background:linear-gradient(90deg,transparent,#d9fbff,#7cdcec88,transparent);
           box-shadow:0 0 15px #bff8ff;transform:skewX(-28deg);opacity:0;
           animation:windStreakRush{event_sequence} .62s linear infinite;}}
         .streak-one {{top:25%;}} .streak-two {{top:52%;animation-delay:.18s;}}
         .streak-three {{top:76%;animation-delay:.36s;}}
-        .tornado-funnel {{position:absolute;left:50%;top:7%;width:min(60vw,520px);height:88%;
-          transform:translateX(-50%);filter:drop-shadow(0 0 22px #8edce8);}}
-        .tornado-funnel i {{position:absolute;left:50%;height:9%;border:7px solid #dffcff;
-          border-left-color:transparent;border-right-color:transparent;border-radius:50%;opacity:0;
-          transform:translateX(-50%);animation:tornadoSpin{event_sequence} .48s linear infinite,
-          tornadoAppear{event_sequence} 2s ease-in-out forwards;}}
-        .tornado-funnel i:nth-child(1) {{top:3%;width:100%;}}
-        .tornado-funnel i:nth-child(2) {{top:16%;width:88%;animation-delay:.05s;}}
-        .tornado-funnel i:nth-child(3) {{top:29%;width:76%;animation-delay:.10s;}}
-        .tornado-funnel i:nth-child(4) {{top:42%;width:64%;animation-delay:.15s;}}
-        .tornado-funnel i:nth-child(5) {{top:55%;width:51%;animation-delay:.20s;}}
-        .tornado-funnel i:nth-child(6) {{top:68%;width:36%;animation-delay:.25s;}}
-        .tornado-funnel i:nth-child(7) {{top:81%;width:20%;animation-delay:.30s;}}
-        .wind-debris {{position:absolute;color:#d7f7ef;font-size:22px;opacity:0;
-          animation:debrisSpiral{event_sequence} 1.1s linear infinite;}}
-        .debris-one {{left:18%;top:30%;}} .debris-two {{right:16%;top:48%;animation-delay:.25s;}}
-        .debris-three {{left:28%;bottom:18%;animation-delay:.5s;}}
+        .tornado-stage {{position:absolute;left:50%;top:1vh;width:min(72vw,650px);height:98vh;
+          transform:translateX(-50%);transform-origin:50% 88%;opacity:0;
+          animation:tornadoStageIn{event_sequence} 2s ease-in-out forwards;}}
+        .tornado-backwash {{position:absolute;left:50%;top:1%;width:105%;height:30%;transform:translateX(-50%);
+          border-radius:50%;background:repeating-radial-gradient(ellipse at center,transparent 0 8%,#bfeaf277 10% 12%,transparent 15% 20%);
+          filter:blur(5px);animation:backwashSpin{event_sequence} .7s linear infinite;}}
+        .tornado-svg {{position:absolute;inset:0;width:100%;height:100%;overflow:visible;
+          filter:drop-shadow(0 0 12px #c9f8ff) drop-shadow(0 0 36px #4a8798);}}
+        .tornado-body {{opacity:.88;transform-origin:center;animation:tornadoBodyPulse{event_sequence} .42s ease-in-out infinite alternate;}}
+        .tornado-ribbons path {{fill:none;stroke:#e8fdff;stroke-linecap:round;stroke-width:24;
+          stroke-dasharray:115 42;filter:drop-shadow(0 0 7px #a9efff);opacity:.92;
+          transform-box:fill-box;transform-origin:center;animation:tornadoRibbon{event_sequence} .42s linear infinite;}}
+        .tornado-ribbons path:nth-child(even) {{stroke:#6fa9b8;stroke-dasharray:76 31;
+          animation-direction:reverse;animation-duration:.34s;}}
+        .tornado-ribbons path:nth-child(3),.tornado-ribbons path:nth-child(4) {{stroke-width:20;}}
+        .tornado-ribbons path:nth-child(5) {{stroke-width:17;}}
+        .tornado-ribbons path:nth-child(6) {{stroke-width:14;}}
+        .tornado-ribbons path:nth-child(7) {{stroke-width:11;}}
+        .tornado-ground-shadow {{position:absolute;left:50%;bottom:0;width:34%;height:5%;transform:translateX(-50%);
+          border-radius:50%;background:#000;box-shadow:0 0 28px 16px #7cd7e066;filter:blur(5px);}}
+        .tornado-dust {{position:absolute;left:50%;bottom:-1%;height:12%;border:6px solid #b7d4d6;
+          border-left-color:transparent;border-right-color:transparent;border-radius:50%;opacity:0;}}
+        .dust-far {{width:56%;animation:dustRing{event_sequence} .62s linear infinite;}}
+        .dust-near {{width:82%;animation:dustRing{event_sequence} .62s .22s linear infinite reverse;}}
+        .wind-debris {{position:absolute;left:50%;top:48%;color:#d7f7ef;font-size:22px;opacity:0;
+          text-shadow:0 0 7px #baf8ff;animation:debrisSpiral{event_sequence} .92s linear infinite;}}
+        .debris-one {{--rx:230px;--ry:-210px;}} .debris-two {{--rx:-255px;--ry:-70px;animation-delay:.17s;}}
+        .debris-three {{--rx:205px;--ry:155px;animation-delay:.34s;}}
+        .debris-four {{--rx:-185px;--ry:245px;animation-delay:.51s;}}
+        .debris-five {{--rx:280px;--ry:30px;animation-delay:.68s;}}
+        .wind-vignette {{position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,transparent 32%,#000b 100%);
+          box-shadow:inset 0 0 100px #000;animation:windVignette{event_sequence} 2s ease-in-out forwards;}}
         .skill-aftermath-layer {{position:absolute;inset:0;z-index:10;pointer-events:none;}}
         .true-damage-number {{position:absolute;left:10%;top:20%;font-size:30px;font-weight:900;color:#fff3a0;
           text-shadow:0 2px 2px #500,0 0 10px #ff2700;opacity:0;animation:trueDamage{event_sequence} 1s ease-out forwards;}}
@@ -4207,16 +4262,24 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
         @keyframes lightningScreenFlash{event_sequence} {{0%,43%,55%,72%,100%{{opacity:0;}}45%,57%,74%{{opacity:.52;}}}}
         @keyframes lightningGlow{event_sequence} {{0%,35%{{opacity:0;transform:translateX(-50%) scale(.2);}}52%{{opacity:1;transform:translateX(-50%) scale(1.4);}}100%{{opacity:0;transform:translateX(-50%) scale(2);}}}}
         @keyframes windCloudSweep{event_sequence} {{0%{{opacity:0;transform:translateX(0) scale(.6);}}18%{{opacity:.85;}}70%{{opacity:1;transform:translateX(70vw) scale(1.25);}}100%{{opacity:0;transform:translateX(115vw) scale(1.45);}}}}
+        @keyframes windRain{event_sequence} {{from{{transform:translate(0,-5%);}}to{{transform:translate(-80px,14%);}}}}
+        @keyframes windRainIn{event_sequence} {{0%,100%{{opacity:0;}}15%,80%{{opacity:.5;}}}}
         @keyframes windStreakRush{event_sequence} {{0%{{left:-45%;opacity:0;}}15%{{opacity:1;}}100%{{left:115%;opacity:0;}}}}
-        @keyframes tornadoSpin{event_sequence} {{from{{transform:translateX(-50%) rotate(0deg) skewX(-8deg);}}to{{transform:translateX(-50%) rotate(360deg) skewX(-8deg);}}}}
-        @keyframes tornadoAppear{event_sequence} {{0%{{opacity:0;}}18%{{opacity:.85;}}72%{{opacity:1;}}100%{{opacity:0;}}}}
-        @keyframes debrisSpiral{event_sequence} {{0%{{opacity:0;transform:rotate(0) translateX(20px) scale(.5);}}20%{{opacity:1;}}100%{{opacity:0;transform:rotate(720deg) translateX(180px) scale(1.2);}}}}
+        @keyframes tornadoStageIn{event_sequence} {{0%{{opacity:0;transform:translateX(-50%) scale(.45,.15) rotate(-4deg);}}18%{{opacity:.9;}}55%{{opacity:1;transform:translateX(-50%) scale(1.04,1) rotate(2deg);}}82%{{opacity:1;transform:translateX(-50%) scale(.98,1.03) rotate(-1deg);}}100%{{opacity:0;transform:translateX(-50%) scale(1.16,1.08) rotate(3deg);}}}}
+        @keyframes backwashSpin{event_sequence} {{from{{transform:translateX(-50%) rotate(0deg) scaleX(1);}}to{{transform:translateX(-50%) rotate(360deg) scaleX(1.08);}}}}
+        @keyframes tornadoBodyPulse{event_sequence} {{from{{transform:skewX(-1.5deg) scaleX(.97);filter:brightness(.9);}}to{{transform:skewX(2deg) scaleX(1.04);filter:brightness(1.2);}}}}
+        @keyframes tornadoRibbon{event_sequence} {{from{{stroke-dashoffset:0;transform:translateX(-8px);}}to{{stroke-dashoffset:-157;transform:translateX(8px);}}}}
+        @keyframes dustRing{event_sequence} {{0%{{opacity:0;transform:translateX(-50%) scale(.35) rotate(0);}}20%{{opacity:.85;}}100%{{opacity:0;transform:translateX(-50%) scale(1.5) rotate(360deg);}}}}
+        @keyframes debrisSpiral{event_sequence} {{0%{{opacity:0;transform:translate(-50%,-50%) rotate(0) translate(12px,0) scale(.35);}}18%{{opacity:1;}}68%{{opacity:1;transform:translate(-50%,-50%) rotate(470deg) translate(var(--rx),var(--ry)) scale(1.15);}}100%{{opacity:0;transform:translate(-50%,-50%) rotate(720deg) translate(var(--rx),var(--ry)) scale(.65);}}}}
+        @keyframes windVignette{event_sequence} {{0%,100%{{opacity:0;}}22%,78%{{opacity:1;}}}}
         @keyframes trueDamage{event_sequence} {{0%{{opacity:0;transform:translateY(25px) scale(.5);}}18%{{opacity:1;transform:translateY(0) scale(1.25);}}100%{{opacity:0;transform:translateY(-38px) scale(.95);}}}}
         @keyframes arenaImpact{event_sequence} {{0%,100%{{transform:translate(0,0);filter:none;}}8%{{transform:translate(-12px,6px);filter:brightness(1.5);}}18%{{transform:translate(12px,-6px);}}30%{{transform:translate(-9px,-5px);}}44%{{transform:translate(8px,5px);}}62%{{transform:translate(-5px,0);filter:brightness(1.15);}}}}
         @media (max-width:600px) {{
           .battle-arena {{height:250px;padding:14px;}}
           .eastern-fire-dragon {{width:165vw;left:105%;top:-35%;}}
           .true-damage-number {{left:5%;top:14%;font-size:25px;}}
+          .tornado-stage {{width:96vw;height:94vh;top:3vh;}}
+          .tornado-ribbons path {{stroke-width:18;}}
         }}
         </style>
         <div class="{arena_class}">
