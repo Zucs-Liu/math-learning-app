@@ -1184,7 +1184,15 @@ def login_background_data_uri(animated=True):
 
 
 def login_landscape_background_data_uri():
-    filename = "heroes-vs-demon-landscape-v1.webp"
+    filename = "heroes-vs-demon-landscape-animated-v4.webp"
+    image_path = Path(__file__).parent / "assets" / "login" / filename
+    if not image_path.exists():
+        return ""
+    return _login_background_data_uri(filename, image_path.stat().st_mtime_ns)
+
+
+def login_landscape_static_background_data_uri():
+    filename = "heroes-vs-demon-landscape-v4.webp"
     image_path = Path(__file__).parent / "assets" / "login" / filename
     if not image_path.exists():
         return ""
@@ -1211,6 +1219,7 @@ def login_background_video_data_uri():
 def apply_login_background():
     static_background = login_background_data_uri(animated=False)
     landscape_background = login_landscape_background_data_uri()
+    landscape_static_background = login_landscape_static_background_data_uri()
     video_background = login_background_video_data_uri()
     background = static_background or login_background_data_uri(animated=True)
     if not background and not video_background:
@@ -1454,24 +1463,96 @@ def apply_login_background():
             }}
             .login-landscape-background {{
                 display: block !important;
+                inset: 3.6rem 0 0 !important;
+                height: calc(100vh - 3.6rem) !important;
+                background-position: center top !important;
             }}
             .stMainBlockContainer, [data-testid="stMainBlockContainer"] {{
-                width: min(560px, 46vw);
-                max-width: 560px;
-                margin: 70px auto 24px 5vw !important;
+                width: min(340px, 42vw);
+                max-width: 340px;
+                margin: 104px auto 24px 4vw !important;
                 padding: .75rem 1rem 1.25rem !important;
             }}
             .stMainBlockContainer h1, [data-testid="stMainBlockContainer"] h1 {{
-                top: 4.05rem;
-                left: 1rem;
+                top: 4.75rem;
+                left: 1.1rem;
+                font-size: 2.35rem !important;
             }}
             .stApp::before {{
                 background: linear-gradient(90deg, rgba(7,10,25,.32) 0%, rgba(7,10,25,.14) 48%, rgba(7,10,25,.04) 100%);
+            }}
+            [data-testid="stRadio"],
+            [data-testid="stTabs"],
+            [data-testid="stTextInput"],
+            [data-testid="stCheckbox"],
+            [data-testid="stButton"] {{
+                margin-left: 0 !important;
+                margin-right: auto !important;
+            }}
+            [data-testid="stTabs"] [role="tablist"] {{
+                width: 280px !important;
+                min-width: 0 !important;
+                max-width: 100% !important;
+                margin-left: 0 !important;
+                margin-right: auto !important;
+            }}
+            [data-testid="stTabs"] [role="tab"] {{
+                flex: 0 0 auto !important;
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+            }}
+            [data-testid="stTextInput"] {{
+                width: min(280px, 100%) !important;
+            }}
+            .st-key-login_fields_row [data-testid="stTextInput"] {{
+                width: min(280px, 100%) !important;
+            }}
+            .st-key-login_fields_row [data-testid="stHorizontalBlock"],
+            .st-key-login_actions_row [data-testid="stHorizontalBlock"] {{
+                display: flex !important;
+                flex-direction: column !important;
+                flex-wrap: nowrap !important;
+                gap: .35rem !important;
+                align-items: flex-start !important;
+            }}
+            .st-key-login_fields_row [data-testid="stColumn"],
+            .st-key-login_actions_row [data-testid="stColumn"] {{
+                min-width: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                flex: 0 0 auto !important;
+            }}
+            .st-key-login_actions_row {{
+                width: min(280px, 100%) !important;
+                max-width: 280px !important;
+            }}
+            .st-key-login_actions_row [data-testid="stHorizontalBlock"] {{
+                flex-direction: row !important;
+                align-items: center !important;
+                gap: .35rem !important;
+            }}
+            .st-key-login_actions_row [data-testid="stColumn"]:first-child {{
+                width: 58% !important;
+                max-width: 58% !important;
+                flex: 0 0 58% !important;
+            }}
+            .st-key-login_actions_row [data-testid="stColumn"]:last-child {{
+                width: 42% !important;
+                max-width: 42% !important;
+                flex: 0 0 42% !important;
+            }}
+            .st-key-login_actions_row [data-testid="stCheckbox"],
+            .st-key-login_actions_row [data-testid="stButton"] {{
+                margin-left: 0 !important;
+                margin-right: auto !important;
             }}
         }}
         @media (prefers-reduced-motion: reduce) {{
             .login-video-background {{
                 display: none;
+            }}
+            .login-landscape-background {{
+                background-image: url('{landscape_static_background or landscape_background}') !important;
             }}
             .stApp::before {{
                 background:
