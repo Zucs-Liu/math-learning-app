@@ -270,6 +270,14 @@ def fixed_value_for(chapter_id, slot, stars):
         value = base_values[stars] + CHAPTER_FIXED_INCREMENTS[slot] * chapter_steps
     return fixed_stat, (round(value) if fixed_stat in ("hp", "attack", "defense") else round(value, 3))
 
+
+def four_star_item_name(chapter_id, base_name):
+    """四星裝備名稱一律包含取得章節，例如「第五章・冰河守護鎧」。"""
+    chapter_id = str(chapter_id)
+    prefix = f"{CHAPTERS[chapter_id]['number']}・"
+    clean_name = re.sub(r"^第[一二三四五六七八九十百0-9]+章・", "", str(base_name))
+    return f"{prefix}{clean_name}"
+
 AFFIX_NAMES = {
     "attack_pct": "攻擊力",
     "speed_pct": "攻擊速度",
@@ -2551,7 +2559,7 @@ def make_chapter_reward():
         "unit": "chapter-1",
         "slot": "weapon",
         "stars": 4,
-        "name": "整數勇者之劍",
+        "name": four_star_item_name("1", "整數勇者之劍"),
         "fixed_stat": "attack",
         "fixed_value": fixed_value_for("1", "weapon", 4)[1],
         "affix_stat": "attack_pct",
@@ -2566,7 +2574,7 @@ def make_elite_reward():
         "unit": "chapter-1-elite",
         "slot": "helmet",
         "stars": 4,
-        "name": "收藏家王冠",
+        "name": four_star_item_name("1", "收藏家王冠"),
         "fixed_stat": "hp",
         "fixed_value": fixed_value_for("1", "helmet", 4)[1],
         "affix_stat": "defense_pct",
@@ -2578,7 +2586,7 @@ def make_elite_reward():
 def make_collection_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-1-collection", "slot": "necklace",
-        "stars": 4, "name": "九星守護項鍊", "fixed_stat": "boss_hp_reduction",
+        "stars": 4, "name": four_star_item_name("1", "九星守護項鍊"), "fixed_stat": "boss_hp_reduction",
         "fixed_value": fixed_value_for("1", "necklace", 4)[1], "affix_stat": "hp_pct", "affix_value": 0.25,
         "achievement": True,
     }
@@ -2587,7 +2595,7 @@ def make_collection_reward():
 def make_chapter2_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-2", "slot": "gloves",
-        "stars": 4, "name": "乘除勇者手甲", "fixed_stat": "attack",
+        "stars": 4, "name": four_star_item_name("2", "乘除勇者手甲"), "fixed_stat": "attack",
         "fixed_value": fixed_value_for("2", "gloves", 4)[1], "affix_stat": "attack_pct", "affix_value": 0.25,
         "achievement": True,
     }
@@ -2596,7 +2604,7 @@ def make_chapter2_reward():
 def make_chapter2_collection_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-2-collection", "slot": "boots",
-        "stars": 4, "name": "乘除疾風戰靴", "fixed_stat": "attack_speed",
+        "stars": 4, "name": four_star_item_name("2", "乘除疾風戰靴"), "fixed_stat": "attack_speed",
         "fixed_value": fixed_value_for("2", "boots", 4)[1], "affix_stat": "speed_pct", "affix_value": 0.25,
         "achievement": True,
     }
@@ -2605,7 +2613,7 @@ def make_chapter2_collection_reward():
 def make_chapter2_elite_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-2-elite", "slot": "shield",
-        "stars": 4, "name": "乘除霸主盾", "fixed_stat": "defense",
+        "stars": 4, "name": four_star_item_name("2", "乘除霸主盾"), "fixed_stat": "defense",
         "fixed_value": fixed_value_for("2", "shield", 4)[1], "affix_stat": "hp_pct", "affix_value": 0.25,
         "achievement": True,
     }
@@ -2614,7 +2622,7 @@ def make_chapter2_elite_reward():
 def make_chapter3_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-3", "slot": "armor",
-        "stars": 4, "name": "龍鱗守護鎧", "fixed_stat": "defense",
+        "stars": 4, "name": four_star_item_name("3", "龍鱗守護鎧"), "fixed_stat": "defense",
         "fixed_value": fixed_value_for("3", "armor", 4)[1],
         "affix_stat": "defense_pct", "affix_value": 0.25,
         "achievement": True,
@@ -2624,7 +2632,7 @@ def make_chapter3_reward():
 def make_chapter3_collection_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-3-collection", "slot": "belt",
-        "stars": 4, "name": "龍心腰帶", "fixed_stat": "hp",
+        "stars": 4, "name": four_star_item_name("3", "龍心腰帶"), "fixed_stat": "hp",
         "fixed_value": fixed_value_for("3", "belt", 4)[1],
         "affix_stat": "hp_pct", "affix_value": 0.25,
         "achievement": True,
@@ -2634,7 +2642,7 @@ def make_chapter3_collection_reward():
 def make_chapter3_elite_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-3-elite", "slot": "ring",
-        "stars": 4, "name": "烈焰龍王戒", "fixed_stat": "first_hit_percent",
+        "stars": 4, "name": four_star_item_name("3", "烈焰龍王戒"), "fixed_stat": "first_hit_percent",
         "fixed_value": fixed_value_for("3", "ring", 4)[1],
         "affix_stat": "boss_damage_pct", "affix_value": 0.25,
         "achievement": True,
@@ -2644,7 +2652,7 @@ def make_chapter3_elite_reward():
 def make_chapter4_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-4", "slot": "helmet",
-        "stars": 4, "name": "雷狐靈冠", "fixed_stat": "hp",
+        "stars": 4, "name": four_star_item_name("4", "雷狐靈冠"), "fixed_stat": "hp",
         "fixed_value": fixed_value_for("4", "helmet", 4)[1],
         "affix_stat": "hp_pct", "affix_value": 0.25, "achievement": True,
     }
@@ -2653,7 +2661,7 @@ def make_chapter4_reward():
 def make_chapter4_collection_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-4-collection", "slot": "boots",
-        "stars": 4, "name": "紫電踏雲靴", "fixed_stat": "attack_speed",
+        "stars": 4, "name": four_star_item_name("4", "紫電踏雲靴"), "fixed_stat": "attack_speed",
         "fixed_value": fixed_value_for("4", "boots", 4)[1],
         "affix_stat": "speed_pct", "affix_value": 0.25, "achievement": True,
     }
@@ -2662,7 +2670,7 @@ def make_chapter4_collection_reward():
 def make_chapter4_elite_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-4-elite", "slot": "weapon",
-        "stars": 4, "name": "九尾天雷刃", "fixed_stat": "attack",
+        "stars": 4, "name": four_star_item_name("4", "九尾天雷刃"), "fixed_stat": "attack",
         "fixed_value": fixed_value_for("4", "weapon", 4)[1],
         "affix_stat": "critical_rate", "affix_value": 0.25, "achievement": True,
     }
@@ -2671,7 +2679,7 @@ def make_chapter4_elite_reward():
 def make_chapter5_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-5", "chapter": "5", "slot": "armor",
-        "stars": 4, "name": "冰河守護鎧", "fixed_stat": "defense",
+        "stars": 4, "name": four_star_item_name("5", "冰河守護鎧"), "fixed_stat": "defense",
         "fixed_value": fixed_value_for("5", "armor", 4)[1],
         "affix_stat": "defense_pct", "affix_value": 0.25, "achievement": True,
     }
@@ -2680,7 +2688,7 @@ def make_chapter5_reward():
 def make_chapter5_collection_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-5-collection", "chapter": "5", "slot": "necklace",
-        "stars": 4, "name": "極寒潮汐項鍊", "fixed_stat": "boss_hp_reduction",
+        "stars": 4, "name": four_star_item_name("5", "極寒潮汐項鍊"), "fixed_stat": "boss_hp_reduction",
         "fixed_value": fixed_value_for("5", "necklace", 4)[1],
         "affix_stat": "damage_reduction_pct", "affix_value": 0.25, "achievement": True,
     }
@@ -2689,7 +2697,7 @@ def make_chapter5_collection_reward():
 def make_chapter5_elite_reward():
     return {
         "uid": uuid.uuid4().hex, "unit": "chapter-5-elite", "chapter": "5", "slot": "shield",
-        "stars": 4, "name": "暴風王盾", "fixed_stat": "defense",
+        "stars": 4, "name": four_star_item_name("5", "暴風王盾"), "fixed_stat": "defense",
         "fixed_value": fixed_value_for("5", "shield", 4)[1],
         "affix_stat": "boss_damage_pct", "affix_value": 0.25, "achievement": True,
     }
@@ -2739,6 +2747,21 @@ def item_chapter_id(item):
     if achievement_match:
         return achievement_match.group(1)
     return unit.split("-")[0] if unit and unit[0].isdigit() else None
+
+
+def sync_item_four_star_name(item):
+    """補齊四星裝備名稱的章節前綴，已正確命名者不重複添加。"""
+    if int(item.get("stars", 0) or 0) != 4:
+        return False
+    chapter_id = item_chapter_id(item)
+    if chapter_id not in CHAPTERS or not item.get("name"):
+        return False
+    expected_name = four_star_item_name(chapter_id, item["name"])
+    if item["name"] == expected_name:
+        return False
+    item["name"] = expected_name
+    item.setdefault("chapter", chapter_id)
+    return True
 
 
 def sync_collection_catalog(profile):
@@ -2876,6 +2899,36 @@ def migrate_all_profiles_fixed_values():
         )
 
 
+@st.cache_resource(show_spinner=False)
+def migrate_all_profiles_four_star_names():
+    """一次性補正所有玩家既有四星裝備的章節名稱。"""
+    migration_key = "four_star_chapter_name_prefix_v1"
+    with db_connection() as db:
+        done = db.execute("SELECT value FROM settings WHERE key=?", (migration_key,)).fetchone()
+        if done and done["value"] == "1":
+            return
+        rows = db.execute("SELECT student_code, profile_json FROM players").fetchall()
+        for row in rows:
+            profile = json.loads(row["profile_json"])
+            changed = False
+            for item in profile.get("inventory", []):
+                changed = sync_item_four_star_name(item) or changed
+            for shop_entry in (profile.get("shop") or {}).get("items", []):
+                shop_item = shop_entry.get("item")
+                if shop_item:
+                    changed = sync_item_four_star_name(shop_item) or changed
+            if changed:
+                db.execute(
+                    "UPDATE players SET profile_json=? WHERE student_code=?",
+                    (json.dumps(profile, ensure_ascii=False), row["student_code"]),
+                )
+        db.execute(
+            "INSERT INTO settings(key, value) VALUES(?, '1') "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (migration_key,),
+        )
+
+
 def fixed_text(item):
     names = {
         "hp": "HP", "attack": "攻擊力", "defense": "防禦力",
@@ -2897,7 +2950,10 @@ def item_text(item):
     if not chapter_id and re.match(r"^[1-9]-", str(item.get("unit", ""))):
         chapter_id = str(item["unit"]).split("-")[0]
     chapter_label = f"{CHAPTERS[chapter_id]['number']}・" if chapter_id in CHAPTERS else ""
-    return f"{SLOT_ICONS[item['slot']]} {chapter_label}{item['name']} {'⭐' * item['stars']}｜固定：{fixed_text(item)}｜詞條：{AFFIX_NAMES[item['affix_stat']]} +{item['affix_value']:.0%}"
+    display_name = str(item["name"])
+    if chapter_label and not display_name.startswith(chapter_label):
+        display_name = f"{chapter_label}{display_name}"
+    return f"{SLOT_ICONS[item['slot']]} {display_name} {'⭐' * item['stars']}｜固定：{fixed_text(item)}｜詞條：{AFFIX_NAMES[item['affix_stat']]} +{item['affix_value']:.0%}"
 
 
 def render_item_comparison(profile, new_item):
@@ -4240,6 +4296,7 @@ def render_chapter_boss_card(chapter_id, boss_type, unlocked):
 
 init_db()
 migrate_all_profiles_fixed_values()
+migrate_all_profiles_four_star_names()
 if not st.session_state.get("active_player") and st.query_params.get("resume"):
     if student_login_is_open():
         resumed_player = verify_short_login_token(st.query_params.get("resume"))
@@ -5356,39 +5413,39 @@ elif st.session_state.screen == "menu":
         st.caption("首次擊敗本章一般 BOSS 後，解鎖菁英 BOSS；挑戰失敗時可以繼續刷單元強化裝備。")
     if chapter_id == "1":
         if profile["chapter_reward_claimed"]:
-            st.success("第一章滿星成就已完成：★★★★ 整數勇者之劍｜固定：攻擊力 +8｜詞條：攻擊力 +25%")
+            st.success("第一章滿星成就已完成：★★★★ 第一章・整數勇者之劍｜固定：攻擊力 +8｜詞條：攻擊力 +25%")
         if profile["collection_reward_claimed"]:
-            st.success("三星全裝收藏家已完成：100 EXP＋★★★★ 九星守護項鍊｜菁英BOSS血量降低13%｜HP +25%")
+            st.success("三星全裝收藏家已完成：100 EXP＋★★★★ 第一章・九星守護項鍊｜菁英BOSS血量降低13%｜HP +25%")
         if profile["elite_reward_claimed"]:
-            st.success("菁英征服成就已完成：★★★★ 收藏家王冠｜固定：HP +25｜詞條：防禦力 +25%")
+            st.success("菁英征服成就已完成：★★★★ 第一章・收藏家王冠｜固定：HP +25｜詞條：防禦力 +25%")
     elif chapter_id == "2":
         if profile["chapter2_reward_claimed"]:
-            st.success("第二章滿星成就已完成：★★★★ 乘除勇者手甲｜固定：攻擊力 +6｜詞條：攻擊力 +25%")
+            st.success("第二章滿星成就已完成：★★★★ 第二章・乘除勇者手甲｜固定：攻擊力 +6｜詞條：攻擊力 +25%")
         if profile["chapter2_collection_reward_claimed"]:
-            st.success("第二章三星全裝收藏已完成：★★★★ 乘除疾風戰靴｜固定：攻擊速度 +0.13/秒｜詞條：攻擊速度 +25%")
+            st.success("第二章三星全裝收藏已完成：★★★★ 第二章・乘除疾風戰靴｜固定：攻擊速度 +0.13/秒｜詞條：攻擊速度 +25%")
         if profile["chapter2_elite_reward_claimed"]:
-            st.success("第二章菁英征服已完成：★★★★ 乘除霸主盾｜固定：防禦力 +7｜詞條：HP +25%")
+            st.success("第二章菁英征服已完成：★★★★ 第二章・乘除霸主盾｜固定：防禦力 +7｜詞條：HP +25%")
     elif chapter_id == "3":
         if profile["chapter3_reward_claimed"]:
-            st.success("第三章滿星成就已完成：★★★★ 龍鱗守護鎧｜固定：防禦力 +15｜詞條：防禦力 +25%")
+            st.success("第三章滿星成就已完成：★★★★ 第三章・龍鱗守護鎧｜固定：防禦力 +15｜詞條：防禦力 +25%")
         if profile["chapter3_collection_reward_claimed"]:
-            st.success("第三章三星全裝收藏已完成：100 EXP＋★★★★ 龍心腰帶｜固定：HP +25｜詞條：HP +25%")
+            st.success("第三章三星全裝收藏已完成：100 EXP＋★★★★ 第三章・龍心腰帶｜固定：HP +25｜詞條：HP +25%")
         if profile["chapter3_elite_reward_claimed"]:
-            st.success("第三章菁英征服已完成：★★★★ 烈焰龍王戒｜第一擊額外扣除菁英BOSS血量17%｜對菁英BOSS傷害 +25%")
+            st.success("第三章菁英征服已完成：★★★★ 第三章・烈焰龍王戒｜第一擊額外扣除菁英BOSS血量17%｜對菁英BOSS傷害 +25%")
     elif chapter_id == "4":
         if profile["chapter4_reward_claimed"]:
-            st.success(f"第四章滿星成就已完成：★★★★ 雷狐靈冠｜固定：HP +{fixed_value_for('4', 'helmet', 4)[1]:g}｜詞條：HP +25%")
+            st.success(f"第四章滿星成就已完成：★★★★ 第四章・雷狐靈冠｜固定：HP +{fixed_value_for('4', 'helmet', 4)[1]:g}｜詞條：HP +25%")
         if profile["chapter4_collection_reward_claimed"]:
-            st.success(f"第四章三星全裝收藏已完成：100 EXP＋★★★★ 紫電踏雲靴｜固定：攻擊速度 +{fixed_value_for('4', 'boots', 4)[1]:.2f}/秒｜詞條：攻擊速度 +25%")
+            st.success(f"第四章三星全裝收藏已完成：100 EXP＋★★★★ 第四章・紫電踏雲靴｜固定：攻擊速度 +{fixed_value_for('4', 'boots', 4)[1]:.2f}/秒｜詞條：攻擊速度 +25%")
         if profile["chapter4_elite_reward_claimed"]:
-            st.success(f"第四章菁英征服已完成：★★★★ 九尾天雷刃｜固定：攻擊力 +{fixed_value_for('4', 'weapon', 4)[1]:g}｜詞條：暴擊率 +25%")
+            st.success(f"第四章菁英征服已完成：★★★★ 第四章・九尾天雷刃｜固定：攻擊力 +{fixed_value_for('4', 'weapon', 4)[1]:g}｜詞條：暴擊率 +25%")
     elif chapter_id == "5":
         if profile["chapter5_reward_claimed"]:
-            st.success(f"第五章滿星成就已完成：★★★★ 冰河守護鎧｜固定：防禦力 +{fixed_value_for('5', 'armor', 4)[1]:g}｜詞條：防禦力 +25%")
+            st.success(f"第五章滿星成就已完成：★★★★ 第五章・冰河守護鎧｜固定：防禦力 +{fixed_value_for('5', 'armor', 4)[1]:g}｜詞條：防禦力 +25%")
         if profile["chapter5_collection_reward_claimed"]:
-            st.success(f"第五章三星全裝收藏已完成：100 EXP＋★★★★ 極寒潮汐項鍊｜固定：菁英BOSS初始血量降低 {fixed_value_for('5', 'necklace', 4)[1]:.0%}｜詞條：受到傷害降低 +25%")
+            st.success(f"第五章三星全裝收藏已完成：100 EXP＋★★★★ 第五章・極寒潮汐項鍊｜固定：菁英BOSS初始血量降低 {fixed_value_for('5', 'necklace', 4)[1]:.0%}｜詞條：受到傷害降低 +25%")
         if profile["chapter5_elite_reward_claimed"]:
-            st.success(f"第五章菁英征服已完成：★★★★ 暴風王盾｜固定：防禦力 +{fixed_value_for('5', 'shield', 4)[1]:g}｜詞條：對菁英BOSS傷害 +25%")
+            st.success(f"第五章菁英征服已完成：★★★★ 第五章・暴風王盾｜固定：防禦力 +{fixed_value_for('5', 'shield', 4)[1]:g}｜詞條：對菁英BOSS傷害 +25%")
     if st.session_state.active_player == "__TEACHER__":
         if st.button("返回老師管理後台"):
             st.session_state.active_player = None
@@ -6068,29 +6125,29 @@ elif st.session_state.screen in {"backpack", "gallery"}:
         if star_filter in ("全部", "四星"):
             four_star_specs = {
                 "1": [
-                    ("chapter-1", "整數勇者之劍", "weapon", "完成第一章所有三星單元", "unit"),
-                    ("chapter-1-collection", "九星守護項鍊", "necklace", "收集第一章九部位三星", "collection"),
-                    ("chapter-1-elite", "收藏家王冠", "helmet", "首次擊敗第一章菁英BOSS", "elite"),
+                    ("chapter-1", four_star_item_name("1", "整數勇者之劍"), "weapon", "完成第一章所有三星單元", "unit"),
+                    ("chapter-1-collection", four_star_item_name("1", "九星守護項鍊"), "necklace", "收集第一章九部位三星", "collection"),
+                    ("chapter-1-elite", four_star_item_name("1", "收藏家王冠"), "helmet", "首次擊敗第一章菁英BOSS", "elite"),
                 ],
                 "2": [
-                    ("chapter-2", "乘除勇者手甲", "gloves", "完成第二章所有三星單元", "unit"),
-                    ("chapter-2-collection", "乘除疾風戰靴", "boots", "收集第二章九部位三星", "collection"),
-                    ("chapter-2-elite", "乘除霸主盾", "shield", "首次擊敗第二章菁英BOSS", "elite"),
+                    ("chapter-2", four_star_item_name("2", "乘除勇者手甲"), "gloves", "完成第二章所有三星單元", "unit"),
+                    ("chapter-2-collection", four_star_item_name("2", "乘除疾風戰靴"), "boots", "收集第二章九部位三星", "collection"),
+                    ("chapter-2-elite", four_star_item_name("2", "乘除霸主盾"), "shield", "首次擊敗第二章菁英BOSS", "elite"),
                 ],
                 "3": [
-                    ("chapter-3", "龍鱗守護鎧", "armor", "完成第三章所有三星單元", "unit"),
-                    ("chapter-3-collection", "龍心腰帶", "belt", "收集第三章九部位三星", "collection"),
-                    ("chapter-3-elite", "烈焰龍王戒", "ring", "首次擊敗第三章菁英BOSS「烈焰龍王」", "elite"),
+                    ("chapter-3", four_star_item_name("3", "龍鱗守護鎧"), "armor", "完成第三章所有三星單元", "unit"),
+                    ("chapter-3-collection", four_star_item_name("3", "龍心腰帶"), "belt", "收集第三章九部位三星", "collection"),
+                    ("chapter-3-elite", four_star_item_name("3", "烈焰龍王戒"), "ring", "首次擊敗第三章菁英BOSS「烈焰龍王」", "elite"),
                 ],
                 "4": [
-                    ("chapter-4", "雷狐靈冠", "helmet", "完成第四章所有三星單元", "unit"),
-                    ("chapter-4-collection", "紫電踏雲靴", "boots", "收集第四章九部位三星", "collection"),
-                    ("chapter-4-elite", "九尾天雷刃", "weapon", "首次擊敗第四章菁英BOSS「九尾天狐」", "elite"),
+                    ("chapter-4", four_star_item_name("4", "雷狐靈冠"), "helmet", "完成第四章所有三星單元", "unit"),
+                    ("chapter-4-collection", four_star_item_name("4", "紫電踏雲靴"), "boots", "收集第四章九部位三星", "collection"),
+                    ("chapter-4-elite", four_star_item_name("4", "九尾天雷刃"), "weapon", "首次擊敗第四章菁英BOSS「九尾天狐」", "elite"),
                 ],
                 "5": [
-                    ("chapter-5", "冰河守護鎧", "armor", "完成第五章所有三星單元", "unit"),
-                    ("chapter-5-collection", "極寒潮汐項鍊", "necklace", "收集第五章九部位三星", "collection"),
-                    ("chapter-5-elite", "暴風王盾", "shield", "首次擊敗第五章菁英BOSS「暴風熊王」", "elite"),
+                    ("chapter-5", four_star_item_name("5", "冰河守護鎧"), "armor", "完成第五章所有三星單元", "unit"),
+                    ("chapter-5-collection", four_star_item_name("5", "極寒潮汐項鍊"), "necklace", "收集第五章九部位三星", "collection"),
+                    ("chapter-5-elite", four_star_item_name("5", "暴風王盾"), "shield", "首次擊敗第五章菁英BOSS「暴風熊王」", "elite"),
                 ],
             }
             owned_four_slots = collected_achievement_slots(profile, 4)
