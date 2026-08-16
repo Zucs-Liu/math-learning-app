@@ -20,6 +20,23 @@ import streamlit.components.v1 as components
 from PIL import Image
 
 from data_access.database import DatabaseConnection
+from data_access.communications import (
+    count_unread_mail,
+    create_announcement_record,
+    create_feedback_record,
+    create_mail_record,
+    delete_announcement_record,
+    fetch_announcement_rows,
+    fetch_feedback_rows,
+    fetch_mail_reward,
+    fetch_mail_rows,
+    set_all_mail_read,
+    set_announcement_status,
+    set_feedback_replied,
+    set_mail_claimed,
+    set_mail_read,
+    update_announcement_record,
+)
 from data_access.players import (
     clear_login_failures,
     create_player_record,
@@ -1491,33 +1508,26 @@ def toggle_admin_progress_chapter(chapter_id):
 
 
 def submit_game_feedback(student_code, category, message):
-    with db_connection() as db:
-        db.execute(
-            "INSERT INTO game_feedback(student_code, category, message, created_at) "
-            "VALUES(?, ?, ?, ?)",
-            (student_code, category, message.strip(), database_timestamp()),
-        )
+    create_feedback_record(
+        db_connection, student_code, category, message.strip(), database_timestamp()
+    )
 
 
 def send_mail(student_code, subject, message, reward=None, claimed=False):
     reward_json = json.dumps(reward, ensure_ascii=False) if reward else None
-    with db_connection() as db:
-        db.execute(
-            "INSERT INTO mailbox(student_code, subject, message, reward_json, is_read, is_claimed, created_at) "
-            "VALUES(?, ?, ?, ?, 0, ?, ?)",
-            (student_code, subject, message.strip(), reward_json, 1 if claimed else 0,
-             database_timestamp()),
-        )
+    create_mail_record(
+        db_connection,
+        student_code,
+        subject,
+        message.strip(),
+        reward_json,
+        claimed,
+        database_timestamp(),
+    )
 
 
 def mailbox_rows(student_code):
-    with db_connection() as db:
-        rows = [dict(row) for row in db.execute(
-            "SELECT id, subject, message, reward_json, is_read, is_claimed, created_at "
-            "FROM mailbox WHERE student_code=? "
-            "ORDER BY is_read ASC, is_claimed ASC, id DESC",
-            (student_code,),
-        ).fetchall()]
+    rows = fetch_mail_rows(db_connection, student_code)
     for row in rows:
         row["reward"] = json.loads(row.pop("reward_json")) if row.get("reward_json") else None
         row["created_at"] = taipei_time_text(row["created_at"])
@@ -1525,38 +1535,20 @@ def mailbox_rows(student_code):
 
 
 def unread_mail_count(student_code):
-    with db_connection() as db:
-        row = db.execute(
-            "SELECT COUNT(*) AS count FROM mailbox WHERE student_code=? AND is_read=0",
-            (student_code,),
-        ).fetchone()
-    return int(row["count"] or 0)
+    return count_unread_mail(db_connection, student_code)
 
 
 def mark_mail_read(mail_id, student_code):
-    with db_connection() as db:
-        db.execute(
-            "UPDATE mailbox SET is_read=1 WHERE id=? AND student_code=?",
-            (mail_id, student_code),
-        )
+    set_mail_read(db_connection, mail_id, student_code)
 
 
 def mark_all_mail_read(student_code):
     """將指定勇者的所有未讀信件標為已讀，不變更附件領取狀態。"""
-    with db_connection() as db:
-        result = db.execute(
-            "UPDATE mailbox SET is_read=1 WHERE student_code=? AND is_read=0",
-            (student_code,),
-        )
-        return max(0, int(result.rowcount or 0))
+    return set_all_mail_read(db_connection, student_code)
 
 
 def claim_mail_reward(mail_id, student_code):
-    with db_connection() as db:
-        row = db.execute(
-            "SELECT reward_json, is_claimed FROM mailbox WHERE id=? AND student_code=?",
-            (mail_id, student_code),
-        ).fetchone()
+    row = fetch_mail_reward(db_connection, mail_id, student_code)
     if not row or row["is_claimed"] or not row["reward_json"]:
         return False
     reward = json.loads(row["reward_json"])
@@ -1565,23 +1557,12 @@ def claim_mail_reward(mail_id, student_code):
     profile["sweep_tickets"] += int(reward.get("sweep_tickets", 0))
     profile["smelting_stones"] += int(reward.get("smelting_stones", 0))
     save_profile(profile)
-    with db_connection() as db:
-        db.execute(
-            "UPDATE mailbox SET is_read=1, is_claimed=1 WHERE id=? AND student_code=?",
-            (mail_id, student_code),
-        )
+    set_mail_claimed(db_connection, mail_id, student_code)
     return True
 
 
 def game_feedback_rows():
-    with db_connection() as db:
-        rows = [dict(row) for row in db.execute(
-            "SELECT f.id AS 編號, f.student_code AS 學生代碼, p.real_name AS 正式姓名, p.hero_name AS 勇者名稱, "
-            "f.category AS 問題分類, f.message AS 回饋內容, f.created_at AS 送出時間, "
-            "f.replied_at AS 回覆時間 "
-            "FROM game_feedback f JOIN players p ON p.student_code=f.student_code "
-            "ORDER BY f.id DESC"
-        ).fetchall()]
+    rows = fetch_feedback_rows(db_connection)
     for row in rows:
         row["送出時間"] = taipei_time_text(row["送出時間"])[:-3]
         if row["回覆時間"]:
@@ -1594,53 +1575,39 @@ def game_feedback_rows():
 
 
 def mark_feedback_replied(feedback_id):
-    with db_connection() as db:
-        db.execute(
-            "UPDATE game_feedback SET replied_at=? WHERE id=?",
-            (database_timestamp(), feedback_id),
-        )
+    set_feedback_replied(db_connection, feedback_id, database_timestamp())
 
 
 def announcement_rows(active_only=False):
-    sql = "SELECT id, title, content, is_active, created_at FROM announcements"
-    if active_only:
-        sql += " WHERE is_active=1"
-    sql += " ORDER BY id DESC"
-    with db_connection() as db:
-        rows = [dict(row) for row in db.execute(sql).fetchall()]
+    rows = fetch_announcement_rows(db_connection, active_only)
     for row in rows:
         row["created_at_text"] = taipei_time_text(row["created_at"])
     return rows
 
 
 def create_announcement(title, content):
-    with db_connection() as db:
-        db.execute(
-            "INSERT INTO announcements(title, content, is_active, created_at) VALUES(?, ?, 1, ?)",
-            (title.strip(), content.strip(), database_timestamp()),
-        )
+    create_announcement_record(
+        db_connection, title.strip(), content.strip(), database_timestamp()
+    )
 
 
 def set_announcement_active(announcement_id, is_active):
-    with db_connection() as db:
-        db.execute(
-            "UPDATE announcements SET is_active=? WHERE id=?",
-            (1 if is_active else 0, announcement_id),
-        )
+    set_announcement_status(db_connection, announcement_id, is_active)
 
 
 def update_and_activate_announcement(announcement_id, title, content):
     """儲存舊公告的修改內容、更新發布時間並立即重新啟用。"""
-    with db_connection() as db:
-        db.execute(
-            "UPDATE announcements SET title=?, content=?, is_active=1, created_at=? WHERE id=?",
-            (title.strip(), content.strip(), database_timestamp(), announcement_id),
-        )
+    update_announcement_record(
+        db_connection,
+        announcement_id,
+        title.strip(),
+        content.strip(),
+        database_timestamp(),
+    )
 
 
 def delete_announcement(announcement_id):
-    with db_connection() as db:
-        db.execute("DELETE FROM announcements WHERE id=?", (announcement_id,))
+    delete_announcement_record(db_connection, announcement_id)
 
 
 def render_announcement_content(content):
