@@ -20,6 +20,15 @@ import streamlit.components.v1 as components
 from PIL import Image
 
 from data_access.database import DatabaseConnection
+from data_access.admin import (
+    delete_student_record,
+    fetch_recent_attempts,
+    fetch_student_learning_detail,
+    fetch_student_question_rows,
+    fetch_teacher_name,
+    reset_student_pin_record,
+    update_student_real_name_record,
+)
 from data_access.communications import (
     count_unread_mail,
     create_announcement_record,
@@ -1656,36 +1665,23 @@ def render_announcement_content(content):
 def reset_student_pin(code):
     pin = f"{secrets.randbelow(1000000):06d}"
     salt, digest = make_pin_hash(pin)
-    with db_connection() as db:
-        db.execute("UPDATE players SET pin_salt=?, pin_hash=?, failed_attempts=0, locked_until=0 WHERE student_code=?", (salt, digest, code))
+    reset_student_pin_record(db_connection, code, salt, digest)
     return pin
 
 
 def update_student_real_name(code, real_name):
-    with db_connection() as db:
-        db.execute("UPDATE players SET real_name=? WHERE student_code=?", (real_name, code))
+    update_student_real_name_record(db_connection, code, real_name)
 
 
 def student_learning_detail(code):
-    with db_connection() as db:
-        row = db.execute(
-            "SELECT hero_name, real_name, profile_json FROM players WHERE student_code=?", (code,)
-        ).fetchone()
+    row = fetch_student_learning_detail(db_connection, code)
     if not row:
         return None
     return normalize_profile(json.loads(row["profile_json"]), row["hero_name"])
 
 
 def student_question_rows(code, errors_only=False, limit=200):
-    condition = "AND is_correct=0" if errors_only else ""
-    with db_connection() as db:
-        rows = [dict(row) for row in db.execute(
-            "SELECT unit_id AS 單元, question_text AS 題目, submitted_answer AS 學生答案, "
-            "correct_answer AS 正確答案, is_correct AS 是否答對, combo_after AS 作答後連擊, "
-            f"elapsed_seconds AS 回合累計秒數, answered_at AS 作答時間 FROM question_logs "
-            f"WHERE student_code=? {condition} ORDER BY id DESC LIMIT {int(limit)}",
-            (code,),
-        ).fetchall()]
+    rows = fetch_student_question_rows(db_connection, code, errors_only, limit)
     for row in rows:
         row["是否答對"] = "✅" if row["是否答對"] else "❌"
         row["作答時間"] = taipei_time_text(row["作答時間"])
@@ -1693,8 +1689,7 @@ def student_question_rows(code, errors_only=False, limit=200):
 
 
 def delete_student(code):
-    with db_connection() as db:
-        db.execute("DELETE FROM players WHERE student_code=?", (code,))
+    delete_student_record(db_connection, code)
 
 
 def add_exp(profile, amount):
@@ -3771,11 +3766,7 @@ elif st.session_state.screen == "admin_panel":
         st.session_state.screen = "login"
         st.rerun()
     st.subheader("🧑‍🏫 老師管理後台")
-    with db_connection() as db:
-        teacher_row = db.execute(
-            "SELECT hero_name FROM players WHERE student_code='__TEACHER__'"
-        ).fetchone()
-    teacher_default_name = teacher_row["hero_name"] if teacher_row else "老師測試勇者"
+    teacher_default_name = fetch_teacher_name(db_connection) or "老師測試勇者"
     teacher_col1, teacher_col2 = st.columns([2, 1])
     teacher_hero_name = teacher_col1.text_input(
         "老師測試角色名稱", value=teacher_default_name, max_chars=12
@@ -3999,14 +3990,7 @@ elif st.session_state.screen == "admin_panel":
                         st.info(f"目前尚無{boss_label}通關紀錄。")
 
     if admin_section == "答題紀錄":
-        with db_connection() as db:
-            attempts = [dict(row) for row in db.execute(
-                "SELECT p.student_code AS 學生代碼, p.real_name AS 正式姓名, "
-                "p.hero_name AS 勇者, a.unit_id AS 單元, a.stars AS 星級, "
-                "a.max_combo AS 最高連擊, a.correct_count AS 答對題數, "
-                "ROUND(CAST(a.average_seconds AS NUMERIC), 1) AS 平均每題秒數, a.finished_at AS 完成時間 "
-                "FROM attempts a JOIN players p ON p.student_code=a.student_code ORDER BY a.id DESC LIMIT 200"
-            ).fetchall()]
+        attempts = fetch_recent_attempts(db_connection, 200)
         for attempt in attempts:
             attempt["完成時間"] = taipei_time_text(attempt["完成時間"])
         st.write("### 最近200筆答題紀錄")
