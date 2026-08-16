@@ -103,6 +103,16 @@ from game_logic.profile import (
     normalize_profile_data,
     sync_profile_collection_catalog,
 )
+from game_logic.progression import (
+    add_experience,
+    apply_task_reward,
+    award_first_clear_ticket,
+    boss_unlocked,
+    build_permanent_task_definitions,
+    highest_unlocked_chapter_id,
+    sync_daily_task_periods,
+    visible_permanent_task_rows,
+)
 from game_logic.equipment import (
     fixed_text,
     fixed_value_for,
@@ -1528,13 +1538,7 @@ def delete_student(code):
 
 
 def add_exp(profile, amount):
-    profile["exp"] += amount
-    gained = 0
-    while profile["level"] < 20 and profile["exp"] >= profile["level"] * 100:
-        profile["exp"] -= profile["level"] * 100
-        profile["level"] += 1
-        gained += 1
-    return gained
+    return add_experience(profile, amount)
 
 
 def current_daily_period():
@@ -1549,79 +1553,21 @@ def current_midnight_period():
 
 
 def highest_unlocked_chapter(profile):
-    if profile.get("chapter4_boss_wins", 0) > 0:
-        return "5"
-    if profile.get("chapter3_boss_wins", 0) > 0:
-        return "4"
-    if profile.get("chapter2_boss_wins", 0) > 0:
-        return "3"
-    if profile.get("boss_wins", 0) > 0:
-        return "2"
-    return "1"
+    return highest_unlocked_chapter_id(profile)
 
 
 def sync_daily_tasks(profile):
-    changed = False
-    period = current_daily_period()
-    if profile.get("daily_login_period") != period:
-        profile["daily_login_period"] = period
-        profile["daily_login_claimed"] = False
-        changed = True
-    practice_period = current_midnight_period()
-    if profile.get("daily_practice_period") != practice_period:
-        profile["daily_practice_period"] = practice_period
-        profile["daily_practice_count"] = 0
-        profile["daily_practice_claimed"] = False
-        changed = True
-    return changed
+    return sync_daily_task_periods(
+        profile, current_daily_period(), current_midnight_period()
+    )
 
 
 def award_unit_ticket(profile, unit_id):
-    if unit_id not in profile["ticket_rewarded_units"]:
-        profile["ticket_rewarded_units"].append(unit_id)
-        profile["sweep_tickets"] += 1
-        return True
-    return False
+    return award_first_clear_ticket(profile, unit_id)
 
 
 def permanent_task_definitions():
-    tasks = []
-    boss_keys = {
-        "1": ("boss_wins", "elite_boss_wins"),
-        "2": ("chapter2_boss_wins", "chapter2_elite_boss_wins"),
-        "3": ("chapter3_boss_wins", "chapter3_elite_boss_wins"),
-        "4": ("chapter4_boss_wins", "chapter4_elite_boss_wins"),
-        "5": ("chapter5_boss_wins", "chapter5_elite_boss_wins"),
-    }
-    for chapter_id in CHAPTERS:
-        for unit_id in chapter_unit_ids(chapter_id):
-            tasks.append({
-                "id": f"unit_{unit_id}", "chapter": chapter_id,
-                "task_type": "unit", "target_unit": unit_id,
-                "name": f"通過{unit_id}單元：{UNITS[unit_id]['name']}",
-                "reward_text": "100金幣", "coins": 100,
-                "complete": lambda profile, uid=unit_id: profile["unit_best_stars"].get(uid, 0) > 0,
-            })
-        normal_key, elite_key = boss_keys[chapter_id]
-        tasks.extend([
-            {
-                "id": f"boss_{chapter_id}_normal", "chapter": chapter_id,
-                "task_type": "boss", "boss_type": "normal",
-                "name": f"通過{CHAPTERS[chapter_id]['number']}普通BOSS",
-                "reward_text": "300金幣＋1顆部位融煉石", "coins": 300,
-                "stone_key": "slot_smelting_stones",
-                "complete": lambda profile, key=normal_key: profile.get(key, 0) > 0,
-            },
-            {
-                "id": f"boss_{chapter_id}_elite", "chapter": chapter_id,
-                "task_type": "boss", "boss_type": "elite",
-                "name": f"通過{CHAPTERS[chapter_id]['number']}菁英BOSS",
-                "reward_text": "300金幣＋1顆基礎詞條融煉石", "coins": 300,
-                "stone_key": "basic_affix_smelting_stones",
-                "complete": lambda profile, key=elite_key: profile.get(key, 0) > 0,
-            },
-        ])
-    return tasks
+    return build_permanent_task_definitions(CHAPTERS, UNITS, chapter_unit_ids)
 
 
 def special_task_definitions(code, profile=None):
@@ -1675,23 +1621,12 @@ def special_task_definitions(code, profile=None):
 
 
 def grant_task_reward(profile, task):
-    profile["coins"] += task.get("coins", 0)
-    if task.get("stone_key"):
-        profile[task["stone_key"]] += 1
+    apply_task_reward(profile, task)
 
 
 def visible_permanent_tasks(profile):
-    claimed = set(profile["claimed_permanent_tasks"])
     all_tasks = permanent_task_definitions()
-    visible = []
-    for chapter_id in CHAPTERS:
-        if int(chapter_id) > 1:
-            previous = str(int(chapter_id) - 1)
-            previous_ids = {task["id"] for task in all_tasks if task["chapter"] == previous}
-            if not previous_ids.issubset(claimed):
-                break
-        visible.extend(task for task in all_tasks if task["chapter"] == chapter_id)
-    return visible
+    return visible_permanent_task_rows(profile, all_tasks, CHAPTERS)
 
 
 def visible_special_tasks(profile, code):
@@ -1748,16 +1683,7 @@ def retroactively_grant_tasks(profile, code):
 
 
 def boss_is_unlocked(profile, chapter_id, boss_type):
-    if boss_type == "normal":
-        return all(
-            profile["unit_best_stars"].get(unit_id, 0) == 3
-            for unit_id in chapter_unit_ids(chapter_id)
-        )
-    normal_wins_key = {
-        "1": "boss_wins", "2": "chapter2_boss_wins", "3": "chapter3_boss_wins", "4": "chapter4_boss_wins",
-        "5": "chapter5_boss_wins",
-    }[chapter_id]
-    return profile.get(normal_wins_key, 0) > 0
+    return boss_unlocked(profile, chapter_id, boss_type, chapter_unit_ids)
 
 
 def go_to_boss(chapter_id, boss_type):
