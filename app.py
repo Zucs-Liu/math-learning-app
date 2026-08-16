@@ -20,6 +20,18 @@ import streamlit.components.v1 as components
 from PIL import Image
 
 from data_access.database import DatabaseConnection
+from data_access.players import (
+    clear_login_failures,
+    create_player_record,
+    create_teacher_record,
+    fetch_login_player,
+    fetch_profile_row,
+    fetch_teacher_profile_json,
+    player_exists,
+    record_login_failure,
+    save_teacher_profile,
+    update_profile_record,
+)
 from data_access.schema import initialize_schema
 
 from game_data.config import (
@@ -233,11 +245,7 @@ def verify_short_login_token(token):
             return None
         if student_code == "__TEACHER__":
             return None
-        with db_connection() as db:
-            exists = db.execute(
-                "SELECT 1 FROM players WHERE student_code=?", (student_code,)
-            ).fetchone()
-        return student_code if exists else None
+        return student_code if player_exists(db_connection, student_code) else None
     except (TypeError, ValueError):
         return None
 
@@ -469,36 +477,20 @@ def create_student(real_name, hero_name, pin):
     if validation_error:
         raise ValueError(validation_error)
     salt, digest = make_pin_hash(pin)
-    with db_connection() as db:
-        db.execute("BEGIN IMMEDIATE")
-        if USE_POSTGRES:
-            db.execute(
-                "INSERT INTO settings(key, value) VALUES('student_counter', '0') "
-                "ON CONFLICT(key) DO NOTHING"
-            )
-        lock_suffix = " FOR UPDATE" if USE_POSTGRES else ""
-        row = db.execute(f"SELECT value FROM settings WHERE key='student_counter'{lock_suffix}").fetchone()
-        duplicate = db.execute(
-            "SELECT 1 FROM players WHERE LOWER(hero_name)=LOWER(?) AND student_code <> '__TEACHER__' LIMIT 1",
-            (hero_name,),
-        ).fetchone()
-        if duplicate:
-            raise ValueError("這個勇者名稱已經有人使用，請換一個名稱。")
-        number = int(row["value"]) + 1 if row else 1
-        code = sequential_student_code(number)
-        profile = new_profile(hero_name)
-        profile["task_rewards_initialized"] = True
-        profile["elite_special_tasks_migrated"] = True
-        db.execute(
-            "INSERT INTO players(student_code, hero_name, real_name, pin_salt, pin_hash, profile_json, created_at) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?)",
-            (code, hero_name, real_name, salt, digest, json.dumps(profile, ensure_ascii=False), database_timestamp()),
-        )
-        db.execute(
-            "INSERT INTO settings(key, value) VALUES('student_counter', ?) "
-            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (str(number),),
-        )
+    profile = new_profile(hero_name)
+    profile["task_rewards_initialized"] = True
+    profile["elite_special_tasks_migrated"] = True
+    code = create_player_record(
+        db_connection,
+        USE_POSTGRES,
+        real_name,
+        hero_name,
+        salt,
+        digest,
+        json.dumps(profile, ensure_ascii=False),
+        database_timestamp(),
+        sequential_student_code,
+    )
     return {"student_code": code, "pin": pin, "hero_name": hero_name, "real_name": real_name}
 
 
@@ -631,52 +623,50 @@ def sync_teacher_test_profile(profile):
 
 def ensure_teacher_profile(hero_name="老師測試勇者"):
     code = "__TEACHER__"
-    with db_connection() as db:
-        row = db.execute("SELECT profile_json FROM players WHERE student_code=?", (code,)).fetchone()
-        if row:
-            profile = normalize_profile(json.loads(row["profile_json"]), hero_name)
-            profile["name"] = hero_name
-            sync_teacher_test_profile(profile)
-            db.execute(
-                "UPDATE players SET hero_name=?, profile_json=? WHERE student_code=?",
-                (hero_name, json.dumps(profile, ensure_ascii=False), code),
-            )
-        else:
-            salt, digest = make_pin_hash(secrets.token_hex(16))
-            profile = new_profile(hero_name)
-            profile["task_rewards_initialized"] = True
-            profile["elite_special_tasks_migrated"] = True
-            sync_teacher_test_profile(profile)
-            db.execute(
-                "INSERT INTO players(student_code, hero_name, pin_salt, pin_hash, profile_json, created_at) "
-                "VALUES(?, ?, ?, ?, ?, ?)",
-                (code, hero_name, salt, digest, json.dumps(profile, ensure_ascii=False),
-                 database_timestamp()),
-            )
+    row = fetch_teacher_profile_json(db_connection)
+    if row:
+        profile = normalize_profile(json.loads(row["profile_json"]), hero_name)
+        profile["name"] = hero_name
+        sync_teacher_test_profile(profile)
+        save_teacher_profile(
+            db_connection, hero_name, json.dumps(profile, ensure_ascii=False)
+        )
+    else:
+        salt, digest = make_pin_hash(secrets.token_hex(16))
+        profile = new_profile(hero_name)
+        profile["task_rewards_initialized"] = True
+        profile["elite_special_tasks_migrated"] = True
+        sync_teacher_test_profile(profile)
+        create_teacher_record(
+            db_connection,
+            hero_name,
+            salt,
+            digest,
+            json.dumps(profile, ensure_ascii=False),
+            database_timestamp(),
+        )
     return code
 
 
 def verify_student(code, pin):
     code = code.strip().upper()
     now = time.time()
-    with db_connection() as db:
-        row = db.execute("SELECT * FROM players WHERE student_code=?", (code,)).fetchone()
-        if not row:
-            return False, "學生代碼或PIN錯誤"
-        if row["locked_until"] > now:
-            wait_seconds = math.ceil(row["locked_until"] - now)
-            return False, f"登入暫時鎖定，請等待{wait_seconds}秒"
-        valid = hmac.compare_digest(pin_digest(pin, row["pin_salt"]), row["pin_hash"])
-        if valid:
-            db.execute("UPDATE players SET failed_attempts=0, locked_until=0 WHERE student_code=?", (code,))
-            return True, code
-        failed = row["failed_attempts"] + 1
-        locked_until = now + 300 if failed >= 5 else 0
-        db.execute(
-            "UPDATE players SET failed_attempts=?, locked_until=? WHERE student_code=?",
-            (0 if locked_until else failed, locked_until, code),
-        )
-        return False, "學生代碼或PIN錯誤；連續錯誤5次會鎖定5分鐘"
+    row = fetch_login_player(db_connection, code)
+    if not row:
+        return False, "學生代碼或PIN錯誤"
+    if row["locked_until"] > now:
+        wait_seconds = math.ceil(row["locked_until"] - now)
+        return False, f"登入暫時鎖定，請等待{wait_seconds}秒"
+    valid = hmac.compare_digest(pin_digest(pin, row["pin_salt"]), row["pin_hash"])
+    if valid:
+        clear_login_failures(db_connection, code)
+        return True, code
+    failed = row["failed_attempts"] + 1
+    locked_until = now + 300 if failed >= 5 else 0
+    record_login_failure(
+        db_connection, code, 0 if locked_until else failed, locked_until
+    )
+    return False, "學生代碼或PIN錯誤；連續錯誤5次會鎖定5分鐘"
 
 
 def get_profile():
@@ -694,8 +684,7 @@ def get_profile():
         if code == "__TEACHER__" and sync_teacher_test_profile(cached_profile):
             save_profile(cached_profile)
         return cached_profile
-    with db_connection() as db:
-        row = db.execute("SELECT hero_name, profile_json FROM players WHERE student_code=?", (code,)).fetchone()
+    row = fetch_profile_row(db_connection, code)
     if not row:
         st.session_state.active_player = None
         st.session_state.screen = "login"
@@ -743,11 +732,12 @@ def get_profile():
 def save_profile(profile):
     # 任何來源取得裝備後，在寫入存檔前立即登錄永久圖鑑。
     sync_collection_catalog(profile)
-    with db_connection() as db:
-        db.execute(
-            "UPDATE players SET hero_name=?, profile_json=? WHERE student_code=?",
-            (profile["name"], json.dumps(profile, ensure_ascii=False), st.session_state.active_player),
-        )
+    update_profile_record(
+        db_connection,
+        st.session_state.active_player,
+        profile["name"],
+        json.dumps(profile, ensure_ascii=False),
+    )
     st.session_state._profile_cache = {
         "code": st.session_state.active_player,
         "profile": profile,
