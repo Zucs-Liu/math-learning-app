@@ -181,77 +181,8 @@ for key, value in DEFAULT_STATE.items():
         st.session_state[key] = value
 
 
-@st.cache_resource(show_spinner=False)
-def postgres_pool():
-    if ConnectionPool is None:
-        raise RuntimeError("公開版需要安裝 psycopg[pool]。")
-    return ConnectionPool(
-        conninfo=DATABASE_URL,
-        min_size=1,
-        max_size=10,
-        timeout=15,
-        max_lifetime=900,
-        max_idle=300,
-        reconnect_timeout=30,
-        check=ConnectionPool.check_connection,
-        kwargs={"row_factory": dict_row},
-    )
-
-
-class DatabaseConnection:
-    def _open_postgres_connection(self):
-        self.pool_context = postgres_pool().connection()
-        self.connection = self.pool_context.__enter__()
-
-    def __enter__(self):
-        if USE_POSTGRES:
-            self._open_postgres_connection()
-        else:
-            self.connection = sqlite3.connect(DB_FILE, timeout=10)
-            self.connection.row_factory = sqlite3.Row
-            self.connection.execute("PRAGMA journal_mode=WAL")
-            self.connection.execute("PRAGMA foreign_keys=ON")
-        return self
-
-    def __exit__(self, error_type, error, traceback):
-        if USE_POSTGRES:
-            return self.pool_context.__exit__(error_type, error, traceback)
-        if error_type:
-            self.connection.rollback()
-        else:
-            self.connection.commit()
-        self.connection.close()
-
-    def execute(self, sql, parameters=()):
-        if USE_POSTGRES:
-            if sql == "BEGIN IMMEDIATE":
-                return self.connection.execute("BEGIN")
-            sql = sql.replace("INSERT OR IGNORE INTO", "INSERT INTO")
-            if "INSERT INTO settings" in sql and "registration_enabled" in sql and "ON CONFLICT" not in sql:
-                sql += " ON CONFLICT(key) DO NOTHING"
-            sql = sql.replace("?", "%s")
-            try:
-                return self.connection.execute(sql, parameters)
-            except psycopg.OperationalError:
-                # Neon 免費方案喚醒或重啟時可能終止既有連線；唯讀查詢可安全重連一次。
-                if not sql.lstrip().upper().startswith("SELECT"):
-                    raise
-                self.pool_context.__exit__(*__import__("sys").exc_info())
-                self._open_postgres_connection()
-                return self.connection.execute(sql, parameters)
-        return self.connection.execute(sql, parameters)
-
-    def executescript(self, script):
-        if USE_POSTGRES:
-            for statement in script.split(";"):
-                if statement.strip():
-                    self.connection.execute(statement)
-        else:
-            self.connection.executescript(script)
-
-
 def db_connection():
-    return DatabaseConnection()
+    return DatabaseConnection(DATABASE_URL, DB_FILE)
 
 
 @st.cache_resource(show_spinner=False)
