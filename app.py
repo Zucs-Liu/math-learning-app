@@ -32,6 +32,14 @@ from data_access.players import (
     save_teacher_profile,
     update_profile_record,
 )
+from data_access.progress import (
+    fetch_boss_ranking_rows,
+    fetch_character_profiles,
+    fetch_student_rows,
+    insert_attempt,
+    insert_question_log,
+    save_best_boss_record,
+)
 from data_access.schema import initialize_schema
 
 from game_data.config import (
@@ -1340,72 +1348,48 @@ def render_compact_avatar_editor(profile):
 def log_attempt(unit_id):
     if st.session_state.active_player == "__TEACHER__":
         return
-    with db_connection() as db:
-        db.execute(
-            "INSERT INTO attempts(student_code, unit_id, stars, max_combo, correct_count, "
-            "elapsed_seconds, average_seconds, finished_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
-            (st.session_state.active_player, unit_id, st.session_state.stars,
-             st.session_state.max_combo, st.session_state.correct, st.session_state.quiz_elapsed,
-             st.session_state.quiz_elapsed / st.session_state.attempts if st.session_state.attempts else 0,
-             database_timestamp()),
-        )
+    insert_attempt(
+        db_connection,
+        st.session_state.active_player,
+        unit_id,
+        st.session_state.stars,
+        st.session_state.max_combo,
+        st.session_state.correct,
+        st.session_state.quiz_elapsed,
+        st.session_state.quiz_elapsed / st.session_state.attempts
+        if st.session_state.attempts
+        else 0,
+        database_timestamp(),
+    )
 
 
 def log_question_answer(unit_id, answer_row):
     """每答完一題立即保存，避免中途離開、斷線或部署更新造成紀錄遺失。"""
     if st.session_state.active_player == "__TEACHER__":
         return
-    with db_connection() as db:
-        db.execute(
-            "INSERT INTO question_logs(student_code, unit_id, question_text, submitted_answer, "
-            "correct_answer, is_correct, combo_after, elapsed_seconds, answered_at) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (st.session_state.active_player, unit_id, answer_row["question_text"],
-             answer_row["submitted_answer"], answer_row["correct_answer"],
-             1 if answer_row["is_correct"] else 0, answer_row["combo_after"],
-             answer_row["elapsed_seconds"], answer_row["answered_at"]),
-        )
+    insert_question_log(
+        db_connection, st.session_state.active_player, unit_id, answer_row
+    )
 
 
 def save_best_ranking(profile, clear_time, boss_type="normal", chapter_id="1"):
     code = st.session_state.active_player
     if code == "__TEACHER__":
         return
-    now = database_timestamp()
-    table = {
-        ("1", "normal"): "rankings", ("1", "elite"): "elite_rankings",
-        ("2", "normal"): "chapter2_rankings", ("2", "elite"): "chapter2_elite_rankings",
-        ("3", "normal"): "chapter3_rankings", ("3", "elite"): "chapter3_elite_rankings",
-        ("4", "normal"): "chapter4_rankings", ("4", "elite"): "chapter4_elite_rankings",
-        ("5", "normal"): "chapter5_rankings", ("5", "elite"): "chapter5_elite_rankings",
-    }[(chapter_id, boss_type)]
-    with db_connection() as db:
-        row = db.execute(f"SELECT clear_time FROM {table} WHERE student_code=?", (code,)).fetchone()
-        if not row or clear_time < row["clear_time"]:
-            db.execute(
-                f"INSERT INTO {table}(student_code, hero_name, level, clear_time, achieved_at) "
-                "VALUES(?, ?, ?, ?, ?) ON CONFLICT(student_code) DO UPDATE SET "
-                "hero_name=excluded.hero_name, level=excluded.level, "
-                "clear_time=excluded.clear_time, achieved_at=excluded.achieved_at",
-                (code, profile["name"], profile["level"], round(clear_time, 2), now),
-            )
+    save_best_boss_record(
+        db_connection,
+        code,
+        profile["name"],
+        profile["level"],
+        clear_time,
+        database_timestamp(),
+        boss_type,
+        chapter_id,
+    )
 
 
 def ranking_rows(boss_type="normal", chapter_id="1", include_private_identity=False):
-    table = {
-        ("1", "normal"): "rankings", ("1", "elite"): "elite_rankings",
-        ("2", "normal"): "chapter2_rankings", ("2", "elite"): "chapter2_elite_rankings",
-        ("3", "normal"): "chapter3_rankings", ("3", "elite"): "chapter3_elite_rankings",
-        ("4", "normal"): "chapter4_rankings", ("4", "elite"): "chapter4_elite_rankings",
-        ("5", "normal"): "chapter5_rankings", ("5", "elite"): "chapter5_elite_rankings",
-    }[(chapter_id, boss_type)]
-    with db_connection() as db:
-        rows = db.execute(
-            "SELECT r.student_code AS 學生代碼, p.real_name AS 正式姓名, "
-            "r.hero_name AS 玩家, r.level AS 等級, r.clear_time AS 通關秒數, "
-            f"r.achieved_at AS 日期, p.profile_json FROM {table} r "
-            "JOIN players p ON p.student_code=r.student_code ORDER BY r.clear_time ASC"
-        ).fetchall()
+    rows = fetch_boss_ranking_rows(db_connection, boss_type, chapter_id)
     result = []
     for rank, row in enumerate(rows, 1):
         profile = json.loads(row["profile_json"])
@@ -1446,11 +1430,7 @@ def student_ranking_rows(rows, limit=10):
 
 def character_ranking_tables():
     """一次讀取與計算全部學生能力，再建立各項角色能力排序。"""
-    with db_connection() as db:
-        rows = db.execute(
-            "SELECT student_code, hero_name, profile_json FROM players "
-            "WHERE student_code <> '__TEACHER__'"
-        ).fetchall()
+    rows = fetch_character_profiles(db_connection)
     prepared = []
     for row in rows:
         profile = normalize_profile(json.loads(row["profile_json"]), row["hero_name"])
@@ -1498,11 +1478,7 @@ def character_ranking_tables():
 
 
 def student_rows():
-    with db_connection() as db:
-        rows = [dict(row) for row in db.execute(
-            "SELECT student_code AS 學生代碼, real_name AS 正式姓名, hero_name AS 勇者名稱, created_at AS 建立時間 "
-            "FROM players WHERE student_code <> '__TEACHER__' ORDER BY created_at"
-        ).fetchall()]
+    rows = fetch_student_rows(db_connection)
     for row in rows:
         row["建立時間"] = taipei_time_text(row["建立時間"])
     return rows
