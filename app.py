@@ -113,6 +113,23 @@ from game_logic.progression import (
     sync_daily_task_periods,
     visible_permanent_task_rows,
 )
+from game_logic.economy import (
+    BASIC_AFFIXES,
+    SHOP_ITEM_PRICE,
+    SPECIAL_STONE_CRAFT_COST,
+    SPECIAL_STONE_KEYS,
+    craft_special_stone,
+    dismantle_inventory_items,
+    dismantle_value,
+    ensure_shop_inventory,
+    highest_shop_chapter_id,
+    make_forged_inventory_item,
+    make_shop_inventory_item,
+    paid_shop_refresh_cost,
+    purchase_shop_entry,
+    refresh_shop_inventory,
+    remove_inventory_entries,
+)
 from game_logic.equipment import (
     fixed_text,
     fixed_value_for,
@@ -1738,109 +1755,45 @@ def make_random_item(profile, unit_id, stars):
 
 def highest_shop_chapter(profile):
     """商店依已經實際通關過的最高章節提供裝備。"""
-    completed = [
-        chapter_id for chapter_id in CHAPTERS
-        if any(profile["unit_best_stars"].get(uid, 0) > 0 for uid in chapter_unit_ids(chapter_id))
-    ]
-    return completed[-1] if completed else "1"
+    return highest_shop_chapter_id(profile, CHAPTERS, chapter_unit_ids)
 
 
 def make_shop_item(profile, chapter_id=None):
-    chapter_id = chapter_id or highest_shop_chapter(profile)
-    unit_id = random.choice(chapter_unit_ids(chapter_id))
-    slot = random.choice(list(SLOT_NAMES))
-    affix_stat = random.choice(list(AFFIX_NAMES))
-    value_pool = AFFIX_VALUES.get(affix_stat, AFFIX_VALUES["default"])[3]
-    affix_value = random.choice(value_pool)
-    fixed_stat, fixed_value = fixed_value_for(chapter_id, slot, 3)
-    return {
-        "shop_id": uuid.uuid4().hex,
-        "sold": False,
-        "item": {
-            "uid": uuid.uuid4().hex, "unit": unit_id, "chapter": chapter_id,
-            "slot": slot, "stars": 3, "name": GEAR_NAMES[3][slot],
-            "fixed_stat": fixed_stat, "fixed_value": fixed_value,
-            "affix_stat": affix_stat, "affix_value": affix_value,
-            "achievement": False, "source": "shop",
-        },
-    }
+    return make_shop_inventory_item(
+        profile, CHAPTERS, UNITS, chapter_unit_ids, SLOT_NAMES, AFFIX_NAMES,
+        AFFIX_VALUES, GEAR_NAMES, fixed_value_for, chapter_id,
+    )
 
 
 def shop_paid_refresh_cost(profile):
     """每五次強制刷新費用加倍：1～5次100、6～10次200，依此類推。"""
-    refresh_count = int((profile.get("shop") or {}).get("paid_refresh_count", 0) or 0)
-    return 100 * (2 ** (refresh_count // 5))
+    return paid_shop_refresh_cost(profile)
 
 
 def refresh_shop(profile, paid=False):
-    paid_refresh_count = int(
-        (profile.get("shop") or {}).get("paid_refresh_count", 0) or 0
+    return refresh_shop_inventory(
+        profile, CHAPTERS, UNITS, chapter_unit_ids, SLOT_NAMES, AFFIX_NAMES,
+        AFFIX_VALUES, GEAR_NAMES, fixed_value_for, paid=paid,
     )
-    if paid:
-        refresh_cost = shop_paid_refresh_cost(profile)
-        if profile["coins"] < refresh_cost:
-            return False
-        profile["coins"] -= refresh_cost
-        paid_refresh_count += 1
-    else:
-        # 每24小時的免費自動刷新會開始新一輪強制刷新計數。
-        paid_refresh_count = 0
-    chapter_id = highest_shop_chapter(profile)
-    profile["shop"] = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "items": [make_shop_item(profile, chapter_id) for _ in range(6)],
-        "paid_refresh_count": paid_refresh_count,
-    }
-    return True
 
 
 def ensure_shop(profile):
-    shop = profile.get("shop") or {"generated_at": None, "items": []}
-    needs_refresh = not shop.get("items") or not shop.get("generated_at")
-    if not needs_refresh:
-        try:
-            generated = datetime.fromisoformat(shop["generated_at"].replace("Z", "+00:00"))
-            needs_refresh = datetime.now(timezone.utc) >= generated + timedelta(hours=24)
-        except (TypeError, ValueError):
-            needs_refresh = True
-    if needs_refresh:
-        refresh_shop(profile)
-        return True
-    return False
+    return ensure_shop_inventory(
+        profile, CHAPTERS, UNITS, chapter_unit_ids, SLOT_NAMES, AFFIX_NAMES,
+        AFFIX_VALUES, GEAR_NAMES, fixed_value_for,
+    )
 
 
 def remove_inventory_items(profile, uids):
-    uid_set = set(uids)
-    for slot, uid in profile["equipment"].items():
-        if uid in uid_set:
-            profile["equipment"][slot] = None
-    profile["inventory"] = [item for item in profile["inventory"] if item["uid"] not in uid_set]
+    remove_inventory_entries(profile, uids)
 
 
 def make_forged_item(profile, source_stars, chapter_id, selected_slot=None, selected_affix=None):
-    target_stars = source_stars + 1
-    if selected_slot:
-        unit_id = next(
-            uid for uid in chapter_unit_ids(chapter_id)
-            if selected_slot in UNITS[uid]["slots"]
-        )
-    else:
-        unit_id = random.choice(chapter_unit_ids(chapter_id))
-    # 使用空白暫存，讓既有裝備不會阻止融煉結果生成。
-    item = make_random_item({"inventory": []}, unit_id, target_stars)
-    if selected_slot:
-        item["slot"] = selected_slot
-        item["name"] = GEAR_NAMES[target_stars][selected_slot]
-        fixed_stat, fixed_value = fixed_value_for(chapter_id, selected_slot, target_stars)
-        item["fixed_stat"] = fixed_stat
-        item["fixed_value"] = fixed_value
-    if selected_affix:
-        item["affix_stat"] = selected_affix
-        item["affix_value"] = random.choice(
-            AFFIX_VALUES.get(selected_affix, AFFIX_VALUES["default"])[target_stars]
-        )
-    item["source"] = "forge"
-    return item
+    return make_forged_inventory_item(
+        profile, source_stars, chapter_id, chapter_unit_ids, UNITS, GEAR_NAMES,
+        AFFIX_VALUES, fixed_value_for, make_random_item,
+        selected_slot=selected_slot, selected_affix=selected_affix,
+    )
 
 
 def make_chapter_reward():
@@ -4753,7 +4706,7 @@ elif st.session_state.screen == "economy":
         info_col, refresh_col = st.columns([4, 1])
         info_col.info(
             f"目前提供{CHAPTERS[highest_shop_chapter(profile)]['number']}強度的三星裝備；"
-            f"每件500金幣。自動刷新剩餘約 {hours}小時{minutes}分。"
+            f"每件{SHOP_ITEM_PRICE}金幣。自動刷新剩餘約 {hours}小時{minutes}分。"
         )
         refresh_cost = shop_paid_refresh_cost(profile)
         paid_refresh_count = int(profile["shop"].get("paid_refresh_count", 0) or 0)
@@ -4783,15 +4736,14 @@ elif st.session_state.screen == "economy":
                     if entry.get("sold"):
                         st.button("已售完", disabled=True, key=f"sold_{entry['shop_id']}", use_container_width=True)
                     elif st.button(
-                        "🪙 500｜購買", disabled=profile["coins"] < 500,
+                        f"🪙 {SHOP_ITEM_PRICE}｜購買",
+                        disabled=profile["coins"] < SHOP_ITEM_PRICE,
                         key=f"buy_{entry['shop_id']}", use_container_width=True,
                     ):
-                        profile["coins"] -= 500
-                        entry["sold"] = True
-                        profile["inventory"].append(item)
-                        save_profile(profile)
-                        st.session_state.shop_purchase_uid = item["uid"]
-                        st.rerun()
+                        if purchase_shop_entry(profile, entry):
+                            save_profile(profile)
+                            st.session_state.shop_purchase_uid = item["uid"]
+                            st.rerun()
     else:
         st.info(
             "選擇三件同章節、同星級裝備：3件一星→同章節1件二星；"
@@ -4810,13 +4762,14 @@ elif st.session_state.screen == "economy":
                 st.markdown(f"#### {label} × {profile.get(key, 0)}")
                 st.caption(description)
                 if st.button(
-                    "用5顆融煉石合成", key=f"craft_{key}",
-                    disabled=profile["smelting_stones"] < 5, use_container_width=True,
+                    f"用{SPECIAL_STONE_CRAFT_COST}顆融煉石合成",
+                    key=f"craft_{key}",
+                    disabled=profile["smelting_stones"] < SPECIAL_STONE_CRAFT_COST,
+                    use_container_width=True,
                 ):
-                    profile["smelting_stones"] -= 5
-                    profile[key] += 1
-                    save_profile(profile)
-                    st.rerun()
+                    if craft_special_stone(profile, key):
+                        save_profile(profile)
+                        st.rerun()
         st.caption(
             f"目前普通融煉石：💎 {profile['smelting_stones']}｜"
             f"部位石 {profile['slot_smelting_stones']}｜"
@@ -4857,8 +4810,8 @@ elif st.session_state.screen == "economy":
                 "指定部位", list(SLOT_NAMES),
                 format_func=lambda slot: f"{SLOT_ICONS[slot]} {SLOT_NAMES[slot]}",
             )
-        basic_affixes = ["hp_pct", "attack_pct", "defense_pct", "speed_pct"]
-        advanced_affixes = [key for key in AFFIX_NAMES if key not in basic_affixes]
+        basic_affixes = list(BASIC_AFFIXES)
+        advanced_affixes = [key for key in AFFIX_NAMES if key not in BASIC_AFFIXES]
         selected_affix = None
         if special_stone_type == "基礎詞條熔煉石":
             selected_affix = st.selectbox(
@@ -4868,12 +4821,7 @@ elif st.session_state.screen == "economy":
             selected_affix = st.selectbox(
                 "指定進階詞條", advanced_affixes, format_func=lambda key: AFFIX_NAMES[key]
             )
-        required_special_stone = {
-            "不使用": None,
-            "部位基礎熔煉石": "slot_smelting_stones",
-            "基礎詞條熔煉石": "basic_affix_smelting_stones",
-            "進階詞條熔煉石": "advanced_affix_smelting_stones",
-        }[special_stone_type]
+        required_special_stone = SPECIAL_STONE_KEYS[special_stone_type]
         enough_special_stone = (
             required_special_stone is None
             or profile.get(required_special_stone, 0) > 0
@@ -4998,8 +4946,7 @@ elif st.session_state.screen in {"backpack", "gallery"}:
                     for item in eligible_bulk_items
                     if st.session_state.get(f"bulk_break_{item['uid']}", False)
                 ]
-                bulk_coins = sum(item["stars"] * 100 for item in selected_bulk_items)
-                bulk_stones = sum(1 for item in selected_bulk_items if item["stars"] == 3)
+                bulk_coins, bulk_stones = dismantle_value(selected_bulk_items)
                 st.info(
                     f"已選擇 {len(selected_bulk_items)} 件，可獲得 {bulk_coins} 金幣"
                     + (f"、{bulk_stones} 顆融煉石" if bulk_stones else "")
@@ -5013,19 +4960,17 @@ elif st.session_state.screen in {"backpack", "gallery"}:
                     disabled=not selected_bulk_items,
                     use_container_width=True,
                 ):
-                    profile["coins"] += bulk_coins
-                    profile["smelting_stones"] += bulk_stones
-                    remove_inventory_items(profile, [item["uid"] for item in selected_bulk_items])
-                    save_profile(profile)
-                    for item in selected_bulk_items:
-                        st.session_state.pop(f"bulk_break_{item['uid']}", None)
-                    st.session_state.bulk_dismantle_mode = False
-                    st.session_state.bulk_dismantle_notice = (
-                        f"已分解 {len(selected_bulk_items)} 件裝備，獲得 {bulk_coins} 金幣"
-                        + (f"與 {bulk_stones} 顆融煉石" if bulk_stones else "")
-                        + "。"
-                    )
-                    st.rerun()
+                    if dismantle_inventory_items(profile, selected_bulk_items):
+                        save_profile(profile)
+                        for item in selected_bulk_items:
+                            st.session_state.pop(f"bulk_break_{item['uid']}", None)
+                        st.session_state.bulk_dismantle_mode = False
+                        st.session_state.bulk_dismantle_notice = (
+                            f"已分解 {len(selected_bulk_items)} 件裝備，獲得 {bulk_coins} 金幣"
+                            + (f"與 {bulk_stones} 顆融煉石" if bulk_stones else "")
+                            + "。"
+                        )
+                        st.rerun()
                 if clear_col.button("取消並清除選取", key="clear_bulk_dismantle", use_container_width=True):
                     for item in eligible_bulk_items:
                         st.session_state.pop(f"bulk_break_{item['uid']}", None)
@@ -5065,11 +5010,9 @@ elif st.session_state.screen in {"backpack", "gallery"}:
                                 stone_text = "＋1顆融煉石" if item["stars"] == 3 else ""
                                 st.warning(f"分解不可復原：{coin_gain}金幣{stone_text}")
                                 if st.button("確認分解", key=f"grid_break_{item['uid']}", use_container_width=True):
-                                    profile["coins"] += coin_gain
-                                    profile["smelting_stones"] += 1 if item["stars"] == 3 else 0
-                                    remove_inventory_items(profile, [item["uid"]])
-                                    save_profile(profile)
-                                    st.rerun()
+                                    if dismantle_inventory_items(profile, [item]):
+                                        save_profile(profile)
+                                        st.rerun()
                             elif item["stars"] >= 4:
                                 st.caption("四星以上裝備目前不能分解。")
         with consumable_tab:
