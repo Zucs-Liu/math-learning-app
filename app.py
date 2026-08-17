@@ -130,6 +130,19 @@ from game_logic.economy import (
     refresh_shop_inventory,
     remove_inventory_entries,
 )
+from game_logic.loot import (
+    achievement_was_collected as loot_achievement_was_collected,
+    collected_achievement_slots as loot_collected_achievement_slots,
+    collected_three_star_slots as loot_collected_three_star_slots,
+    find_achievement_item,
+    find_inventory_item,
+    has_full_three_star_collection,
+    item_signature as loot_item_signature,
+    make_achievement_reward,
+    make_random_drop,
+    sync_achievement_item as sync_loot_achievement_item,
+    sync_four_star_item_name,
+)
 from game_logic.equipment import (
     fixed_text,
     fixed_value_for,
@@ -1711,46 +1724,14 @@ def go_to_boss(chapter_id, boss_type):
 
 
 def item_signature(item):
-    return (item["unit"], item["slot"], item["stars"], item["affix_stat"], item["affix_value"])
+    return loot_item_signature(item)
 
 
 def make_random_item(profile, unit_id, stars):
-    if stars == 0:
-        return None
-    owned = {item_signature(item) for item in profile["inventory"] if not item.get("achievement")}
-    unit_slots = UNITS[unit_id]["slots"]
-    owned_same_star_slots = {
-        item["slot"] for item in profile["inventory"]
-        if not item.get("achievement") and item["unit"] == unit_id and item["stars"] == stars
-    }
-    missing_slots = [slot for slot in unit_slots if slot not in owned_same_star_slots]
-    candidate_slots = missing_slots if missing_slots else unit_slots
-    combinations = []
-    for slot in candidate_slots:
-        for affix_stat in AFFIX_NAMES:
-            value_pool = AFFIX_VALUES.get(affix_stat, AFFIX_VALUES["default"])
-            for affix_value in value_pool[stars]:
-                signature = (unit_id, slot, stars, affix_stat, affix_value)
-                if signature not in owned:
-                    combinations.append((slot, affix_stat, affix_value))
-    if not combinations:
-        return None
-    slot, affix_stat, affix_value = random.choice(combinations)
-    chapter_id = unit_id.split("-")[0]
-    fixed_stat, fixed_value = fixed_value_for(chapter_id, slot, stars)
-    return {
-        "uid": uuid.uuid4().hex,
-        "unit": unit_id,
-        "chapter": chapter_id,
-        "slot": slot,
-        "stars": stars,
-        "name": GEAR_NAMES[stars][slot],
-        "fixed_stat": fixed_stat,
-        "fixed_value": fixed_value,
-        "affix_stat": affix_stat,
-        "affix_value": affix_value,
-        "achievement": False,
-    }
+    return make_random_drop(
+        profile, unit_id, stars, UNITS, AFFIX_NAMES, AFFIX_VALUES,
+        GEAR_NAMES, fixed_value_for,
+    )
 
 
 def highest_shop_chapter(profile):
@@ -1797,153 +1778,63 @@ def make_forged_item(profile, source_stars, chapter_id, selected_slot=None, sele
 
 
 def make_chapter_reward():
-    return {
-        "uid": uuid.uuid4().hex,
-        "unit": "chapter-1",
-        "slot": "weapon",
-        "stars": 4,
-        "name": four_star_item_name("1", "整數勇者之劍"),
-        "fixed_stat": "attack",
-        "fixed_value": fixed_value_for("1", "weapon", 4)[1],
-        "affix_stat": "attack_pct",
-        "affix_value": 0.25,
-        "achievement": True,
-    }
+    return make_achievement_reward("1", "chapter", fixed_value_for, four_star_item_name)
 
 
 def make_elite_reward():
-    return {
-        "uid": uuid.uuid4().hex,
-        "unit": "chapter-1-elite",
-        "slot": "helmet",
-        "stars": 4,
-        "name": four_star_item_name("1", "收藏家王冠"),
-        "fixed_stat": "hp",
-        "fixed_value": fixed_value_for("1", "helmet", 4)[1],
-        "affix_stat": "defense_pct",
-        "affix_value": 0.25,
-        "achievement": True,
-    }
+    return make_achievement_reward("1", "elite", fixed_value_for, four_star_item_name)
 
 
 def make_collection_reward():
-    return {
-        "uid": uuid.uuid4().hex, "unit": "chapter-1-collection", "slot": "necklace",
-        "stars": 4, "name": four_star_item_name("1", "九星守護項鍊"), "fixed_stat": "boss_hp_reduction",
-        "fixed_value": fixed_value_for("1", "necklace", 4)[1], "affix_stat": "hp_pct", "affix_value": 0.25,
-        "achievement": True,
-    }
+    return make_achievement_reward("1", "collection", fixed_value_for, four_star_item_name)
 
 
 def make_chapter2_reward():
-    return {
-        "uid": uuid.uuid4().hex, "unit": "chapter-2", "slot": "gloves",
-        "stars": 4, "name": four_star_item_name("2", "乘除勇者手甲"), "fixed_stat": "attack",
-        "fixed_value": fixed_value_for("2", "gloves", 4)[1], "affix_stat": "attack_pct", "affix_value": 0.25,
-        "achievement": True,
-    }
+    return make_achievement_reward("2", "chapter", fixed_value_for, four_star_item_name)
 
 
 def make_chapter2_collection_reward():
-    return {
-        "uid": uuid.uuid4().hex, "unit": "chapter-2-collection", "slot": "boots",
-        "stars": 4, "name": four_star_item_name("2", "乘除疾風戰靴"), "fixed_stat": "attack_speed",
-        "fixed_value": fixed_value_for("2", "boots", 4)[1], "affix_stat": "speed_pct", "affix_value": 0.25,
-        "achievement": True,
-    }
+    return make_achievement_reward("2", "collection", fixed_value_for, four_star_item_name)
 
 
 def make_chapter2_elite_reward():
-    return {
-        "uid": uuid.uuid4().hex, "unit": "chapter-2-elite", "slot": "shield",
-        "stars": 4, "name": four_star_item_name("2", "乘除霸主盾"), "fixed_stat": "defense",
-        "fixed_value": fixed_value_for("2", "shield", 4)[1], "affix_stat": "hp_pct", "affix_value": 0.25,
-        "achievement": True,
-    }
+    return make_achievement_reward("2", "elite", fixed_value_for, four_star_item_name)
 
 
 def make_chapter3_reward():
-    return {
-        "uid": uuid.uuid4().hex, "unit": "chapter-3", "slot": "armor",
-        "stars": 4, "name": four_star_item_name("3", "龍鱗守護鎧"), "fixed_stat": "defense",
-        "fixed_value": fixed_value_for("3", "armor", 4)[1],
-        "affix_stat": "defense_pct", "affix_value": 0.25,
-        "achievement": True,
-    }
+    return make_achievement_reward("3", "chapter", fixed_value_for, four_star_item_name)
 
 
 def make_chapter3_collection_reward():
-    return {
-        "uid": uuid.uuid4().hex, "unit": "chapter-3-collection", "slot": "belt",
-        "stars": 4, "name": four_star_item_name("3", "龍心腰帶"), "fixed_stat": "hp",
-        "fixed_value": fixed_value_for("3", "belt", 4)[1],
-        "affix_stat": "hp_pct", "affix_value": 0.25,
-        "achievement": True,
-    }
+    return make_achievement_reward("3", "collection", fixed_value_for, four_star_item_name)
 
 
 def make_chapter3_elite_reward():
-    return {
-        "uid": uuid.uuid4().hex, "unit": "chapter-3-elite", "slot": "ring",
-        "stars": 4, "name": four_star_item_name("3", "烈焰龍王戒"), "fixed_stat": "first_hit_percent",
-        "fixed_value": fixed_value_for("3", "ring", 4)[1],
-        "affix_stat": "boss_damage_pct", "affix_value": 0.25,
-        "achievement": True,
-    }
+    return make_achievement_reward("3", "elite", fixed_value_for, four_star_item_name)
 
 
 def make_chapter4_reward():
-    return {
-        "uid": uuid.uuid4().hex, "unit": "chapter-4", "slot": "helmet",
-        "stars": 4, "name": four_star_item_name("4", "雷狐靈冠"), "fixed_stat": "hp",
-        "fixed_value": fixed_value_for("4", "helmet", 4)[1],
-        "affix_stat": "hp_pct", "affix_value": 0.25, "achievement": True,
-    }
+    return make_achievement_reward("4", "chapter", fixed_value_for, four_star_item_name)
 
 
 def make_chapter4_collection_reward():
-    return {
-        "uid": uuid.uuid4().hex, "unit": "chapter-4-collection", "slot": "boots",
-        "stars": 4, "name": four_star_item_name("4", "紫電踏雲靴"), "fixed_stat": "attack_speed",
-        "fixed_value": fixed_value_for("4", "boots", 4)[1],
-        "affix_stat": "speed_pct", "affix_value": 0.25, "achievement": True,
-    }
+    return make_achievement_reward("4", "collection", fixed_value_for, four_star_item_name)
 
 
 def make_chapter4_elite_reward():
-    return {
-        "uid": uuid.uuid4().hex, "unit": "chapter-4-elite", "slot": "weapon",
-        "stars": 4, "name": four_star_item_name("4", "九尾天雷刃"), "fixed_stat": "attack",
-        "fixed_value": fixed_value_for("4", "weapon", 4)[1],
-        "affix_stat": "critical_rate", "affix_value": 0.25, "achievement": True,
-    }
+    return make_achievement_reward("4", "elite", fixed_value_for, four_star_item_name)
 
 
 def make_chapter5_reward():
-    return {
-        "uid": uuid.uuid4().hex, "unit": "chapter-5", "chapter": "5", "slot": "armor",
-        "stars": 4, "name": four_star_item_name("5", "冰河守護鎧"), "fixed_stat": "defense",
-        "fixed_value": fixed_value_for("5", "armor", 4)[1],
-        "affix_stat": "defense_pct", "affix_value": 0.25, "achievement": True,
-    }
+    return make_achievement_reward("5", "chapter", fixed_value_for, four_star_item_name)
 
 
 def make_chapter5_collection_reward():
-    return {
-        "uid": uuid.uuid4().hex, "unit": "chapter-5-collection", "chapter": "5", "slot": "necklace",
-        "stars": 4, "name": four_star_item_name("5", "極寒潮汐項鍊"), "fixed_stat": "boss_hp_reduction",
-        "fixed_value": fixed_value_for("5", "necklace", 4)[1],
-        "affix_stat": "damage_reduction_pct", "affix_value": 0.25, "achievement": True,
-    }
+    return make_achievement_reward("5", "collection", fixed_value_for, four_star_item_name)
 
 
 def make_chapter5_elite_reward():
-    return {
-        "uid": uuid.uuid4().hex, "unit": "chapter-5-elite", "chapter": "5", "slot": "shield",
-        "stars": 4, "name": four_star_item_name("5", "暴風王盾"), "fixed_stat": "defense",
-        "fixed_value": fixed_value_for("5", "shield", 4)[1],
-        "affix_stat": "boss_damage_pct", "affix_value": 0.25, "achievement": True,
-    }
+    return make_achievement_reward("5", "elite", fixed_value_for, four_star_item_name)
 
 
 def retroactively_grant_chapter3_rewards(profile):
@@ -1984,17 +1875,9 @@ def retroactively_grant_chapter3_rewards(profile):
 
 def sync_item_four_star_name(item):
     """補齊四星裝備名稱的章節前綴，已正確命名者不重複添加。"""
-    if int(item.get("stars", 0) or 0) != 4:
-        return False
-    chapter_id = item_chapter_id(item)
-    if chapter_id not in CHAPTERS or not item.get("name"):
-        return False
-    expected_name = four_star_item_name(chapter_id, item["name"])
-    if item["name"] == expected_name:
-        return False
-    item["name"] = expected_name
-    item.setdefault("chapter", chapter_id)
-    return True
+    return sync_four_star_item_name(
+        item, CHAPTERS, item_chapter_id, four_star_item_name
+    )
 
 
 def sync_collection_catalog(profile):
@@ -2003,71 +1886,36 @@ def sync_collection_catalog(profile):
 
 
 def collected_three_star_slots(profile, chapter_id="1"):
-    prefix = f"{chapter_id}:3:"
-    recorded = {
-        entry[len(prefix):] for entry in profile.get("collection_catalog", [])
-        if entry.startswith(prefix)
-    }
-    currently_owned = {
-        item["slot"] for item in profile["inventory"]
-        if item.get("stars") == 3 and not item.get("achievement")
-        and item_chapter_id(item) == chapter_id
-    }
-    return recorded | currently_owned
+    return loot_collected_three_star_slots(
+        profile, chapter_id, SLOT_NAMES, item_chapter_id
+    )
 
 
 def has_full_three_star_set(profile, chapter_id="1"):
-    return set(SLOT_NAMES).issubset(collected_three_star_slots(profile, chapter_id))
+    return has_full_three_star_collection(
+        profile, chapter_id, SLOT_NAMES, item_chapter_id
+    )
 
 
 def find_item(profile, uid):
-    return next((item for item in profile["inventory"] if item["uid"] == uid), None)
+    return find_inventory_item(profile, uid)
 
 
 def achievement_item(profile, unit_key):
-    return next((item for item in profile["inventory"] if item.get("unit") == unit_key), None)
+    return find_achievement_item(profile, unit_key)
 
 
 def achievement_was_collected(profile, unit_key, stars=4):
-    prefix = f"achievement:{stars}:{unit_key}:"
-    return any(
-        entry.startswith(prefix) for entry in profile.get("collection_catalog", [])
-    ) or achievement_item(profile, unit_key) is not None
+    return loot_achievement_was_collected(profile, unit_key, stars)
 
 
 def collected_achievement_slots(profile, stars=4):
-    owned = {
-        item["slot"] for item in profile["inventory"]
-        if item.get("achievement") and item.get("stars") == stars
-    }
-    prefix = f"achievement:{stars}:"
-    recorded = {
-        entry.rsplit(":", 1)[-1]
-        for entry in profile.get("collection_catalog", [])
-        if entry.startswith(prefix)
-    }
-    return owned | recorded
+    return loot_collected_achievement_slots(profile, stars)
 
 
 def sync_achievement_item(profile, unit_key, maker):
     """讓舊存檔中的成就裝備跟隨新版部位與固定數值，且不遺失穿戴狀態。"""
-    item = achievement_item(profile, unit_key)
-    if not item:
-        return False
-    expected = maker()
-    old_slot = item["slot"]
-    was_equipped = profile["equipment"].get(old_slot) == item["uid"]
-    synced_keys = ("slot", "stars", "name", "fixed_stat", "fixed_value", "affix_stat", "affix_value", "achievement")
-    changed = any(item.get(key) != expected[key] for key in synced_keys)
-    if not changed:
-        return False
-    for key in synced_keys:
-        item[key] = expected[key]
-    if old_slot != item["slot"] and was_equipped:
-        profile["equipment"][old_slot] = None
-        if not profile["equipment"].get(item["slot"]):
-            profile["equipment"][item["slot"]] = item["uid"]
-    return changed
+    return sync_loot_achievement_item(profile, unit_key, maker)
 
 
 def sync_item_fixed_value(item):
