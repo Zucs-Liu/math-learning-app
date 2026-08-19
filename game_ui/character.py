@@ -341,7 +341,10 @@ def _render_equipment_scene(profile, save_profile):
                         else "blue-silver-hero-hd.png"
                     )
                     hero_path = Path(__file__).resolve().parent.parent / "assets" / "heroes" / hero_file
-                    st.image(str(hero_path), width=160)
+                    # Keep the original high-resolution media.  A small numeric width
+                    # makes Streamlit downsample the file before CSS enlarges it,
+                    # which leaves the hero visibly blurred in the dialog.
+                    st.image(str(hero_path), width="stretch")
         with right:
             with st.container(key="character_right_slots"):
                 for slot in RIGHT_SLOTS:
