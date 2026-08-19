@@ -336,9 +336,9 @@ def _render_equipment_scene(profile, save_profile):
                         st.rerun()
                 else:
                     hero_file = (
-                        "blue-silver-hero-female.webp"
+                        "blue-silver-hero-female-hd.png"
                         if profile.get("gender") == "female"
-                        else "blue-silver-hero.webp"
+                        else "blue-silver-hero-hd.png"
                     )
                     hero_path = Path(__file__).resolve().parent.parent / "assets" / "heroes" / hero_file
                     st.image(str(hero_path), width=160)
