@@ -258,18 +258,26 @@ def _render_equipment_scene(profile, save_profile):
           }
           .st-key-character_center_panel > [data-testid="stVerticalBlock"] {
             height:100% !important;justify-content:flex-start !important;gap:.04rem !important;
+            padding-top:2rem !important;box-sizing:border-box !important;
+          }
+          .character-hero-name {
+            position:absolute !important;top:0 !important;left:0 !important;right:0 !important;
+            z-index:3 !important;text-align:center !important;line-height:1.2 !important;
+          }
+          .st-key-character_center_panel [data-testid="stElementContainer"]:has([data-testid="stImage"]) {
+            position:absolute !important;top:1.85rem !important;right:.12rem !important;
+            bottom:.18rem !important;left:.12rem !important;
+            width:auto !important;height:auto !important;margin:0 !important;padding:0 !important;
           }
           .st-key-character_center_panel [data-testid="stImage"] img {
-            display:block !important;width:auto !important;
-            height:clamp(11rem,30dvh,13rem) !important;
-            max-height:clamp(11rem,30dvh,13rem) !important;
-            max-width:calc(100% - .5rem) !important;
+            display:block !important;width:100% !important;height:100% !important;
+            max-width:100% !important;max-height:100% !important;
             object-fit:contain !important;margin:0 auto !important;
           }
           .st-key-character_center_panel [data-testid="stImage"] {
-            position:absolute !important;top:1.7rem !important;left:0 !important;right:0 !important;
+            position:static !important;
             display:flex !important;justify-content:center !important;align-items:flex-start !important;
-            width:100% !important;margin:0 !important;padding:0 !important;
+            width:100% !important;height:100% !important;margin:0 !important;padding:0 !important;
           }
           .st-key-character_center_panel [data-testid="stImage"] > div {
             display:flex !important;justify-content:center !important;width:100% !important;
@@ -302,7 +310,7 @@ def _render_equipment_scene(profile, save_profile):
         with hero:
             with st.container(key="character_center_panel", height=190, border=False):
                 st.markdown(
-                    f"<div style='text-align:center;font-weight:800'>Lv{profile['level']}　{profile['name']}</div>",
+                    f"<div class='character-hero-name' style='font-weight:800'>Lv{profile['level']}　{profile['name']}</div>",
                     unsafe_allow_html=True,
                 )
                 selected_slot = st.session_state.get("character_selected_slot")
@@ -633,7 +641,7 @@ def render_character_equipment_dialog(profile, save_profile):
           /* 裝備頁固定佔滿導覽列以下的視窗；外層本身不參與一般文件流。 */
           .st-key-character_equipment_view {
             position:absolute !important;left:.45rem !important;right:.45rem !important;
-            top:6.8rem !important;bottom:.1rem !important;
+            top:10.35rem !important;bottom:.1rem !important;
             width:auto !important;height:auto !important;
             margin:0 !important;padding:0 !important;overflow:hidden !important;
           }
