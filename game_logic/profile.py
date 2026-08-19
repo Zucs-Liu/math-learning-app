@@ -185,16 +185,19 @@ def ensure_equipment_loadouts(profile, slot_names):
             for slot in slot_names
         }
         loadouts = [
-            {"name": "主要裝備", "equipment": current},
-            {"name": "第二套裝備", "equipment": dict(blank)},
+            {"name": "裝備（一）", "equipment": current},
+            {"name": "裝備（二）", "equipment": dict(blank)},
         ]
         profile["equipment_loadouts"] = loadouts
     for index in range(2):
         loadout = loadouts[index]
         if not isinstance(loadout, dict):
-            loadout = {"name": f"裝備配置 {index + 1}", "equipment": dict(blank)}
+            loadout = {"name": f"裝備（{'一' if index == 0 else '二'}）", "equipment": dict(blank)}
             loadouts[index] = loadout
-        loadout.setdefault("name", f"裝備配置 {index + 1}")
+        loadout.setdefault("name", f"裝備（{'一' if index == 0 else '二'}）")
+        legacy_names = {0: {"主要裝備", "裝備配置 1"}, 1: {"第二套裝備", "裝備配置 2"}}
+        if loadout.get("name") in legacy_names[index]:
+            loadout["name"] = f"裝備（{'一' if index == 0 else '二'}）"
         if not isinstance(loadout.get("equipment"), dict):
             loadout["equipment"] = dict(blank)
         for slot in slot_names:
