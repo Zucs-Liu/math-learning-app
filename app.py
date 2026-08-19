@@ -1889,7 +1889,7 @@ if st.session_state.screen not in {"login", "bootstrap", "boss_watch"}:
 
 # Streamlit 的 keyed tabs 在切換獨立頁面時，偶爾會短暫沿用上一頁的分頁列。
 # 僅在真正需要分頁的畫面顯示 tabs，避免背包分類殘留在首頁或其他功能頁。
-tab_screens = {"login", "character_stats", "backpack", "daily_tasks", "rankings"}
+tab_screens = {"login", "backpack", "daily_tasks", "rankings"}
 if st.session_state.screen not in tab_screens:
     st.markdown(
         """
@@ -1903,12 +1903,10 @@ if st.session_state.screen not in tab_screens:
 active_chapter_id = st.session_state.get("selected_chapter", "1")
 if active_chapter_id not in CHAPTERS:
     active_chapter_id = "1"
-if st.session_state.screen not in {"boss_ready", "boss_watch"}:
-    if st.session_state.screen in {"menu", "quiz", "quiz_result", "boss_result"}:
-        active_chapter = CHAPTERS[active_chapter_id]
-        st.title(f"⚔️ 數學冒險：{active_chapter['number']}－{active_chapter['name']}")
-    else:
-        st.title("⚔️ 數學冒險")
+
+# 大標題只屬於登入頁與角色首頁；進入任何獨立功能後，由該功能自己的標題接手。
+if st.session_state.screen in {"login", "home"}:
+    st.title("⚔️ 數學冒險")
 
 home_return_screens = {
     "character_stats", "menu", "backpack", "gallery", "rankings", "economy", "daily_tasks",
@@ -2308,9 +2306,7 @@ elif st.session_state.screen == "mailbox":
 
 elif st.session_state.screen == "character_stats":
     profile = get_profile()
-    st.subheader("🧙 角色能力")
     render_character_equipment_hub(profile, save_profile)
-    render_bottom_home_button("character_stats")
 
 elif st.session_state.screen == "menu":
     scroll_page_to_top("scroll_menu_to_top")
