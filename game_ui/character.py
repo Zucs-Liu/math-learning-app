@@ -126,19 +126,21 @@ def _render_slot_selector(profile, slot, save_profile):
             format_func=lambda uid: item_text(find_item(profile, uid)),
             key=f"character_slot_candidate_{slot}",
         )
-        with st.container(key="character_slot_actions"):
-            equip_col, remove_col, close_col = st.columns(3)
-            if equip_col.button("穿戴", key=f"character_slot_equip_{slot}", type="primary", use_container_width=True):
+        with st.container(
+            key="character_slot_actions", horizontal=True,
+            horizontal_alignment="center", vertical_alignment="center", gap="small",
+        ):
+            if st.button("穿戴", key=f"character_slot_equip_{slot}", type="primary", width="stretch"):
                 profile["equipment"][slot] = selected_uid
                 save_profile(profile)
                 st.session_state.character_selected_slot = None
                 st.rerun()
-            if current_item and remove_col.button("卸下", key=f"character_slot_remove_{slot}", use_container_width=True):
+            if current_item and st.button("卸下", key=f"character_slot_remove_{slot}", width="stretch"):
                 profile["equipment"][slot] = None
                 save_profile(profile)
                 st.session_state.character_selected_slot = None
                 st.rerun()
-            if close_col.button("返回人物", key=f"character_slot_close_{slot}", use_container_width=True):
+            if st.button("返回", key=f"character_slot_close_{slot}", width="stretch"):
                 st.session_state.character_selected_slot = None
                 st.rerun()
     else:
@@ -191,11 +193,22 @@ def _render_equipment_scene(profile, save_profile):
         .st-key-character_slot_actions [data-testid="stHorizontalBlock"] {
           display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;gap:.18rem !important;
         }
+        .st-key-character_slot_actions {
+          display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;
+          align-items:center !important;gap:.18rem !important;width:100% !important;
+        }
+        .st-key-character_slot_actions > div,
+        .st-key-character_slot_actions [class*="st-key-character_slot_equip_"],
+        .st-key-character_slot_actions [class*="st-key-character_slot_remove_"],
+        .st-key-character_slot_actions [class*="st-key-character_slot_close_"] {
+          flex:1 1 0 !important;min-width:0 !important;width:auto !important;
+        }
         .st-key-character_slot_actions [data-testid="stColumn"] {
           min-width:0 !important;flex:1 1 33.333% !important;width:33.333% !important;
         }
         .st-key-character_slot_actions button {
-          min-height:1.8rem !important;padding:.08rem .03rem !important;font-size:.66rem !important;white-space:nowrap !important;
+          width:100% !important;min-height:1.8rem !important;padding:.08rem .03rem !important;
+          font-size:.66rem !important;white-space:nowrap !important;
         }
         @media (min-width:769px) {
           [class*="st-key-character_slot_"] button p {font-size:1.85rem !important;}
@@ -211,9 +224,9 @@ def _render_equipment_scene(profile, save_profile):
           }
           .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_left_slots),
           .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_right_slots) {
-            flex:0 0 clamp(2.35rem,12vw,2.75rem) !important;
-            width:clamp(2.35rem,12vw,2.75rem) !important;
-            max-width:2.75rem !important;
+            flex:0 0 clamp(1.95rem,10.5vw,2.2rem) !important;
+            width:clamp(1.95rem,10.5vw,2.2rem) !important;
+            max-width:2.2rem !important;
           }
           .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_center_panel) {
             flex:1 1 auto !important;width:auto !important;max-width:none !important;
@@ -223,12 +236,16 @@ def _render_equipment_scene(profile, save_profile):
           .st-key-character_equipment_scene p,
           .st-key-character_equipment_scene button {font-size:.62rem !important;line-height:1.05 !important;}
           .st-key-character_equipment_scene [data-testid="stImage"] img {
-            max-height:10.5rem !important;object-fit:contain !important;
+            width:auto !important;height:8.6rem !important;max-height:8.6rem !important;
+            object-fit:contain !important;margin:0 auto !important;
           }
           .st-key-character_center_panel {
-            height:12.2rem !important;min-height:12.2rem !important;max-height:12.2rem !important;
+            height:9.7rem !important;min-height:9.7rem !important;max-height:9.7rem !important;
           }
-          .st-key-character_center_panel [data-testid="stImage"] img {max-height:9.6rem !important;}
+          .st-key-character_center_panel [data-testid="stImage"] img {
+            width:auto !important;height:8rem !important;max-height:8rem !important;
+            object-fit:contain !important;margin:0 auto !important;
+          }
           .st-key-character_center_panel h4 {font-size:.78rem !important;}
           .st-key-character_center_panel p,
           .st-key-character_center_panel label,
@@ -253,7 +270,7 @@ def _render_equipment_scene(profile, save_profile):
                 for slot in LEFT_SLOTS:
                     _equipment_slot(profile, slot, "left")
         with hero:
-            with st.container(key="character_center_panel", height=230, border=False):
+            with st.container(key="character_center_panel", height=190, border=False):
                 st.markdown(
                     f"<div style='text-align:center;font-weight:800'>Lv{profile['level']}　{profile['name']}</div>",
                     unsafe_allow_html=True,
@@ -273,7 +290,7 @@ def _render_equipment_scene(profile, save_profile):
                         else "blue-silver-hero.webp"
                     )
                     hero_path = Path(__file__).resolve().parent.parent / "assets" / "heroes" / hero_file
-                    st.image(str(hero_path), use_container_width=True)
+                    st.image(str(hero_path), width=160)
         with right:
             with st.container(key="character_right_slots"):
                 for slot in RIGHT_SLOTS:
@@ -317,10 +334,10 @@ def _render_compact_stats(profile):
         .character-stat-list span {{white-space:nowrap;font-weight:700;}}
         @media (max-width:768px) and (orientation:portrait) {{
           .character-stat-panels {{gap:.22rem;margin-top:.2rem;}}
-          .character-stat-box {{padding:.3rem;}}
-          .character-stat-box h4 {{font-size:.7rem;margin-bottom:.18rem;}}
-          .character-stat-list {{max-height:6.3rem;}}
-          .character-stat-list div {{font-size:.59rem;line-height:1.08;padding:.08rem 0;}}
+          .character-stat-box {{padding:.2rem .26rem;border-radius:5px;}}
+          .character-stat-box h4 {{font-size:.64rem;margin-bottom:.1rem;}}
+          .character-stat-list {{max-height:4.9rem;}}
+          .character-stat-list div {{font-size:.53rem;line-height:1;padding:.045rem 0;}}
         }}
         </style>
         <div class="character-stat-panels">
@@ -485,6 +502,7 @@ def render_character_equipment_dialog(profile, save_profile):
     st.markdown(
         """
         <style>
+        body:has([data-testid="stDialog"]) {overflow:hidden !important;overscroll-behavior:none !important;}
         [data-testid="stDialog"] [role="dialog"] {
           background:#fff !important;color:#1f2937 !important;
           border:3px solid #111 !important;border-radius:6px !important;
@@ -531,11 +549,19 @@ def render_character_equipment_dialog(profile, save_profile):
           color:#e53935 !important;border-color:#111 !important;background:#fff !important;
         }
         @media (max-width:768px) and (orientation:portrait) {
+          body:has([data-testid="stDialog"]) [data-testid="stHeader"] {display:none !important;}
+          [data-testid="stDialog"] {
+            position:fixed !important;inset:0 !important;z-index:2147483647 !important;
+            width:100vw !important;height:100dvh !important;max-width:100vw !important;max-height:100dvh !important;
+            padding:0 !important;margin:0 !important;align-items:stretch !important;justify-content:stretch !important;
+            overflow:hidden !important;overscroll-behavior:none !important;background:#fff !important;
+          }
           [data-testid="stDialog"] [role="dialog"] {
-            position:fixed !important;inset:0 !important;
+            position:absolute !important;inset:0 !important;
             width:100vw !important;max-width:100vw !important;
             height:100dvh !important;max-height:100dvh !important;
             margin:0 !important;padding:.16rem !important;border-radius:0 !important;
+            overflow:hidden !important;overscroll-behavior:none !important;
           }
           [data-testid="stDialog"] [role="dialog"] > div {
             height:100% !important;max-height:100% !important;
@@ -552,6 +578,10 @@ def render_character_equipment_dialog(profile, save_profile):
           .st-key-character_scroll_view > [data-testid="stVerticalBlockBorderWrapper"] {
             height:calc(100dvh - 6.3rem) !important;max-height:calc(100dvh - 6.3rem) !important;
             overflow-y:auto !important;
+          }
+          .st-key-character_scroll_view {
+            height:calc(100dvh - 6.3rem) !important;max-height:calc(100dvh - 6.3rem) !important;
+            overflow-y:auto !important;overscroll-behavior:contain !important;
           }
           .st-key-character_dialog_close {
             right:.28rem !important;top:.2rem !important;width:2rem !important;height:2rem !important;
