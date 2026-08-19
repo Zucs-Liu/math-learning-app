@@ -151,6 +151,14 @@ from game_logic.equipment import (
     item_text,
     player_stats,
 )
+from game_ui.common import (
+    focus_answer_input,
+    force_top_before_navigation,
+    remove_stale_elements_before,
+    render_bottom_home_button,
+    render_health_bar,
+    scroll_page_to_top,
+)
 
 st.set_page_config(page_title="數學冒險", page_icon="⚔️", layout="wide")
 
@@ -2088,124 +2096,6 @@ def unit_unlocked(profile, unit_id):
     return index == 0 or profile["unit_best_stars"][order[index - 1]] > 0
 
 
-def focus_answer_input():
-    components.html(
-        """
-        <script>
-        const focusAnswer = () => {
-            const doc = parent.window.document;
-            const answer = doc.querySelector('input[aria-label="你的答案"]')
-                || doc.querySelector('input[placeholder="輸入後按 Enter"]')
-                || doc.querySelector('input[aria-label="分子"]')
-                || doc.querySelector('input[placeholder="分子"]');
-            if (answer) {
-                answer.focus({preventScroll: true});
-                answer.click();
-                if (answer.select) answer.select();
-            }
-        };
-        [50, 150, 300, 600, 1000].forEach(delay => setTimeout(focusAnswer, delay));
-        </script>
-        """,
-        height=0,
-        scrolling=False,
-    )
-
-
-def scroll_page_to_top(state_key):
-    """只在剛切換頁面的第一個繪製週期回頂端，不干擾之後的手動捲動。"""
-    if not st.session_state.get(state_key):
-        return
-    components.html(
-        """
-        <script>
-        const scrollTop = () => {
-            const doc = parent.window.document;
-            const selectors = [
-                '.stMain',
-                'section.main',
-                '[data-testid="stMain"]',
-                '[data-testid="stAppViewContainer"]',
-                '[data-testid="stApp"]',
-                '.main'
-            ];
-            selectors.forEach(selector => {
-                doc.querySelectorAll(selector).forEach(node => {
-                    node.scrollTop = 0;
-                    node.scrollLeft = 0;
-                    if (node.scrollTo) node.scrollTo({top: 0, left: 0, behavior: 'instant'});
-                });
-            });
-            doc.documentElement.scrollTop = 0;
-            doc.documentElement.scrollLeft = 0;
-            doc.body.scrollTop = 0;
-            doc.body.scrollLeft = 0;
-            parent.window.scrollTo(0, 0);
-        };
-        scrollTop();
-        requestAnimationFrame(() => requestAnimationFrame(scrollTop));
-        </script>
-        """,
-        height=1,
-        scrolling=False,
-    )
-    st.session_state[state_key] = False
-
-
-def remove_stale_elements_before(marker_id):
-    """清除 Streamlit 換頁時偶爾殘留在新頁內容上方的舊按鈕列與分頁列。"""
-    st.markdown(f'<div id="{marker_id}"></div>', unsafe_allow_html=True)
-    components.html(
-        f"""
-        <script>
-        const clearStaleElements = () => {{
-            const doc = parent.document;
-            const marker = doc.getElementById('{marker_id}');
-            if (!marker) return;
-            const markerTop = marker.getBoundingClientRect().top;
-
-            doc.querySelectorAll('[data-testid="stTabs"]').forEach(tabs => {{
-                const rect = tabs.getBoundingClientRect();
-                if (rect.bottom > 0 && rect.top < markerTop - 2) tabs.remove();
-            }});
-
-            doc.querySelectorAll('button').forEach(button => {{
-                if (button.closest('header[data-testid="stHeader"]')) return;
-                const rect = button.getBoundingClientRect();
-                if (rect.bottom <= 0 || rect.top >= markerTop - 2) return;
-                const row = button.closest('[data-testid="stHorizontalBlock"]');
-                const element = row || button.closest('[data-testid="stElementContainer"]');
-                if (element) element.remove();
-            }});
-        }};
-        [0, 40, 100, 220, 450, 800, 1300].forEach(
-            delay => setTimeout(clearStaleElements, delay)
-        );
-        </script>
-        """,
-        height=0,
-        scrolling=False,
-    )
-
-
-def force_top_before_navigation():
-    """在按鈕切換 screen 前立即重設手機瀏覽器的捲動位置。"""
-    components.html(
-        """
-        <script>
-        const doc = parent.window.document;
-        doc.querySelectorAll('.stMain, section.main, [data-testid="stMain"], [data-testid="stAppViewContainer"]')
-          .forEach(node => { node.scrollTop = 0; node.scrollLeft = 0; });
-        doc.documentElement.scrollTop = 0;
-        doc.body.scrollTop = 0;
-        parent.window.scrollTo(0, 0);
-        </script>
-        """,
-        height=1,
-        scrolling=False,
-    )
-
-
 def uses_advanced_combo_rules(unit_id=None):
     """Chapter 5 onward uses the shorter combo thresholds."""
     unit_id = unit_id or st.session_state.get("selected_unit", "1-1")
@@ -2620,30 +2510,6 @@ def render_stats(profile, show_exp=True):
             st.caption(f"EXP：{profile['exp']} / {profile['level'] * 100}")
         else:
             st.caption("已達最高等級 Lv20")
-
-
-def render_health_bar(label, current, maximum, color):
-    ratio = max(0.0, min(1.0, current / maximum if maximum else 0.0))
-    label_col, bar_col = st.columns([1.3, 8.7], vertical_alignment="center")
-    label_col.markdown(f"**{label}**  \n{current:.1f} / {maximum:.1f}")
-    bar_col.markdown(
-        f"""
-        <div style="width:100%;height:24px;background:#e9edf2;border-radius:12px;overflow:hidden;">
-          <div style="width:{ratio * 100:.2f}%;height:100%;background:{color};border-radius:12px;"></div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_bottom_home_button(key):
-    """長頁面底部的首頁捷徑，避免手機使用者再捲回頁首。"""
-    st.divider()
-    if st.button("← 回到首頁", key=f"bottom_home_{key}", use_container_width=True):
-        st.session_state.shop_purchase_uid = None
-        st.session_state.forge_result_uid = None
-        st.session_state.screen = "home"
-        st.rerun()
 
 
 BOSS_WIN_KEYS = {
