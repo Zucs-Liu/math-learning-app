@@ -162,7 +162,7 @@ from game_ui.battle import (
 )
 from game_ui.profile import render_item_comparison, render_stats
 from game_ui.login import apply_login_background, render_compact_avatar_editor
-from game_ui.quiz import render_quiz_panel
+from game_ui.quiz import render_quiz_panel, render_quiz_result
 
 st.set_page_config(page_title="數學冒險", page_icon="⚔️", layout="wide")
 
@@ -3878,63 +3878,7 @@ elif st.session_state.screen == "quiz":
 elif st.session_state.screen == "quiz_result":
     process_rewards()
     profile = get_profile()
-    st.subheader(f"單元{st.session_state.selected_unit}完成")
-    st.markdown(f"## {'⭐' * st.session_state.stars or '未取得星星'}")
-    st.write(f"最高連擊 **{st.session_state.max_combo}**，共答對 **{st.session_state.correct}題**。")
-    average_seconds = (
-        st.session_state.quiz_elapsed / st.session_state.attempts
-        if st.session_state.attempts else 0
-    )
-    st.caption(
-        f"共作答 {st.session_state.attempts}題｜總時間 {st.session_state.quiz_elapsed:.1f}秒｜"
-        f"平均每題 {average_seconds:.1f}秒"
-    )
-    if st.session_state.stars == 0:
-        st.warning("本回合尚未答對任何題目，因此不獲得星星、經驗值或裝備。")
-    elif st.session_state.earned_exp:
-        level_message = (
-            f" 已升級到 Lv{st.session_state.level_up_to}！"
-            if st.session_state.level_up_to else ""
-        )
-        st.success(f"刷新單元成績，獲得 {st.session_state.earned_exp} EXP！{level_message}")
-    else:
-        st.info("經驗值不重複領取；重刷仍可取得新詞條裝備。")
-    item = find_item(profile, st.session_state.pending_item_uid) if st.session_state.pending_item_uid else None
-    if item:
-        st.write("### 本次掉落")
-        render_item_comparison(profile, item)
-        x, y = st.columns(2)
-        if x.button("立即裝備", type="primary", use_container_width=True):
-            profile["equipment"][item["slot"]] = item["uid"]
-            save_profile(profile)
-            st.session_state.pending_item_uid = None
-            st.rerun()
-        if y.button("放入物品欄", use_container_width=True):
-            st.session_state.pending_item_uid = None
-            st.rerun()
-    elif st.session_state.drop_exhausted:
-        st.info("本次沒有出現新的詞條組合；你仍可重複挑戰，練習並刷新關卡成績。")
-    if st.session_state.chapter_reward_new:
-        reward = next((i for i in profile["inventory"] if i.get("achievement")), None)
-        st.success(f"🏆 第一章9星達成！免費獲得：{item_text(reward)}")
-    if st.session_state.collection_reward_new:
-        level_message = (
-            f" 已升級到 Lv{st.session_state.collection_level_up_to}！"
-            if st.session_state.collection_level_up_to else ""
-        )
-        st.success(f"🏆 九部位三星收集完成！獲得「三星全裝收藏家」成就與100 EXP！{level_message}")
-        st.success("九部位收藏獎勵已完成；菁英BOSS則在擊敗一般BOSS後解鎖。")
-    for reward_message in st.session_state.extra_reward_messages:
-        st.success(f"🏆 {reward_message}")
-    if st.session_state.pending_item_uid is None:
-        st.info("若要重複刷取不同部位或附加能力，請點選下方「重複刷取」。")
-        back_col, repeat_col = st.columns(2)
-        if back_col.button("返回章節", use_container_width=True):
-            st.session_state.screen = "menu"
-            st.rerun()
-        if repeat_col.button("重複刷取", type="primary", use_container_width=True):
-            start_quiz(st.session_state.selected_unit)
-            st.rerun()
+    render_quiz_result(profile, save_profile, start_quiz)
 
 elif st.session_state.screen == "boss_ready":
     scroll_page_to_top("scroll_boss_to_top")
