@@ -142,13 +142,43 @@ def render_health_bar(label, current, maximum, color):
     )
 
 
-def render_bottom_home_button(key):
-    """Render a bottom shortcut for long pages and return whether it was used."""
-    st.divider()
-    if not st.button("← 回到首頁", key=f"bottom_home_{key}", use_container_width=True):
-        return False
+def _close_feature_page():
     st.session_state.shop_purchase_uid = None
     st.session_state.forge_result_uid = None
     st.session_state.screen = "home"
     st.rerun()
+
+
+def render_page_close_button(key):
+    """Render a compact fixed close button without consuming a content row."""
+    st.markdown(
+        """
+        <style>
+        .st-key-page-close-top {
+          position:fixed !important;right:1.15rem;top:4.15rem;z-index:999;
+          width:2.65rem !important;height:2.65rem !important;
+        }
+        .st-key-page-close-top button {
+          width:2.65rem !important;height:2.65rem !important;min-height:2.65rem !important;
+          padding:0 !important;border-radius:50% !important;font-size:1.15rem !important;
+          background:rgba(255,255,255,.94) !important;box-shadow:0 2px 10px rgba(0,0,0,.14);
+        }
+        @media (max-width:768px) and (orientation:portrait) {
+          .st-key-page-close-top {right:.65rem;top:3.65rem;}
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.container(key="page-close-top"):
+        if st.button("✕", key=f"page_close_{key}", help="關閉"):
+            _close_feature_page()
+
+
+def render_bottom_home_button(key):
+    """Render a small bottom-right close shortcut for long pages."""
+    spacer, close_col = st.columns([12, 1])
+    if not close_col.button("✕", key=f"bottom_home_{key}", help="關閉", use_container_width=True):
+        return False
+    _close_feature_page()
     return True

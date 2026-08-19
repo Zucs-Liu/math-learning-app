@@ -18,7 +18,7 @@ def _collected_three_star_slots(profile, chapter_id):
     )
 
 
-def render_backpack(profile, save_profile):
+def _render_legacy_backpack(profile, save_profile):
     gear_tab, consumable_tab, title_tab, future_tab = st.tabs(
         ["⚔️ 裝備", "🧪 消耗道具", "🏅 成就稱號", "🔒 待開放"],
     )
@@ -213,6 +213,39 @@ def render_backpack(profile, save_profile):
         st.caption("佩戴後會顯示在角色名稱前方，其他學生也能在排行榜看到。")
     with future_tab:
         st.info("此分類保留給後續開放的道具與功能。")
+
+
+def render_backpack(profile, save_profile):
+    """The backpack now contains consumables only; gear and titles moved to Character."""
+    st.write("### 🧪 消耗道具")
+    st.markdown(
+        """
+        <style>
+        .st-key-backpack-consumables [data-testid="stColumn"] {
+          border:1px solid #d9dee7;border-radius:8px;padding:.35rem !important;min-height:5rem;
+        }
+        @media (max-width:768px) and (orientation:portrait) {
+          .st-key-backpack-consumables [data-testid="stHorizontalBlock"] {display:flex !important;flex-wrap:nowrap !important;gap:.12rem !important;}
+          .st-key-backpack-consumables [data-testid="stColumn"] {min-width:0 !important;width:20% !important;max-width:20% !important;flex:0 0 calc(20% - .1rem) !important;padding:.12rem !important;min-height:4.3rem;}
+          .st-key-backpack-consumables [data-testid="stMetricLabel"] {font-size:.58rem !important;line-height:1.05 !important;white-space:normal !important;}
+          .st-key-backpack-consumables [data-testid="stMetricValue"] {font-size:1rem !important;line-height:1.1 !important;}
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    consumables = [
+        ("🎫", "擊殺券", profile["sweep_tickets"]),
+        ("💎", "融煉石", profile["smelting_stones"]),
+        ("🧭", "部位融煉石", profile["slot_smelting_stones"]),
+        ("🔷", "基礎詞條融煉石", profile["basic_affix_smelting_stones"]),
+        ("🔶", "進階詞條融煉石", profile["advanced_affix_smelting_stones"]),
+    ]
+    with st.container(key="backpack_consumables"):
+        cols = st.columns(5)
+        for col, (icon, name, count) in zip(cols, consumables):
+            col.metric(f"{icon} {name}", count)
+    st.caption("未使用裝備與稱號已移至『角色能力』；背包專門收納消耗道具。")
 
 
 def render_gallery(profile, chapter_unit_ids, unit_unlocked, start_quiz):

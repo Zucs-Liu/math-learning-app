@@ -89,6 +89,7 @@ from game_logic.authentication import (
 from game_logic.profile import (
     create_new_profile,
     normalize_profile_data,
+    sync_active_equipment_loadout,
     sync_profile_collection_catalog,
 )
 from game_logic.progression import (
@@ -134,6 +135,7 @@ from game_ui.common import (
     force_top_before_navigation,
     remove_stale_elements_before,
     render_bottom_home_button,
+    render_page_close_button,
     render_health_bar,
     scroll_page_to_top,
 )
@@ -153,6 +155,7 @@ from game_ui.stages import (
 from game_ui.inventory import render_backpack, render_gallery
 from game_ui.economy import render_economy_screen
 from game_ui.admin import render_admin_panel
+from game_ui.character import render_character_equipment_hub
 
 st.set_page_config(page_title="數學冒險", page_icon="⚔️", layout="wide")
 
@@ -641,6 +644,8 @@ def get_profile():
 
 
 def save_profile(profile):
+    # 維持舊有 equipment 欄位相容，並同步目前啟用的兩套配裝。
+    sync_active_equipment_loadout(profile, SLOT_NAMES)
     # 任何來源取得裝備後，在寫入存檔前立即登錄永久圖鑑。
     sync_collection_catalog(profile)
     update_profile_record(
@@ -1884,7 +1889,7 @@ if st.session_state.screen not in {"login", "bootstrap", "boss_watch"}:
 
 # Streamlit 的 keyed tabs 在切換獨立頁面時，偶爾會短暫沿用上一頁的分頁列。
 # 僅在真正需要分頁的畫面顯示 tabs，避免背包分類殘留在首頁或其他功能頁。
-tab_screens = {"login", "backpack", "daily_tasks", "rankings"}
+tab_screens = {"login", "character_stats", "backpack", "daily_tasks", "rankings"}
 if st.session_state.screen not in tab_screens:
     st.markdown(
         """
@@ -1907,14 +1912,10 @@ if st.session_state.screen not in {"boss_ready", "boss_watch"}:
 
 home_return_screens = {
     "character_stats", "menu", "backpack", "gallery", "rankings", "economy", "daily_tasks",
-    "announcements", "feedback", "quiz", "quiz_result", "sweep_result", "boss_ready", "boss_result",
+    "announcements", "feedback", "mailbox", "quiz", "quiz_result", "sweep_result", "boss_ready", "boss_result",
 }
 if st.session_state.get("active_player") and st.session_state.screen in home_return_screens:
-    if st.button("← 回到首頁", key=f"home_return_{st.session_state.screen}"):
-        st.session_state.shop_purchase_uid = None
-        st.session_state.forge_result_uid = None
-        st.session_state.screen = "home"
-        st.rerun()
+    render_page_close_button(st.session_state.screen)
 
 if st.session_state.screen == "bootstrap":
     st.subheader("首次設定：建立老師管理PIN")
@@ -2308,60 +2309,7 @@ elif st.session_state.screen == "mailbox":
 elif st.session_state.screen == "character_stats":
     profile = get_profile()
     st.subheader("🧙 角色能力")
-    st.markdown(
-        """
-        <style>
-        /* 角色能力是獨立頁面，不顯示切頁時殘留的背包分頁與格子。 */
-        [data-testid="stTabs"],
-        [class*="st-key-gear_grid_"],
-        .st-key-mobile_consumables { display:none !important; }
-        @media (max-width:768px) and (orientation:portrait) {
-          .st-key-mobile_stats [data-testid="stHorizontalBlock"] {display:flex !important;flex-wrap:nowrap !important;gap:.15rem !important;}
-          .st-key-mobile_stats [data-testid="stColumn"] {min-width:0 !important;width:20% !important;max-width:20% !important;flex:0 0 20% !important;padding:0 !important;}
-          .st-key-mobile_stats [data-testid="stMetricLabel"] {font-size:.68rem !important;}
-          .st-key-mobile_stats [data-testid="stMetricValue"] {font-size:1.05rem !important;line-height:1.2 !important;white-space:nowrap !important;}
-          .st-key-mobile_equipment [data-testid="stHorizontalBlock"] {display:flex !important;flex-wrap:nowrap !important;gap:.2rem !important;align-items:center !important;}
-          .st-key-mobile_equipment [data-testid="stColumn"] {min-width:0 !important;padding:0 !important;}
-          .st-key-mobile_equipment [data-testid="stColumn"]:nth-child(1) {flex:1 1 auto !important;width:auto !important;}
-          .st-key-mobile_equipment [data-testid="stColumn"]:nth-child(2) {flex:0 0 24% !important;width:24% !important;}
-          .st-key-mobile_equipment button {padding:.25rem .1rem !important;font-size:.72rem !important;min-height:2rem !important;}
-          .st-key-mobile_equipment p {font-size:.72rem !important;line-height:1.15 !important;}
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    components.html(
-        """
-        <script>
-        const removeInventoryResidue = () => {
-            const doc = parent.document;
-            doc.querySelectorAll(
-                '[data-testid="stTabs"], [class*="st-key-gear_grid_"], .st-key-mobile_consumables'
-            ).forEach(node => node.remove());
-        };
-        [0, 50, 120, 250, 500, 900, 1400].forEach(delay => setTimeout(removeInventoryResidue, delay));
-        </script>
-        """,
-        height=0,
-        scrolling=False,
-    )
-    with st.container(key="mobile_stats"):
-        render_stats(profile)
-    st.divider()
-    st.subheader("⚔️ 目前裝備")
-    with st.container(key="mobile_equipment"):
-        for slot, label in SLOT_NAMES.items():
-            uid = profile["equipment"].get(slot)
-            item = find_item(profile, uid) if uid else None
-            cols = st.columns([5, 1], vertical_alignment="center")
-            cols[0].write(f"**{SLOT_ICONS[slot]} {label}**")
-            if item and cols[1].button("卸下", key=f"stats_off_{slot}", use_container_width=True):
-                profile["equipment"][slot] = None
-                save_profile(profile)
-                st.rerun()
-            st.write(item_text(item) if item else "— 尚未裝備 —")
-            st.divider()
+    render_character_equipment_hub(profile, save_profile)
     render_bottom_home_button("character_stats")
 
 elif st.session_state.screen == "menu":

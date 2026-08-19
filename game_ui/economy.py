@@ -12,6 +12,7 @@ from game_logic.economy import (
     purchase_shop_entry,
 )
 from game_logic.equipment import fixed_text, item_chapter_id, item_text
+from game_logic.profile import equipped_item_uids
 from game_ui.common import render_bottom_home_button
 from game_ui.profile import render_item_comparison
 
@@ -147,10 +148,11 @@ def render_economy_screen(
         )
         st.divider()
         st.write("### 裝備融煉")
+        equipped_uids = equipped_item_uids(profile)
         eligible = [
             item for item in profile["inventory"]
             if item["stars"] in (1, 2)
-            and profile["equipment"].get(item["slot"]) != item["uid"]
+            and item["uid"] not in equipped_uids
             and not item.get("achievement")
         ]
         item_by_uid = {item["uid"]: item for item in eligible}
