@@ -218,10 +218,11 @@ def _render_equipment_scene(profile, save_profile):
         }
         @media (max-width:768px) and (orientation:portrait) {
           .st-key-character_equipment_scene [data-testid="stHorizontalBlock"]:has(.st-key-character_left_slots) {
+            position:absolute !important;inset:.08rem 0 0 0 !important;
             display:flex !important;
             flex-direction:row !important;
             flex-wrap:nowrap !important;
-            gap:.12rem !important;align-items:flex-start !important;
+            gap:.12rem !important;margin:0 !important;padding:0 !important;
             width:100% !important;height:100% !important;max-height:100% !important;
             align-items:stretch !important;
           }
@@ -245,7 +246,11 @@ def _render_equipment_scene(profile, save_profile):
             object-fit:contain !important;margin:0 auto !important;
           }
           .st-key-character_center_panel {
-            height:9.7rem !important;min-height:9.7rem !important;max-height:9.7rem !important;
+            height:100% !important;min-height:0 !important;max-height:100% !important;
+            margin:0 !important;padding:0 !important;
+          }
+          .st-key-character_center_panel > [data-testid="stVerticalBlock"] {
+            height:100% !important;justify-content:flex-start !important;gap:.04rem !important;
           }
           .st-key-character_center_panel [data-testid="stImage"] img {
             width:auto !important;height:8rem !important;max-height:8rem !important;
@@ -254,7 +259,9 @@ def _render_equipment_scene(profile, save_profile):
           .st-key-character_center_panel [data-testid="stImage"] {
             display:flex !important;justify-content:center !important;width:100% !important;
           }
-          .st-key-character_center_panel h4 {font-size:.78rem !important;}
+          .st-key-character_center_panel h4 {
+            font-size:.78rem !important;line-height:1 !important;margin:0 0 .02rem !important;
+          }
           .st-key-character_center_panel p,
           .st-key-character_center_panel label,
           .st-key-character_center_panel [data-baseweb="select"] {font-size:.61rem !important;}
@@ -341,7 +348,10 @@ def _render_compact_stats(profile):
         .character-stat-list div:last-child {{border-bottom:0;}}
         .character-stat-list span {{white-space:nowrap;font-weight:700;}}
         @media (max-width:768px) and (orientation:portrait) {{
-          .character-stat-panels {{gap:.22rem;margin:0;height:100%;}}
+          .character-stat-panels {{
+            gap:.22rem;margin:0;height:33.333dvh !important;
+            min-height:33.333dvh !important;
+          }}
           .character-stat-box {{
             display:grid;grid-template-rows:2.15rem minmax(0,1fr);
             height:100%;padding:.18rem .28rem;border-radius:5px;box-sizing:border-box;
@@ -355,6 +365,11 @@ def _render_compact_stats(profile):
             display:flex;align-items:center;justify-content:space-between;
             box-sizing:border-box;height:calc(100% / 6);min-height:calc(100% / 6);
             font-size:clamp(.72rem,3.1vw,.92rem);line-height:1.05;padding:.05rem 0;
+          }}
+          .character-stat-list div b {{min-width:0;line-height:1.12;overflow-wrap:anywhere;}}
+          .character-stat-box:nth-child(2) .character-stat-list div {{
+            height:auto;min-height:calc(100% / 6);flex-shrink:0;
+            align-items:center;padding:.12rem 0;
           }}
         }}
         </style>
@@ -603,7 +618,7 @@ def render_character_equipment_dialog(profile, save_profile):
           /* 裝備頁固定佔滿導覽列以下的視窗；外層本身不參與一般文件流。 */
           .st-key-character_equipment_view {
             position:absolute !important;left:.45rem !important;right:.45rem !important;
-            top:9.5rem !important;bottom:.35rem !important;
+            top:9.5rem !important;bottom:.1rem !important;
             width:auto !important;height:auto !important;
             margin:0 !important;padding:0 !important;overflow:hidden !important;
           }
