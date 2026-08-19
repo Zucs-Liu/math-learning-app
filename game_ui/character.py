@@ -130,18 +130,18 @@ def _render_slot_selector(profile, slot, save_profile):
             format_func=lambda uid: item_text(find_item(profile, uid)),
             key=f"character_slot_candidate_{slot}",
         )
-        equip_col, close_col = st.columns(2)
+        equip_col, remove_col, close_col = st.columns(3)
         if equip_col.button("穿戴此裝備", key=f"character_slot_equip_{slot}", type="primary", use_container_width=True):
             profile["equipment"][slot] = selected_uid
             save_profile(profile)
             st.session_state.character_selected_slot = None
             st.rerun()
-        if close_col.button("返回人物", key=f"character_slot_close_{slot}", use_container_width=True):
-            st.session_state.character_selected_slot = None
-            st.rerun()
-        if current_item and st.button("卸下目前裝備", key=f"character_slot_remove_{slot}", use_container_width=True):
+        if current_item and remove_col.button("卸下", key=f"character_slot_remove_{slot}", use_container_width=True):
             profile["equipment"][slot] = None
             save_profile(profile)
+            st.session_state.character_selected_slot = None
+            st.rerun()
+        if close_col.button("返回人物", key=f"character_slot_close_{slot}", use_container_width=True):
             st.session_state.character_selected_slot = None
             st.rerun()
     else:
@@ -157,50 +157,84 @@ def _render_equipment_scene(profile, save_profile):
         <style>
         .st-key-character_equipment_scene [data-testid="stHorizontalBlock"]:has(.st-key-character_left_slots) {
           display:flex !important; flex-direction:row !important; flex-wrap:nowrap !important;
-          gap:.3rem !important; align-items:center !important;
+          gap:.45rem !important; align-items:center !important;justify-content:center !important;
         }
         .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_left_slots),
-        .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_center_panel),
         .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_right_slots) {
-          min-width:0 !important;
+          flex:0 0 4.15rem !important;width:4.15rem !important;max-width:4.15rem !important;min-width:0 !important;
+        }
+        .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_center_panel) {
+          flex:1 1 34rem !important;width:auto !important;max-width:34rem !important;min-width:0 !important;
+        }
+        .st-key-character_left_slots > [data-testid="stVerticalBlock"],
+        .st-key-character_right_slots > [data-testid="stVerticalBlock"] {
+          gap:.16rem !important;
         }
         .st-key-character_equipment_scene [data-testid="stImage"] img {
-          max-height:32rem; object-fit:contain;
+          max-height:15.5rem; object-fit:contain;
         }
         .st-key-character_equipment_scene [data-testid="stVerticalBlockBorderWrapper"] {
           background:linear-gradient(145deg,rgba(250,245,225,.96),rgba(238,226,187,.92));
-          min-height:4.45rem;
+          min-height:0;
+        }
+        .st-key-character_center_panel {
+          height:16rem !important;min-height:16rem !important;max-height:16rem !important;
+        }
+        .st-key-character_center_panel [data-testid="stVerticalBlock"] {gap:.28rem !important;}
+        .st-key-character_center_panel h4 {font-size:1rem !important;margin:.05rem 0 !important;}
+        .st-key-character_center_panel p,
+        .st-key-character_center_panel label,
+        .st-key-character_center_panel [data-baseweb="select"] {font-size:.78rem !important;line-height:1.15 !important;}
+        .st-key-character_center_panel button {min-height:2rem !important;padding:.18rem .25rem !important;font-size:.72rem !important;}
+        .st-key-character_center_panel [data-testid="stSelectbox"] {margin-bottom:0 !important;}
+        .st-key-character_center_panel [data-testid="stSelectbox"] > div {margin-top:.1rem !important;}
+        .st-key-character_center_panel [data-baseweb="select"] > div {min-height:2.15rem !important;}
+        .st-key-character_center_panel [data-testid="stMarkdownContainer"] p {margin:.05rem 0 !important;}
+        .st-key-character_center_panel [data-testid="stImage"] img {max-height:13.6rem !important;}
+        @media (min-width:769px) {
+          [class*="st-key-character_slot_"] button p {font-size:1.85rem !important;}
         }
         @media (max-width:768px) and (orientation:portrait) {
           .st-key-character_equipment_scene [data-testid="stHorizontalBlock"]:has(.st-key-character_left_slots) {
             display:flex !important;
             flex-direction:row !important;
             flex-wrap:nowrap !important;
-            gap:.18rem !important;
+            gap:.12rem !important;
             width:100% !important;
             align-items:center !important;
           }
           .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_left_slots),
           .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_right_slots) {
-            flex:0 0 clamp(3rem,17vw,4rem) !important;
-            width:clamp(3rem,17vw,4rem) !important;
-            max-width:4rem !important;
+            flex:0 0 clamp(2.7rem,14vw,3.35rem) !important;
+            width:clamp(2.7rem,14vw,3.35rem) !important;
+            max-width:3.35rem !important;
           }
           .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_center_panel) {
             flex:1 1 auto !important;width:auto !important;max-width:none !important;
           }
+          .st-key-character_left_slots > [data-testid="stVerticalBlock"],
+          .st-key-character_right_slots > [data-testid="stVerticalBlock"] {gap:.12rem !important;}
           .st-key-character_equipment_scene p,
-          .st-key-character_equipment_scene button {font-size:.7rem !important;line-height:1.1 !important;}
+          .st-key-character_equipment_scene button {font-size:.62rem !important;line-height:1.05 !important;}
           .st-key-character_equipment_scene [data-testid="stImage"] img {
-            max-height:17rem !important;object-fit:contain !important;
+            max-height:12rem !important;object-fit:contain !important;
           }
+          .st-key-character_center_panel {
+            height:14.4rem !important;min-height:14.4rem !important;max-height:14.4rem !important;
+          }
+          .st-key-character_center_panel [data-testid="stImage"] img {max-height:11.5rem !important;}
+          .st-key-character_center_panel h4 {font-size:.78rem !important;}
+          .st-key-character_center_panel p,
+          .st-key-character_center_panel label,
+          .st-key-character_center_panel [data-baseweb="select"] {font-size:.61rem !important;}
+          .st-key-character_center_panel button {font-size:.58rem !important;min-height:1.75rem !important;padding:.08rem !important;}
         }
         [class*="st-key-character_slot_"] button {
           aspect-ratio:1/1 !important;width:100% !important;min-height:0 !important;
-          height:auto !important;font-size:clamp(1.65rem,6vw,2.6rem) !important;padding:.08rem !important;
+          height:auto !important;font-size:clamp(1.5rem,5vw,2.15rem) !important;padding:.04rem !important;
         }
         [class*="st-key-character_slot_"] button p {
-          font-size:clamp(2rem,9vw,2.55rem) !important;line-height:1 !important;
+          font-size:clamp(1.65rem,7vw,2.15rem) !important;line-height:1 !important;
         }
         </style>
         """,
@@ -213,7 +247,7 @@ def _render_equipment_scene(profile, save_profile):
                 for slot in LEFT_SLOTS:
                     _equipment_slot(profile, slot, "left")
         with hero:
-            with st.container(key="character_center_panel", height=300, border=False):
+            with st.container(key="character_center_panel", height=256, border=False):
                 st.markdown(
                     f"<div style='text-align:center;font-weight:800'>Lv{profile['level']}　{profile['name']}</div>",
                     unsafe_allow_html=True,
@@ -267,19 +301,20 @@ def _render_compact_stats(profile):
     st.markdown(
         f"""
         <style>
-        .character-stat-panels {{display:grid;grid-template-columns:1fr 1fr;gap:.65rem;margin-top:.65rem;}}
-        .character-stat-box {{border:1px solid #d6dce5;border-radius:10px;padding:.75rem;background:#fff;min-width:0;color:#1f2937 !important;}}
+        .character-stat-panels {{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-top:.38rem;}}
+        .character-stat-box {{border:1px solid #d6dce5;border-radius:8px;padding:.5rem;background:#fff;min-width:0;color:#1f2937 !important;}}
         .character-stat-box * {{color:#1f2937 !important;}}
         .character-stat-box h4 {{margin:0 0 .45rem;font-size:1rem;}}
-        .character-stat-list {{max-height:12rem;overflow-y:auto;padding-right:.2rem;}}
-        .character-stat-list div {{display:flex;justify-content:space-between;gap:.4rem;padding:.2rem 0;border-bottom:1px solid #edf0f4;font-size:.9rem;}}
+        .character-stat-list {{max-height:8.2rem;overflow-y:auto;padding-right:.2rem;}}
+        .character-stat-list div {{display:flex;justify-content:space-between;gap:.4rem;padding:.13rem 0;border-bottom:1px solid #edf0f4;font-size:.82rem;}}
         .character-stat-list div:last-child {{border-bottom:0;}}
         .character-stat-list span {{white-space:nowrap;font-weight:700;}}
         @media (max-width:768px) and (orientation:portrait) {{
-          .character-stat-panels {{gap:.28rem;}}
-          .character-stat-box {{padding:.42rem;}}
-          .character-stat-box h4 {{font-size:.78rem;}}
-          .character-stat-list div {{font-size:.66rem;line-height:1.15;}}
+          .character-stat-panels {{gap:.22rem;margin-top:.2rem;}}
+          .character-stat-box {{padding:.3rem;}}
+          .character-stat-box h4 {{font-size:.7rem;margin-bottom:.18rem;}}
+          .character-stat-list {{max-height:6.3rem;}}
+          .character-stat-list div {{font-size:.59rem;line-height:1.08;padding:.08rem 0;}}
         }}
         </style>
         <div class="character-stat-panels">
@@ -395,11 +430,19 @@ def render_character_equipment_hub(profile, save_profile):
             min-width:0 !important;flex:1 1 25% !important;width:25% !important;
           }
           .st-key-character_panel_navigation button {
-            padding:.25rem .02rem !important;font-size:.58rem !important;white-space:nowrap !important;
+            min-height:2rem !important;padding:.12rem .01rem !important;font-size:.55rem !important;white-space:nowrap !important;
           }
           .st-key-character-loadout-row [data-testid="stHorizontalBlock"] {
             display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;
           }
+        }
+        .st-key-character_panel_navigation {margin-top:-.45rem !important;}
+        .st-key-character_panel_navigation [data-testid="stHorizontalBlock"] {gap:.35rem !important;}
+        .st-key-character_scroll_view {
+          border:1px solid #d6dce5;border-radius:8px;background:#fff;padding:.25rem;
+        }
+        .st-key-character_scroll_view > [data-testid="stVerticalBlockBorderWrapper"] {
+          max-height:min(62vh,34rem) !important;overflow-y:auto !important;background:#fff !important;
         }
         </style>
         """,
@@ -410,12 +453,15 @@ def render_character_equipment_hub(profile, save_profile):
     if view == "equipment":
         _render_equipment_scene(profile, save_profile)
         _render_compact_stats(profile)
-    elif view == "unused":
-        _render_unused_equipment(profile, save_profile)
-    elif view == "pet":
-        _render_pet_placeholder()
     else:
-        _render_titles(profile, save_profile)
+        # 未使用裝備、寵物與稱號會持續增加，限制在視窗內獨立捲動。
+        with st.container(key="character_scroll_view", height=520, border=False):
+            if view == "unused":
+                _render_unused_equipment(profile, save_profile)
+            elif view == "pet":
+                _render_pet_placeholder()
+            else:
+                _render_titles(profile, save_profile)
 
 
 def _close_character_dialog():
@@ -433,7 +479,13 @@ def render_character_equipment_dialog(profile, save_profile):
         [data-testid="stDialog"] [role="dialog"] {
           background:#fff !important;color:#1f2937 !important;
           border:3px solid #111 !important;border-radius:6px !important;
-          max-height:calc(100vh - 1rem) !important;
+          max-height:calc(100vh - .5rem) !important;
+        }
+        [data-testid="stDialog"] [role="dialog"] > div {
+          overflow-y:auto !important;
+        }
+        [data-testid="stDialog"] [role="dialog"] > div > [data-testid="stVerticalBlock"] {
+          gap:.32rem !important;
         }
         [data-testid="stDialog"] [role="dialog"] h1,
         [data-testid="stDialog"] [role="dialog"] h2,
@@ -473,7 +525,16 @@ def render_character_equipment_dialog(profile, save_profile):
           [data-testid="stDialog"] [role="dialog"] {
             width:calc(100vw - 2rem) !important;max-width:calc(100vw - 2rem) !important;padding:.25rem !important;
           }
-          [data-testid="stDialog"] [role="dialog"] > div {padding:.3rem !important;}
+          [data-testid="stDialog"] [role="dialog"] > div {padding:.18rem !important;overflow-y:auto !important;}
+          [data-testid="stDialog"] [role="dialog"] h2:first-of-type {
+            font-size:1.18rem !important;line-height:1.1 !important;margin:0 0 .1rem !important;
+          }
+          .st-key-character_dialog_close {
+            right:.28rem !important;top:.2rem !important;width:2rem !important;height:2rem !important;
+          }
+          .st-key-character_dialog_close button {
+            width:2rem !important;height:2rem !important;min-height:2rem !important;font-size:1.05rem !important;
+          }
         }
         </style>
         """,
