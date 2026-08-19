@@ -593,27 +593,30 @@ def render_character_equipment_dialog(profile, save_profile):
           .st-key-character_equipment_view {
             position:relative !important;height:calc(100dvh - 4.25rem) !important;
             max-height:calc(100dvh - 4.25rem) !important;overflow:hidden !important;
-            padding-bottom:5.45rem !important;box-sizing:border-box !important;
+            padding-bottom:33.333dvh !important;box-sizing:border-box !important;
           }
           .st-key-character_equipment_view > [data-testid="stVerticalBlock"] {
             gap:0 !important;height:100% !important;max-height:100% !important;
           }
           .st-key-character_equipment_scene {
-            height:100% !important;max-height:100% !important;overflow:hidden !important;
+            height:calc(66.667dvh - 9rem) !important;max-height:calc(66.667dvh - 9rem) !important;
+            overflow:hidden !important;
             border-bottom:1px solid #9ca3af !important;padding-bottom:.1rem !important;
           }
           .st-key-character_equipment_scene > [data-testid="stVerticalBlock"] {
             height:100% !important;max-height:100% !important;justify-content:flex-start !important;
           }
           .st-key-character_equipment_view [data-testid="stMarkdownContainer"]:has(.character-stat-panels) {
-            position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;
-            height:5.25rem !important;margin:0 !important;background:#fff !important;z-index:5 !important;
+            position:fixed !important;left:.45rem !important;right:.45rem !important;bottom:.35rem !important;
+            width:auto !important;height:33.333dvh !important;max-height:33.333dvh !important;
+            margin:0 !important;background:#fff !important;z-index:2147483646 !important;
           }
           .character-stat-panels {
-            position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;
-            height:5.2rem !important;margin:0 !important;box-sizing:border-box !important;
+            position:absolute !important;inset:0 !important;
+            width:100% !important;height:100% !important;margin:0 !important;box-sizing:border-box !important;
           }
-          .character-stat-box {height:5.2rem !important;box-sizing:border-box !important;overflow:hidden !important;}
+          .character-stat-box {height:100% !important;box-sizing:border-box !important;overflow:hidden !important;}
+          .character-stat-list {max-height:calc(33.333dvh - 2rem) !important;overflow-y:auto !important;}
           .st-key-character_scroll_view > [data-testid="stVerticalBlockBorderWrapper"] {
             height:calc(100dvh - 6.3rem) !important;max-height:calc(100dvh - 6.3rem) !important;
             overflow-y:auto !important;
