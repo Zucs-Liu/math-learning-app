@@ -53,32 +53,28 @@ def _render_panel_navigation(profile, save_profile):
         equipment_col, unused_col, pet_col, title_col = st.columns(4)
         with equipment_col:
             with st.container(key="character_nav_equipment"):
-                with st.popover(
-                    loadouts[active]["name"],
-                    use_container_width=True,
-                ):
-                    selected = st.selectbox(
-                        "切換裝備配置",
-                        [0, 1],
-                        index=active,
-                        format_func=lambda index: loadouts[index]["name"],
-                        key="character_loadout_choice",
-                    )
-                    _switch_loadout(profile, selected, save_profile)
-                    new_name = st.text_input(
-                        "更改此套裝備名稱",
-                        value=loadouts[active]["name"],
-                        max_chars=16,
-                        key=f"character_loadout_name_{active}",
-                    ).strip()
-                    if st.button("儲存名稱", key=f"save_loadout_name_{active}", use_container_width=True):
-                        if new_name:
-                            loadouts[active]["name"] = new_name
-                            save_profile(profile)
-                            st.rerun()
-                    if st.button("顯示目前裝備", key="show_character_equipment", use_container_width=True):
+                if st.session_state.character_panel_view != "equipment":
+                    if st.button(loadouts[active]["name"], key="show_character_equipment", use_container_width=True):
                         st.session_state.character_panel_view = "equipment"
+                        st.session_state.character_selected_slot = None
                         st.rerun()
+                else:
+                    with st.popover(loadouts[active]["name"], use_container_width=True):
+                        selected = st.selectbox(
+                            "切換裝備配置", [0, 1], index=active,
+                            format_func=lambda index: loadouts[index]["name"],
+                            key="character_loadout_choice",
+                        )
+                        _switch_loadout(profile, selected, save_profile)
+                        new_name = st.text_input(
+                            "更改此套裝備名稱", value=loadouts[active]["name"],
+                            max_chars=16, key=f"character_loadout_name_{active}",
+                        ).strip()
+                        if st.button("儲存名稱", key=f"save_loadout_name_{active}", use_container_width=True):
+                            if new_name:
+                                loadouts[active]["name"] = new_name
+                                save_profile(profile)
+                                st.rerun()
         with unused_col:
             with st.container(key="character_nav_unused"):
                 if st.button(
@@ -130,20 +126,21 @@ def _render_slot_selector(profile, slot, save_profile):
             format_func=lambda uid: item_text(find_item(profile, uid)),
             key=f"character_slot_candidate_{slot}",
         )
-        equip_col, remove_col, close_col = st.columns(3)
-        if equip_col.button("穿戴此裝備", key=f"character_slot_equip_{slot}", type="primary", use_container_width=True):
-            profile["equipment"][slot] = selected_uid
-            save_profile(profile)
-            st.session_state.character_selected_slot = None
-            st.rerun()
-        if current_item and remove_col.button("卸下", key=f"character_slot_remove_{slot}", use_container_width=True):
-            profile["equipment"][slot] = None
-            save_profile(profile)
-            st.session_state.character_selected_slot = None
-            st.rerun()
-        if close_col.button("返回人物", key=f"character_slot_close_{slot}", use_container_width=True):
-            st.session_state.character_selected_slot = None
-            st.rerun()
+        with st.container(key="character_slot_actions"):
+            equip_col, remove_col, close_col = st.columns(3)
+            if equip_col.button("穿戴", key=f"character_slot_equip_{slot}", type="primary", use_container_width=True):
+                profile["equipment"][slot] = selected_uid
+                save_profile(profile)
+                st.session_state.character_selected_slot = None
+                st.rerun()
+            if current_item and remove_col.button("卸下", key=f"character_slot_remove_{slot}", use_container_width=True):
+                profile["equipment"][slot] = None
+                save_profile(profile)
+                st.session_state.character_selected_slot = None
+                st.rerun()
+            if close_col.button("返回人物", key=f"character_slot_close_{slot}", use_container_width=True):
+                st.session_state.character_selected_slot = None
+                st.rerun()
     else:
         st.info("目前沒有可穿戴的此部位裝備。")
         if st.button("返回人物", key=f"character_slot_empty_close_{slot}", use_container_width=True):
@@ -191,6 +188,15 @@ def _render_equipment_scene(profile, save_profile):
         .st-key-character_center_panel [data-baseweb="select"] > div {min-height:2.15rem !important;}
         .st-key-character_center_panel [data-testid="stMarkdownContainer"] p {margin:.05rem 0 !important;}
         .st-key-character_center_panel [data-testid="stImage"] img {max-height:13.6rem !important;}
+        .st-key-character_slot_actions [data-testid="stHorizontalBlock"] {
+          display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;gap:.18rem !important;
+        }
+        .st-key-character_slot_actions [data-testid="stColumn"] {
+          min-width:0 !important;flex:1 1 33.333% !important;width:33.333% !important;
+        }
+        .st-key-character_slot_actions button {
+          min-height:1.8rem !important;padding:.08rem .03rem !important;font-size:.66rem !important;white-space:nowrap !important;
+        }
         @media (min-width:769px) {
           [class*="st-key-character_slot_"] button p {font-size:1.85rem !important;}
         }
@@ -205,9 +211,9 @@ def _render_equipment_scene(profile, save_profile):
           }
           .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_left_slots),
           .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_right_slots) {
-            flex:0 0 clamp(2.7rem,14vw,3.35rem) !important;
-            width:clamp(2.7rem,14vw,3.35rem) !important;
-            max-width:3.35rem !important;
+            flex:0 0 clamp(2.35rem,12vw,2.75rem) !important;
+            width:clamp(2.35rem,12vw,2.75rem) !important;
+            max-width:2.75rem !important;
           }
           .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_center_panel) {
             flex:1 1 auto !important;width:auto !important;max-width:none !important;
@@ -217,12 +223,12 @@ def _render_equipment_scene(profile, save_profile):
           .st-key-character_equipment_scene p,
           .st-key-character_equipment_scene button {font-size:.62rem !important;line-height:1.05 !important;}
           .st-key-character_equipment_scene [data-testid="stImage"] img {
-            max-height:12rem !important;object-fit:contain !important;
+            max-height:10.5rem !important;object-fit:contain !important;
           }
           .st-key-character_center_panel {
-            height:14.4rem !important;min-height:14.4rem !important;max-height:14.4rem !important;
+            height:12.2rem !important;min-height:12.2rem !important;max-height:12.2rem !important;
           }
-          .st-key-character_center_panel [data-testid="stImage"] img {max-height:11.5rem !important;}
+          .st-key-character_center_panel [data-testid="stImage"] img {max-height:9.6rem !important;}
           .st-key-character_center_panel h4 {font-size:.78rem !important;}
           .st-key-character_center_panel p,
           .st-key-character_center_panel label,
@@ -247,7 +253,7 @@ def _render_equipment_scene(profile, save_profile):
                 for slot in LEFT_SLOTS:
                     _equipment_slot(profile, slot, "left")
         with hero:
-            with st.container(key="character_center_panel", height=256, border=False):
+            with st.container(key="character_center_panel", height=230, border=False):
                 st.markdown(
                     f"<div style='text-align:center;font-weight:800'>Lv{profile['level']}　{profile['name']}</div>",
                     unsafe_allow_html=True,
@@ -438,6 +444,7 @@ def render_character_equipment_hub(profile, save_profile):
         }
         .st-key-character_panel_navigation {margin-top:-.45rem !important;}
         .st-key-character_panel_navigation [data-testid="stHorizontalBlock"] {gap:.35rem !important;}
+        .st-key-character_equipment_view > [data-testid="stVerticalBlock"] {gap:.08rem !important;}
         .st-key-character_scroll_view {
           border:1px solid #d6dce5;border-radius:8px;background:#fff;padding:.25rem;
         }
@@ -451,8 +458,9 @@ def render_character_equipment_hub(profile, save_profile):
     _render_panel_navigation(profile, save_profile)
     view = st.session_state.character_panel_view
     if view == "equipment":
-        _render_equipment_scene(profile, save_profile)
-        _render_compact_stats(profile)
+        with st.container(key="character_equipment_view"):
+            _render_equipment_scene(profile, save_profile)
+            _render_compact_stats(profile)
     else:
         # 未使用裝備、寵物與稱號會持續增加，限制在視窗內獨立捲動。
         with st.container(key="character_scroll_view", height=520, border=False):
@@ -466,6 +474,7 @@ def render_character_equipment_hub(profile, save_profile):
 
 def _close_character_dialog():
     st.session_state.show_character_dialog = False
+    st.session_state.character_panel_view = "equipment"
     st.session_state.character_selected_slot = None
     st.rerun()
 
@@ -523,11 +532,26 @@ def render_character_equipment_dialog(profile, save_profile):
         }
         @media (max-width:768px) and (orientation:portrait) {
           [data-testid="stDialog"] [role="dialog"] {
-            width:calc(100vw - 2rem) !important;max-width:calc(100vw - 2rem) !important;padding:.25rem !important;
+            position:fixed !important;inset:0 !important;
+            width:100vw !important;max-width:100vw !important;
+            height:100dvh !important;max-height:100dvh !important;
+            margin:0 !important;padding:.16rem !important;border-radius:0 !important;
           }
-          [data-testid="stDialog"] [role="dialog"] > div {padding:.18rem !important;overflow-y:auto !important;}
+          [data-testid="stDialog"] [role="dialog"] > div {
+            height:100% !important;max-height:100% !important;
+            padding:.12rem !important;overflow:hidden !important;
+          }
+          [data-testid="stDialog"] [role="dialog"] > div > [data-testid="stVerticalBlock"] {
+            gap:0 !important;height:100% !important;
+          }
           [data-testid="stDialog"] [role="dialog"] h2:first-of-type {
-            font-size:1.18rem !important;line-height:1.1 !important;margin:0 0 .1rem !important;
+            font-size:1.05rem !important;line-height:1 !important;margin:0 !important;padding:0 !important;
+          }
+          .st-key-character_panel_navigation {margin-top:-.15rem !important;margin-bottom:0 !important;}
+          .st-key-character_equipment_view > [data-testid="stVerticalBlock"] {gap:0 !important;}
+          .st-key-character_scroll_view > [data-testid="stVerticalBlockBorderWrapper"] {
+            height:calc(100dvh - 6.3rem) !important;max-height:calc(100dvh - 6.3rem) !important;
+            overflow-y:auto !important;
           }
           .st-key-character_dialog_close {
             right:.28rem !important;top:.2rem !important;width:2rem !important;height:2rem !important;
