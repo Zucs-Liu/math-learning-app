@@ -218,13 +218,20 @@ def _render_equipment_scene(profile, save_profile):
         }
         @media (max-width:768px) and (orientation:portrait) {
           .st-key-character_equipment_scene [data-testid="stHorizontalBlock"]:has(.st-key-character_left_slots) {
-            position:absolute !important;inset:.08rem 0 0 0 !important;
+            /* 人物／裝備區只佔分頁列與底部能力欄之間，不得穿過能力欄。 */
+            position:absolute !important;inset:.08rem 0 33.333dvh 0 !important;
             display:flex !important;
             flex-direction:row !important;
             flex-wrap:nowrap !important;
             gap:.12rem !important;margin:0 !important;padding:0 !important;
-            width:100% !important;height:100% !important;max-height:100% !important;
+            width:100% !important;height:auto !important;max-height:none !important;
             align-items:stretch !important;
+          }
+          .st-key-character_equipment_scene [data-testid="stLayoutWrapper"]:has(> .st-key-character_left_slots),
+          .st-key-character_equipment_scene [data-testid="stLayoutWrapper"]:has(> .st-key-character_right_slots),
+          .st-key-character_equipment_scene [data-testid="stLayoutWrapper"]:has(> .st-key-character_center_panel) {
+            height:100% !important;min-height:0 !important;max-height:100% !important;
+            flex:1 1 100% !important;
           }
           .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_left_slots),
           .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_right_slots) {
@@ -267,10 +274,11 @@ def _render_equipment_scene(profile, save_profile):
           .st-key-character_center_panel [data-testid="stElementContainer"]:has([data-testid="stImage"]) {
             position:absolute !important;top:1.85rem !important;right:.12rem !important;
             bottom:.18rem !important;left:.12rem !important;
+            display:flex !important;justify-content:center !important;align-items:center !important;
             width:auto !important;height:auto !important;margin:0 !important;padding:0 !important;
           }
           .st-key-character_center_panel [data-testid="stImage"] img {
-            display:block !important;width:min(100%,24rem) !important;height:auto !important;
+            display:block !important;width:100% !important;height:100% !important;
             max-width:100% !important;max-height:100% !important;
             object-fit:contain !important;image-rendering:auto !important;margin:auto !important;
           }
@@ -278,6 +286,11 @@ def _render_equipment_scene(profile, save_profile):
             position:static !important;
             display:flex !important;justify-content:center !important;align-items:center !important;
             width:100% !important;height:100% !important;margin:0 !important;padding:0 !important;
+          }
+          .st-key-character_center_panel [data-testid="stFullScreenFrame"],
+          .st-key-character_center_panel [data-testid="stFullScreenFrame"] > div {
+            display:flex !important;justify-content:center !important;align-items:center !important;
+            width:100% !important;height:100% !important;margin:0 !important;
           }
           .st-key-character_center_panel [data-testid="stImage"] > div {
             display:flex !important;justify-content:center !important;width:100% !important;
@@ -528,22 +541,21 @@ def render_character_equipment_hub(profile, save_profile):
         """,
         unsafe_allow_html=True,
     )
-    with st.container(key="character_hub_body"):
-        _render_panel_navigation(profile, save_profile)
-        view = st.session_state.character_panel_view
-        if view == "equipment":
-            with st.container(key="character_equipment_view"):
-                _render_equipment_scene(profile, save_profile)
-                _render_compact_stats(profile)
-        else:
-            # 未使用裝備、寵物與稱號會持續增加，限制在視窗內獨立捲動。
-            with st.container(key="character_scroll_view", height=520, border=False):
-                if view == "unused":
-                    _render_unused_equipment(profile, save_profile)
-                elif view == "pet":
-                    _render_pet_placeholder()
-                else:
-                    _render_titles(profile, save_profile)
+    _render_panel_navigation(profile, save_profile)
+    view = st.session_state.character_panel_view
+    if view == "equipment":
+        with st.container(key="character_equipment_view"):
+            _render_equipment_scene(profile, save_profile)
+            _render_compact_stats(profile)
+    else:
+        # 未使用裝備、寵物與稱號會持續增加，限制在視窗內獨立捲動。
+        with st.container(key="character_scroll_view", height=520, border=False):
+            if view == "unused":
+                _render_unused_equipment(profile, save_profile)
+            elif view == "pet":
+                _render_pet_placeholder()
+            else:
+                _render_titles(profile, save_profile)
 
 
 def _close_character_dialog():
@@ -638,30 +650,12 @@ def render_character_equipment_dialog(profile, save_profile):
           [data-testid="stDialog"] [role="dialog"] h2:first-of-type {
             font-size:1.05rem !important;line-height:1 !important;margin:0 !important;padding:0 !important;
           }
-          /* 分頁與內容共用同一個垂直容器；分頁結束後立刻開始人物區。 */
-          .st-key-character_hub_body {
-            position:absolute !important;left:.45rem !important;right:.45rem !important;
-            top:3.2rem !important;bottom:.1rem !important;
-            width:auto !important;height:auto !important;margin:0 !important;padding:0 !important;
-            display:flex !important;flex-direction:column !important;gap:0 !important;
-            overflow:hidden !important;
-          }
-          .st-key-character_hub_body > [data-testid="stVerticalBlock"] {
-            display:flex !important;flex-direction:column !important;gap:0 !important;
-            width:100% !important;height:100% !important;min-height:0 !important;
-            margin:0 !important;padding:0 !important;
-          }
-          .st-key-character_hub_body [data-testid="stElementContainer"]:has(.st-key-character_panel_navigation) {
-            flex:0 0 auto !important;width:100% !important;margin:0 !important;padding:0 !important;
-          }
-          .st-key-character_hub_body [data-testid="stElementContainer"]:has(.st-key-character_equipment_view) {
-            flex:1 1 auto !important;width:100% !important;min-height:0 !important;
-            margin:0 !important;padding:0 !important;overflow:hidden !important;
-          }
-          .st-key-character_panel_navigation {margin:0 !important;padding:0 !important;}
+          .st-key-character_panel_navigation {margin-top:-.15rem !important;margin-bottom:0 !important;}
           .st-key-character_equipment_view {
-            position:relative !important;inset:auto !important;
-            width:100% !important;height:100% !important;min-height:0 !important;
+            position:absolute !important;left:.45rem !important;right:.45rem !important;
+            /* 對齊分頁列下緣；原本 10.35rem 會在分頁下方留下約 70px 空白。 */
+            top:6rem !important;bottom:.1rem !important;
+            width:auto !important;height:auto !important;min-height:0 !important;
             margin:0 !important;padding:0 !important;overflow:hidden !important;
           }
           .st-key-character_equipment_view > [data-testid="stVerticalBlock"] {
