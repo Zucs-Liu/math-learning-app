@@ -239,6 +239,12 @@ def _render_equipment_scene(profile, save_profile):
           .st-key-character_right_slots > [data-testid="stVerticalBlock"] {
             height:100% !important;justify-content:space-between !important;gap:.08rem !important;
           }
+          .st-key-character_left_slots,
+          .st-key-character_right_slots {
+            display:flex !important;flex-direction:column !important;
+            justify-content:space-between !important;gap:.08rem !important;
+            height:100% !important;min-height:0 !important;
+          }
           .st-key-character_equipment_scene p,
           .st-key-character_equipment_scene button {font-size:.62rem !important;line-height:1.05 !important;}
           .st-key-character_equipment_scene [data-testid="stImage"] img {
@@ -246,6 +252,7 @@ def _render_equipment_scene(profile, save_profile):
             object-fit:contain !important;margin:0 auto !important;
           }
           .st-key-character_center_panel {
+            position:relative !important;
             height:100% !important;min-height:0 !important;max-height:100% !important;
             margin:0 !important;padding:0 !important;
           }
@@ -253,11 +260,18 @@ def _render_equipment_scene(profile, save_profile):
             height:100% !important;justify-content:flex-start !important;gap:.04rem !important;
           }
           .st-key-character_center_panel [data-testid="stImage"] img {
-            width:auto !important;height:clamp(9rem,25dvh,10.5rem) !important;
-            max-height:clamp(9rem,25dvh,10.5rem) !important;
+            display:block !important;width:auto !important;
+            height:clamp(11rem,30dvh,13rem) !important;
+            max-height:clamp(11rem,30dvh,13rem) !important;
+            max-width:calc(100% - .5rem) !important;
             object-fit:contain !important;margin:0 auto !important;
           }
           .st-key-character_center_panel [data-testid="stImage"] {
+            position:absolute !important;top:1.7rem !important;left:0 !important;right:0 !important;
+            display:flex !important;justify-content:center !important;align-items:flex-start !important;
+            width:100% !important;margin:0 !important;padding:0 !important;
+          }
+          .st-key-character_center_panel [data-testid="stImage"] > div {
             display:flex !important;justify-content:center !important;width:100% !important;
           }
           .st-key-character_center_panel h4 {
@@ -619,7 +633,7 @@ def render_character_equipment_dialog(profile, save_profile):
           /* 裝備頁固定佔滿導覽列以下的視窗；外層本身不參與一般文件流。 */
           .st-key-character_equipment_view {
             position:absolute !important;left:.45rem !important;right:.45rem !important;
-            top:4.2rem !important;bottom:.1rem !important;
+            top:6.8rem !important;bottom:.1rem !important;
             width:auto !important;height:auto !important;
             margin:0 !important;padding:0 !important;overflow:hidden !important;
           }
