@@ -7,6 +7,7 @@ from pathlib import Path
 import streamlit as st
 
 from game_data.config import BOSS_CONFIGS
+from game_ui.common import force_top_before_navigation
 
 
 APP_ROOT = Path(__file__).resolve().parent.parent
@@ -406,3 +407,66 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
         unsafe_allow_html=True,
     )
 
+
+def render_chapter_boss_card(chapter_id, boss_type, unlocked):
+    """在章節單元下方顯示 BOSS 能力與挑戰入口。"""
+    config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
+    is_elite = boss_type == "elite"
+    label = "菁英 BOSS" if is_elite else "一般 BOSS"
+    with st.container(border=True):
+        image_col, info_col, button_col = st.columns([0.75, 4, 1.35], vertical_alignment="center")
+        image_path = APP_ROOT / "assets" / "bosses" / config["image"]
+        if image_path.exists():
+            image_col.image(image_path, width=72)
+        else:
+            image_col.markdown("## 🐉")
+        info_col.markdown(f"### {label}｜{config['name']}")
+        info_col.write(
+            f"**HP：{config['hp']}**　｜　"
+            f"**攻擊：每 {config['interval']:g} 秒造成 {config['damage']} 傷害**"
+        )
+        abilities = []
+        if config.get("critical_rate"):
+            abilities.append(
+                f"暴擊率 {config['critical_rate']:.0%}（每第 5 次攻擊必定暴擊，造成 1.5 倍傷害）"
+            )
+        if config.get("defense_reduction"):
+            abilities.append(
+                f"被動：戰鬥期間勇者防禦降低 {config['defense_reduction']}（最低為0；傷害減免仍有效）"
+            )
+        if config.get("hero_speed_reduction"):
+            abilities.append(
+                f"被動：戰鬥期間勇者攻擊速度降低 {config['hero_speed_reduction']:.3f} 次／秒（最低保留0.100次／秒）"
+            )
+        if config.get("hero_damage_reduction"):
+            abilities.append(
+                f"技能「{config['skill']}」：戰鬥開始立即發動，勇者造成的傷害降低 "
+                f"{config['hero_damage_reduction']:.0%}；可與對菁英BOSS傷害加成互相抵銷"
+            )
+        if config.get("skill"):
+            if config.get("skill_at_start"):
+                pass
+            elif config.get("skill_hp_threshold") is not None:
+                threshold_damage = config.get("true_damage", config.get("skill_damage", 0))
+                abilities.append(
+                    f"技能「{config['skill']}」：血量首次低於 {config['skill_hp_threshold']:.0%} 時，"
+                    f"造成 {threshold_damage:g} {'真實傷害（無視防禦與傷害減免）' if config.get('true_damage') is not None else '傷害（可被傷害減免抵銷）'}"
+                )
+            else:
+                abilities.append(
+                    f"技能「{config['skill']}」：每 {config['skill_interval']:g} 秒造成 "
+                    f"{config['true_damage']:g} 真實傷害"
+                )
+        info_col.write("**能力／技能：**" + ("；".join(abilities) if abilities else "無"))
+        if button_col.button(
+            "開始挑戰" if unlocked else "尚未解鎖",
+            key=f"chapter_boss_{chapter_id}_{boss_type}",
+            disabled=not unlocked,
+            type="primary" if unlocked else "secondary",
+            use_container_width=True,
+        ):
+            force_top_before_navigation()
+            st.session_state.selected_boss_type = boss_type
+            st.session_state.scroll_boss_to_top = True
+            st.session_state.screen = "boss_ready"
+            st.rerun()

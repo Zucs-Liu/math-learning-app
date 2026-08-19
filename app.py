@@ -159,7 +159,12 @@ from game_ui.common import (
     render_health_bar,
     scroll_page_to_top,
 )
-from game_ui.battle import battle_presentation_state, render_battle_scene
+from game_ui.battle import (
+    battle_presentation_state,
+    render_battle_scene,
+    render_chapter_boss_card,
+)
+from game_ui.profile import render_item_comparison, render_stats
 
 st.set_page_config(page_title="數學冒險", page_icon="⚔️", layout="wide")
 
@@ -2006,53 +2011,6 @@ def migrate_all_profiles_four_star_names():
         )
 
 
-def render_item_comparison(profile, new_item):
-    current = find_item(profile, profile["equipment"].get(new_item["slot"]))
-    left, right = st.columns(2)
-    left.info(f"**準備更換**\n\n{item_text(new_item)}")
-    if current:
-        right.warning(f"**目前穿戴**\n\n{item_text(current)}")
-    else:
-        right.success(f"**目前穿戴**\n\n{SLOT_ICONS[new_item['slot']]} {SLOT_NAMES[new_item['slot']]}尚未裝備")
-    before = player_stats(profile)
-    preview = json.loads(json.dumps(profile, ensure_ascii=False))
-    preview["equipment"][new_item["slot"]] = new_item["uid"]
-    after = player_stats(preview)
-    stat_specs = [
-        ("HP", "hp", "number"), ("攻擊", "attack", "number"),
-        ("防禦", "defense", "number"), ("攻速／秒", "attack_speed", "speed"),
-        ("菁英BOSS初始血量降低", "boss_hp_reduction", "percent"),
-        ("第一擊額外扣除菁英BOSS血量", "first_hit_percent", "percent"),
-        ("對菁英BOSS傷害", "boss_damage_pct", "percent"),
-        ("受到傷害降低", "damage_reduction_pct", "percent"),
-        ("暴擊率", "critical_rate", "percent"),
-        ("暴擊傷害", "critical_damage", "percent"),
-        ("開場護盾", "shield_pct", "percent"),
-        ("菁英BOSS攻速降低", "boss_attack_slow_pct", "percent"),
-    ]
-
-    def display_value(value, kind, signed=False):
-        if kind == "percent":
-            return f"{value:+.0%}" if signed else f"{value:.0%}"
-        digits = 2 if kind == "speed" else 1
-        return f"{value:+.{digits}f}" if signed else f"{value:.{digits}f}"
-
-    comparison_rows = []
-    for label, key, kind in stat_specs:
-        difference = after[key] - before[key]
-        if abs(difference) < 1e-9:
-            continue
-        comparison_rows.append({
-            "人物能力": label,
-            "目前": display_value(before[key], kind),
-            "更換後": display_value(after[key], kind),
-            "增減": display_value(difference, kind, signed=True),
-        })
-    st.write("**能力變動對照**")
-    if comparison_rows:
-        st.dataframe(comparison_rows, hide_index=True, use_container_width=True)
-    else:
-        st.caption("更換後人物能力沒有變動。")
 
 
 def dismiss_forge_result_dialog():
@@ -2446,71 +2404,6 @@ def finish_battle(result):
     st.session_state.screen = "boss_result"
 
 
-def render_stats(profile, show_exp=True):
-    stats = player_stats(profile)
-    breakdown = stats["breakdown"]
-    base = breakdown["base"]
-    flat = breakdown["flat"]
-    pct = breakdown["pct"]
-
-    def formula_help(stat_key, pct_key, final_value, unit=""):
-        multiplier = 1 + pct[pct_key]
-        return (
-            f"計算：({base[stat_key]:.2f} + {flat[stat_key]:.2f}) "
-            f"× {multiplier:.2f} = {final_value:.2f}{unit}\n\n"
-            f"等級基礎值：{base[stat_key]:.2f}{unit}\n\n"
-            f"裝備固定值：+{flat[stat_key]:.2f}{unit}\n\n"
-            f"附加詞條：+{pct[pct_key]:.0%}"
-        )
-
-    cols = st.columns(5)
-    cols[0].metric(
-        "等級",
-        f"Lv{profile['level']}",
-        help="每升一級，HP、攻擊力與防禦力的等級基礎值增加10%。",
-    )
-    cols[1].metric(
-        "HP", f"{stats['hp']:.1f}",
-        help=formula_help("hp", "hp_pct", stats["hp"]),
-    )
-    cols[2].metric(
-        "攻擊", f"{stats['attack']:.1f}",
-        help=formula_help("attack", "attack_pct", stats["attack"]),
-    )
-    cols[3].metric(
-        "防禦", f"{stats['defense']:.1f}",
-        help=formula_help("defense", "defense_pct", stats["defense"]),
-    )
-    cols[4].metric(
-        "攻速", f"{stats['attack_speed']:.2f}/秒",
-        help=formula_help("attack_speed", "speed_pct", stats["attack_speed"], "/秒"),
-    )
-    special_effects = [
-        ("菁英BOSS初始血量降低", stats["boss_hp_reduction"]),
-        ("第一擊額外扣除菁英BOSS血量", stats["first_hit_percent"]),
-        ("對菁英BOSS傷害", stats["boss_damage_pct"]),
-        ("傷害減免", stats["damage_reduction_pct"]),
-        ("暴擊率", stats["critical_rate"]),
-        ("暴擊傷害", stats["critical_damage"]),
-        ("開場護盾", stats["shield_pct"]),
-        ("菁英BOSS攻速降低", stats["boss_attack_slow_pct"]),
-    ]
-    active_effects = [f"{name} +{value:.0%}" for name, value in special_effects if value]
-    if active_effects:
-        st.caption("附屬能力：" + "｜".join(active_effects))
-    else:
-        st.caption("附屬能力：目前無")
-    if stats["critical_rate"]:
-        critical_every = round(1 / stats["critical_rate"])
-        st.caption(f"排行榜採固定暴擊：目前每第 {critical_every} 擊必定暴擊，不使用隨機判定。")
-    elif stats["critical_damage"]:
-        st.caption("目前暴擊率為0%，因此暴擊傷害詞條暫時不會生效；需要先取得暴擊率。")
-    if show_exp:
-        if profile["level"] < 20:
-            st.progress(profile["exp"] / (profile["level"] * 100))
-            st.caption(f"EXP：{profile['exp']} / {profile['level'] * 100}")
-        else:
-            st.caption("已達最高等級 Lv20")
 
 
 BOSS_WIN_KEYS = {
@@ -2532,68 +2425,6 @@ def boss_has_been_cleared(profile, chapter_id, boss_type):
 
 
 
-def render_chapter_boss_card(chapter_id, boss_type, unlocked):
-    """在章節單元下方顯示 BOSS 能力與挑戰入口。"""
-    config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
-    is_elite = boss_type == "elite"
-    label = "菁英 BOSS" if is_elite else "一般 BOSS"
-    with st.container(border=True):
-        image_col, info_col, button_col = st.columns([0.75, 4, 1.35], vertical_alignment="center")
-        image_path = Path(__file__).parent / "assets" / "bosses" / config["image"]
-        if image_path.exists():
-            image_col.image(image_path, width=72)
-        else:
-            image_col.markdown("## 🐉")
-        info_col.markdown(f"### {label}｜{config['name']}")
-        info_col.write(
-            f"**HP：{config['hp']}**　｜　"
-            f"**攻擊：每 {config['interval']:g} 秒造成 {config['damage']} 傷害**"
-        )
-        abilities = []
-        if config.get("critical_rate"):
-            abilities.append(
-                f"暴擊率 {config['critical_rate']:.0%}（每第 5 次攻擊必定暴擊，造成 1.5 倍傷害）"
-            )
-        if config.get("defense_reduction"):
-            abilities.append(
-                f"被動：戰鬥期間勇者防禦降低 {config['defense_reduction']}（最低為0；傷害減免仍有效）"
-            )
-        if config.get("hero_speed_reduction"):
-            abilities.append(
-                f"被動：戰鬥期間勇者攻擊速度降低 {config['hero_speed_reduction']:.3f} 次／秒（最低保留0.100次／秒）"
-            )
-        if config.get("hero_damage_reduction"):
-            abilities.append(
-                f"技能「{config['skill']}」：戰鬥開始立即發動，勇者造成的傷害降低 "
-                f"{config['hero_damage_reduction']:.0%}；可與對菁英BOSS傷害加成互相抵銷"
-            )
-        if config.get("skill"):
-            if config.get("skill_at_start"):
-                pass
-            elif config.get("skill_hp_threshold") is not None:
-                threshold_damage = config.get("true_damage", config.get("skill_damage", 0))
-                abilities.append(
-                    f"技能「{config['skill']}」：血量首次低於 {config['skill_hp_threshold']:.0%} 時，"
-                    f"造成 {threshold_damage:g} {'真實傷害（無視防禦與傷害減免）' if config.get('true_damage') is not None else '傷害（可被傷害減免抵銷）'}"
-                )
-            else:
-                abilities.append(
-                    f"技能「{config['skill']}」：每 {config['skill_interval']:g} 秒造成 "
-                    f"{config['true_damage']:g} 真實傷害"
-                )
-        info_col.write("**能力／技能：**" + ("；".join(abilities) if abilities else "無"))
-        if button_col.button(
-            "開始挑戰" if unlocked else "尚未解鎖",
-            key=f"chapter_boss_{chapter_id}_{boss_type}",
-            disabled=not unlocked,
-            type="primary" if unlocked else "secondary",
-            use_container_width=True,
-        ):
-            force_top_before_navigation()
-            st.session_state.selected_boss_type = boss_type
-            st.session_state.scroll_boss_to_top = True
-            st.session_state.screen = "boss_ready"
-            st.rerun()
 
 
 init_db()
