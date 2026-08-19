@@ -161,8 +161,10 @@ def render_page_close_button(key):
         .st-key-page-close-top button {
           width:2.65rem !important;height:2.65rem !important;min-height:2.65rem !important;
           padding:0 !important;border-radius:50% !important;font-size:1.15rem !important;
-          background:rgba(255,255,255,.94) !important;box-shadow:0 2px 10px rgba(0,0,0,.14);
+          background:#fff !important;color:#e53935 !important;border:2px solid #111 !important;
+          box-shadow:0 2px 10px rgba(0,0,0,.14);font-weight:900 !important;
         }
+        .st-key-page-close-top button * {color:#e53935 !important;}
         @media (max-width:768px) and (orientation:portrait) {
           .st-key-page-close-top {right:.65rem;top:3.65rem;}
         }
@@ -177,6 +179,18 @@ def render_page_close_button(key):
 
 def render_bottom_home_button(key):
     """Render a small bottom-right close shortcut for long pages."""
+    st.markdown(
+        """
+        <style>
+        [class*="st-key-bottom_home_"] button {
+          background:#fff !important;color:#e53935 !important;border:2px solid #111 !important;
+          font-weight:900 !important;
+        }
+        [class*="st-key-bottom_home_"] button * {color:#e53935 !important;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     spacer, close_col = st.columns([12, 1])
     if not close_col.button("✕", key=f"bottom_home_{key}", help="關閉", use_container_width=True):
         return False

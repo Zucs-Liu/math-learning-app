@@ -155,7 +155,7 @@ from game_ui.stages import (
 from game_ui.inventory import render_backpack, render_gallery
 from game_ui.economy import render_economy_screen
 from game_ui.admin import render_admin_panel
-from game_ui.character import render_character_equipment_hub
+from game_ui.character import render_character_equipment_dialog, render_character_equipment_hub
 
 st.set_page_config(page_title="數學冒險", page_icon="⚔️", layout="wide")
 
@@ -1858,6 +1858,9 @@ if st.session_state.screen == "inventory":
     st.session_state.screen = (
         "gallery" if st.session_state.get("inventory_view") == "gallery" else "backpack"
     )
+if st.session_state.screen == "character_stats":
+    st.session_state.screen = "home"
+    st.session_state.show_character_dialog = True
 
 # 手機直立版只微調功能頁的大標題；transform 不會推動下方其他內容。
 if st.session_state.screen not in {"login", "bootstrap", "boss_watch"}:
@@ -2138,7 +2141,7 @@ elif st.session_state.screen == "home":
         nav3 = st.columns(4)
 
     if nav1[0].button("🧙 角色能力", use_container_width=True):
-        st.session_state.screen = "character_stats"
+        st.session_state.show_character_dialog = True
         st.rerun()
     if nav1[1].button("🗺️ 關卡", use_container_width=True):
         st.session_state.scroll_menu_to_top = True
@@ -2180,6 +2183,9 @@ elif st.session_state.screen == "home":
         st.session_state.scroll_mailbox_to_top = True
         st.session_state.screen = "mailbox"
         st.rerun()
+
+    if st.session_state.get("show_character_dialog"):
+        render_character_equipment_dialog(profile, save_profile)
 
     if st.session_state.active_player == "__TEACHER__":
         teacher_admin_target = st.selectbox(
