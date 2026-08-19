@@ -600,28 +600,42 @@ def render_character_equipment_dialog(profile, save_profile):
             font-size:1.05rem !important;line-height:1 !important;margin:0 !important;padding:0 !important;
           }
           .st-key-character_panel_navigation {margin-top:-.15rem !important;margin-bottom:0 !important;}
+          /* 裝備頁固定佔滿導覽列以下的視窗；外層本身不參與一般文件流。 */
           .st-key-character_equipment_view {
-            position:relative !important;width:100% !important;
-            height:calc(100dvh - 4.25rem) !important;
-            max-height:calc(100dvh - 4.25rem) !important;overflow:hidden !important;
-            padding:0 !important;box-sizing:border-box !important;
+            position:absolute !important;left:.45rem !important;right:.45rem !important;
+            top:9.5rem !important;bottom:.35rem !important;
+            width:auto !important;height:auto !important;
+            margin:0 !important;padding:0 !important;overflow:hidden !important;
           }
           .st-key-character_equipment_view > [data-testid="stVerticalBlock"] {
-            display:flex !important;flex-direction:column !important;
-            gap:0 !important;height:100% !important;max-height:100% !important;min-height:0 !important;
+            position:relative !important;display:block !important;
+            width:100% !important;height:100% !important;margin:0 !important;padding:0 !important;
+          }
+          /* Streamlit 會替每個元件加 stElementContainer；必須定位這一層，
+             否則只定位裡面的 Markdown，寬度會縮成文字本身。 */
+          .st-key-character_equipment_view [data-testid="stElementContainer"]:has(.st-key-character_equipment_scene) {
+            position:absolute !important;inset:0 0 33.333dvh 0 !important;
+            width:100% !important;height:auto !important;min-height:0 !important;
+            margin:0 !important;padding:0 !important;overflow:hidden !important;
           }
           .st-key-character_equipment_scene {
-            flex:1 1 0 !important;height:auto !important;max-height:none !important;min-height:0 !important;
-            width:100% !important;overflow:hidden !important;
-            border-bottom:1px solid #9ca3af !important;padding-bottom:.1rem !important;
+            position:static !important;width:100% !important;height:100% !important;
+            max-height:100% !important;min-height:0 !important;margin:0 !important;
+            overflow:hidden !important;border-bottom:1px solid #9ca3af !important;
+            padding-bottom:.1rem !important;box-sizing:border-box !important;
           }
           .st-key-character_equipment_scene > [data-testid="stVerticalBlock"] {
             height:100% !important;max-height:100% !important;justify-content:flex-start !important;
           }
-          .st-key-character_equipment_view [data-testid="stMarkdownContainer"]:has(.character-stat-panels) {
-            position:static !important;flex:0 0 33.333dvh !important;
+          .st-key-character_equipment_view [data-testid="stElementContainer"]:has(.character-stat-panels) {
+            position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;
             width:100% !important;height:33.333dvh !important;max-height:33.333dvh !important;
             margin:0 !important;padding:0 !important;background:#fff !important;z-index:5 !important;
+            overflow:hidden !important;box-sizing:border-box !important;
+          }
+          .st-key-character_equipment_view [data-testid="stMarkdownContainer"]:has(.character-stat-panels) {
+            position:static !important;width:100% !important;height:100% !important;
+            margin:0 !important;padding:0 !important;background:#fff !important;
           }
           .character-stat-panels {
             position:static !important;
