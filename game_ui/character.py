@@ -156,7 +156,7 @@ def _render_equipment_scene(profile, save_profile):
         <style>
         .st-key-character_equipment_scene [data-testid="stHorizontalBlock"]:has(.st-key-character_left_slots) {
           display:flex !important; flex-direction:row !important; flex-wrap:nowrap !important;
-          gap:.45rem !important; align-items:center !important;justify-content:center !important;
+          gap:.45rem !important; align-items:flex-start !important;justify-content:center !important;
         }
         .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_left_slots),
         .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_right_slots) {
@@ -190,6 +190,9 @@ def _render_equipment_scene(profile, save_profile):
         .st-key-character_center_panel [data-baseweb="select"] > div {min-height:2.15rem !important;}
         .st-key-character_center_panel [data-testid="stMarkdownContainer"] p {margin:.05rem 0 !important;}
         .st-key-character_center_panel [data-testid="stImage"] img {max-height:13.6rem !important;}
+        .st-key-character_center_panel [data-testid="stImage"] {
+          display:flex !important;justify-content:center !important;align-items:flex-start !important;width:100% !important;
+        }
         .st-key-character_slot_actions [data-testid="stHorizontalBlock"] {
           display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;gap:.18rem !important;
         }
@@ -218,21 +221,23 @@ def _render_equipment_scene(profile, save_profile):
             display:flex !important;
             flex-direction:row !important;
             flex-wrap:nowrap !important;
-            gap:.12rem !important;
-            width:100% !important;
-            align-items:center !important;
+            gap:.12rem !important;align-items:flex-start !important;
+            width:100% !important;height:100% !important;max-height:100% !important;
+            align-items:stretch !important;
           }
           .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_left_slots),
           .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_right_slots) {
-            flex:0 0 clamp(1.95rem,10.5vw,2.2rem) !important;
-            width:clamp(1.95rem,10.5vw,2.2rem) !important;
-            max-width:2.2rem !important;
+            flex:0 0 clamp(2.15rem,calc((100dvh - 10.5rem)/5),3rem) !important;
+            width:clamp(2.15rem,calc((100dvh - 10.5rem)/5),3rem) !important;
+            max-width:3rem !important;height:100% !important;
           }
           .st-key-character_equipment_scene [data-testid="stColumn"]:has(.st-key-character_center_panel) {
             flex:1 1 auto !important;width:auto !important;max-width:none !important;
           }
           .st-key-character_left_slots > [data-testid="stVerticalBlock"],
-          .st-key-character_right_slots > [data-testid="stVerticalBlock"] {gap:.12rem !important;}
+          .st-key-character_right_slots > [data-testid="stVerticalBlock"] {
+            height:100% !important;justify-content:space-between !important;gap:.08rem !important;
+          }
           .st-key-character_equipment_scene p,
           .st-key-character_equipment_scene button {font-size:.62rem !important;line-height:1.05 !important;}
           .st-key-character_equipment_scene [data-testid="stImage"] img {
@@ -245,6 +250,9 @@ def _render_equipment_scene(profile, save_profile):
           .st-key-character_center_panel [data-testid="stImage"] img {
             width:auto !important;height:8rem !important;max-height:8rem !important;
             object-fit:contain !important;margin:0 auto !important;
+          }
+          .st-key-character_center_panel [data-testid="stImage"] {
+            display:flex !important;justify-content:center !important;width:100% !important;
           }
           .st-key-character_center_panel h4 {font-size:.78rem !important;}
           .st-key-character_center_panel p,
@@ -264,7 +272,7 @@ def _render_equipment_scene(profile, save_profile):
         unsafe_allow_html=True,
     )
     with st.container(key="character_equipment_scene"):
-        left, hero, right = st.columns([3, 3.4, 3], vertical_alignment="center")
+        left, hero, right = st.columns([3, 3.4, 3], vertical_alignment="top")
         with left:
             with st.container(key="character_left_slots"):
                 for slot in LEFT_SLOTS:
@@ -550,15 +558,23 @@ def render_character_equipment_dialog(profile, save_profile):
         }
         @media (max-width:768px) and (orientation:portrait) {
           body:has([data-testid="stDialog"]) [data-testid="stHeader"] {display:none !important;}
+          body:has([data-testid="stDialog"]) [data-baseweb="modal"] {
+            position:fixed !important;inset:0 !important;width:100% !important;height:100dvh !important;
+            margin:0 !important;padding:0 !important;overflow:hidden !important;z-index:2147483647 !important;
+          }
+          body:has([data-testid="stDialog"]) [data-baseweb="modal"] > div {
+            margin:0 !important;padding:0 !important;max-width:100% !important;max-height:100dvh !important;
+          }
           [data-testid="stDialog"] {
             position:fixed !important;inset:0 !important;z-index:2147483647 !important;
-            width:100vw !important;height:100dvh !important;max-width:100vw !important;max-height:100dvh !important;
+            box-sizing:border-box !important;width:100% !important;height:100dvh !important;
+            max-width:100% !important;max-height:100dvh !important;
             padding:0 !important;margin:0 !important;align-items:stretch !important;justify-content:stretch !important;
             overflow:hidden !important;overscroll-behavior:none !important;background:#fff !important;
           }
           [data-testid="stDialog"] [role="dialog"] {
             position:absolute !important;inset:0 !important;
-            width:100vw !important;max-width:100vw !important;
+            box-sizing:border-box !important;width:100% !important;max-width:100% !important;
             height:100dvh !important;max-height:100dvh !important;
             margin:0 !important;padding:.16rem !important;border-radius:0 !important;
             overflow:hidden !important;overscroll-behavior:none !important;
@@ -574,7 +590,30 @@ def render_character_equipment_dialog(profile, save_profile):
             font-size:1.05rem !important;line-height:1 !important;margin:0 !important;padding:0 !important;
           }
           .st-key-character_panel_navigation {margin-top:-.15rem !important;margin-bottom:0 !important;}
-          .st-key-character_equipment_view > [data-testid="stVerticalBlock"] {gap:0 !important;}
+          .st-key-character_equipment_view {
+            position:relative !important;height:calc(100dvh - 4.25rem) !important;
+            max-height:calc(100dvh - 4.25rem) !important;overflow:hidden !important;
+            padding-bottom:5.45rem !important;box-sizing:border-box !important;
+          }
+          .st-key-character_equipment_view > [data-testid="stVerticalBlock"] {
+            gap:0 !important;height:100% !important;max-height:100% !important;
+          }
+          .st-key-character_equipment_scene {
+            height:100% !important;max-height:100% !important;overflow:hidden !important;
+            border-bottom:1px solid #9ca3af !important;padding-bottom:.1rem !important;
+          }
+          .st-key-character_equipment_scene > [data-testid="stVerticalBlock"] {
+            height:100% !important;max-height:100% !important;justify-content:flex-start !important;
+          }
+          .st-key-character_equipment_view [data-testid="stMarkdownContainer"]:has(.character-stat-panels) {
+            position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;
+            height:5.25rem !important;margin:0 !important;background:#fff !important;z-index:5 !important;
+          }
+          .character-stat-panels {
+            position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;
+            height:5.2rem !important;margin:0 !important;box-sizing:border-box !important;
+          }
+          .character-stat-box {height:5.2rem !important;box-sizing:border-box !important;overflow:hidden !important;}
           .st-key-character_scroll_view > [data-testid="stVerticalBlockBorderWrapper"] {
             height:calc(100dvh - 6.3rem) !important;max-height:calc(100dvh - 6.3rem) !important;
             overflow-y:auto !important;
