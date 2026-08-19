@@ -253,7 +253,8 @@ def _render_equipment_scene(profile, save_profile):
             height:100% !important;justify-content:flex-start !important;gap:.04rem !important;
           }
           .st-key-character_center_panel [data-testid="stImage"] img {
-            width:auto !important;height:8rem !important;max-height:8rem !important;
+            width:auto !important;height:clamp(9rem,25dvh,10.5rem) !important;
+            max-height:clamp(9rem,25dvh,10.5rem) !important;
             object-fit:contain !important;margin:0 auto !important;
           }
           .st-key-character_center_panel [data-testid="stImage"] {
@@ -618,7 +619,7 @@ def render_character_equipment_dialog(profile, save_profile):
           /* 裝備頁固定佔滿導覽列以下的視窗；外層本身不參與一般文件流。 */
           .st-key-character_equipment_view {
             position:absolute !important;left:.45rem !important;right:.45rem !important;
-            top:9.5rem !important;bottom:.1rem !important;
+            top:4.2rem !important;bottom:.1rem !important;
             width:auto !important;height:auto !important;
             margin:0 !important;padding:0 !important;overflow:hidden !important;
           }
