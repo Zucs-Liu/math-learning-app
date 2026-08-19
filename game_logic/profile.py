@@ -33,6 +33,8 @@ def create_new_profile(name, slot_names, unit_ids):
         "inventory": [],
         "collection_catalog": [],
         "equipment": {slot: None for slot in slot_names},
+        "equipment_loadouts": None,
+        "active_equipment_loadout": 0,
         "unit_best_stars": {unit_id: 0 for unit_id in unit_ids},
         "chapter_reward_claimed": False,
         "collection_reward_claimed": False,
@@ -94,17 +96,20 @@ def sync_profile_collection_catalog(profile, item_chapter_id):
 def normalize_profile_data(profile, name, slot_names, unit_ids, item_chapter_id):
     template = create_new_profile(name, slot_names, unit_ids)
     if profile.get("data_version") != 2:
-        return {
+        migrated = {
             **template,
             "level": profile.get("level", 1),
             "exp": profile.get("exp", 0),
             "boss_exp_claimed": profile.get("boss_exp_claimed", False),
             "boss_wins": profile.get("boss_wins", 0),
         }
+        ensure_equipment_loadouts(migrated, slot_names)
+        return migrated
     for key, value in template.items():
         profile.setdefault(key, value)
     for slot in slot_names:
         profile["equipment"].setdefault(slot, None)
+    ensure_equipment_loadouts(profile, slot_names)
     for unit_id in unit_ids:
         profile["unit_best_stars"].setdefault(unit_id, 0)
     sync_profile_collection_catalog(profile, item_chapter_id)
@@ -143,6 +148,7 @@ def normalize_profile_data(profile, name, slot_names, unit_ids, item_chapter_id)
             catalog.add(f"achievement:4:{unit_key}:{slot}")
     profile["collection_catalog"] = sorted(catalog)
 
+
     rewarded_units = set(profile.get("ticket_rewarded_units", []))
     passed_units = {
         unit_id for unit_id, stars in profile["unit_best_stars"].items() if stars > 0
@@ -167,3 +173,62 @@ def normalize_profile_data(profile, name, slot_names, unit_ids, item_chapter_id)
             profile["titles"].append(title)
             profile["retro_reward_notice"].append(f"補發成就稱號「{title}」")
     return profile
+
+
+def ensure_equipment_loadouts(profile, slot_names):
+    """Create two backward-compatible equipment sets around legacy equipment."""
+    blank = {slot: None for slot in slot_names}
+    loadouts = profile.get("equipment_loadouts")
+    if not isinstance(loadouts, list) or len(loadouts) < 2:
+        current = {
+            slot: profile.get("equipment", {}).get(slot)
+            for slot in slot_names
+        }
+        loadouts = [
+            {"name": "主要裝備", "equipment": current},
+            {"name": "第二套裝備", "equipment": dict(blank)},
+        ]
+        profile["equipment_loadouts"] = loadouts
+    for index in range(2):
+        loadout = loadouts[index]
+        if not isinstance(loadout, dict):
+            loadout = {"name": f"裝備配置 {index + 1}", "equipment": dict(blank)}
+            loadouts[index] = loadout
+        loadout.setdefault("name", f"裝備配置 {index + 1}")
+        if not isinstance(loadout.get("equipment"), dict):
+            loadout["equipment"] = dict(blank)
+        for slot in slot_names:
+            loadout["equipment"].setdefault(slot, None)
+    active = int(profile.get("active_equipment_loadout", 0) or 0)
+    active = 0 if active not in (0, 1) else active
+    profile["active_equipment_loadout"] = active
+    profile["equipment"] = dict(loadouts[active]["equipment"])
+
+
+def sync_active_equipment_loadout(profile, slot_names):
+    """Copy the legacy active-equipment mapping into the selected loadout."""
+    if not isinstance(profile.get("equipment_loadouts"), list) or len(profile["equipment_loadouts"]) < 2:
+        ensure_equipment_loadouts(profile, slot_names)
+    active = profile["active_equipment_loadout"]
+    profile["equipment_loadouts"][active]["equipment"] = {
+        slot: profile["equipment"].get(slot) for slot in slot_names
+    }
+
+
+def equipped_item_uids(profile):
+    """Return item IDs used by either equipment set."""
+    result = {uid for uid in profile.get("equipment", {}).values() if uid}
+    for loadout in profile.get("equipment_loadouts") or []:
+        result.update(uid for uid in loadout.get("equipment", {}).values() if uid)
+    return result
+
+
+def clear_equipment_item_uids(profile, uids):
+    """Remove deleted item references from the active and inactive sets."""
+    uid_set = set(uids)
+    for equipment in [profile.get("equipment", {})] + [
+        loadout.get("equipment", {}) for loadout in profile.get("equipment_loadouts") or []
+    ]:
+        for slot, uid in equipment.items():
+            if uid in uid_set:
+                equipment[slot] = None

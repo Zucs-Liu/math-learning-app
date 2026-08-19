@@ -5,6 +5,8 @@ call these helpers and decide when a changed profile should be persisted.
 """
 
 from datetime import datetime, timedelta, timezone
+
+from game_logic.profile import clear_equipment_item_uids
 import random
 import uuid
 
@@ -176,9 +178,7 @@ def ensure_shop_inventory(
 
 def remove_inventory_entries(profile, uids):
     uid_set = set(uids)
-    for slot, uid in profile["equipment"].items():
-        if uid in uid_set:
-            profile["equipment"][slot] = None
+    clear_equipment_item_uids(profile, uid_set)
     profile["inventory"] = [
         item for item in profile["inventory"] if item["uid"] not in uid_set
     ]
