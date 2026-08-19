@@ -16,49 +16,131 @@ LEFT_SLOTS = ("helmet", "necklace", "weapon", "gloves", "ring")
 RIGHT_SLOTS = ("armor", "shield", "belt", "boots")
 
 
-def _equipment_slot(profile, slot, save_profile, key_prefix):
+def _equipment_slot(profile, slot, key_prefix):
     uid = profile["equipment"].get(slot)
     item = find_item(profile, uid) if uid else None
-    label = f"{SLOT_ICONS[slot]} {SLOT_NAMES[slot]}"
-    with st.container(border=True):
-        st.markdown(f"**{label}**")
-        if item:
-            with st.popover(f"{'⭐' * item['stars']} {item['name']}", use_container_width=True):
-                st.write(item_text(item))
-                if st.button("卸下", key=f"{key_prefix}_off_{slot}", use_container_width=True):
-                    profile["equipment"][slot] = None
-                    save_profile(profile)
-                    st.rerun()
-        else:
-            st.caption("尚未裝備")
+    icon = SLOT_ICONS[slot] if item else "▫️"
+    with st.container(key=f"character_slot_{key_prefix}_{slot}"):
+        if st.button(
+            icon,
+            key=f"{key_prefix}_slot_{slot}",
+            help=f"{SLOT_NAMES[slot]}（點擊查看或更換）",
+            use_container_width=True,
+        ):
+            st.session_state.character_selected_slot = slot
+            st.rerun()
 
 
-def _render_loadout_controls(profile, save_profile):
+def _switch_loadout(profile, selected, save_profile):
     active = int(profile.get("active_equipment_loadout", 0))
     loadouts = profile["equipment_loadouts"]
-    current = loadouts[active]
-    label_col, switch_col = st.columns([3, 1], vertical_alignment="bottom")
-    new_name = label_col.text_input(
-        "配裝名稱",
-        value=current.get("name", f"裝備配置 {active + 1}"),
-        max_chars=16,
-        key=f"loadout_name_{active}",
-    ).strip()
-    if new_name and new_name != current.get("name"):
-        current["name"] = new_name
-        save_profile(profile)
-    other = 1 - active
-    if switch_col.button(
-        f"切換至：{loadouts[other]['name']}",
-        key="switch_equipment_loadout",
-        use_container_width=True,
-    ):
+    if selected != active:
         loadouts[active]["equipment"] = dict(profile["equipment"])
-        profile["active_equipment_loadout"] = other
-        profile["equipment"] = dict(loadouts[other]["equipment"])
+        profile["active_equipment_loadout"] = selected
+        profile["equipment"] = dict(loadouts[selected]["equipment"])
+        st.session_state.character_panel_view = "equipment"
         save_profile(profile)
         st.rerun()
-    st.caption(f"當前裝備：{current['name']}（第 {active + 1} 套）")
+
+
+def _render_panel_navigation(profile, save_profile):
+    if "character_panel_view" not in st.session_state:
+        st.session_state.character_panel_view = "equipment"
+    active = int(profile.get("active_equipment_loadout", 0))
+    loadouts = profile["equipment_loadouts"]
+    with st.container(key="character_panel_navigation"):
+        equipment_col, unused_col, pet_col, title_col = st.columns(4)
+        with equipment_col:
+            with st.popover(
+                f"⚔️ {loadouts[active]['name']}",
+                use_container_width=True,
+            ):
+                selected = st.selectbox(
+                    "切換裝備配置",
+                    [0, 1],
+                    index=active,
+                    format_func=lambda index: loadouts[index]["name"],
+                    key="character_loadout_choice",
+                )
+                _switch_loadout(profile, selected, save_profile)
+                new_name = st.text_input(
+                    "更改此套裝備名稱",
+                    value=loadouts[active]["name"],
+                    max_chars=16,
+                    key=f"character_loadout_name_{active}",
+                ).strip()
+                if st.button("儲存名稱", key=f"save_loadout_name_{active}", use_container_width=True):
+                    if new_name:
+                        loadouts[active]["name"] = new_name
+                        save_profile(profile)
+                        st.rerun()
+                if st.button("顯示目前裝備", key="show_character_equipment", use_container_width=True):
+                    st.session_state.character_panel_view = "equipment"
+                    st.rerun()
+        if unused_col.button(
+            "🎒 未使用裝備", key="show_character_unused",
+            type="primary" if st.session_state.character_panel_view == "unused" else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state.character_panel_view = "unused"
+            st.rerun()
+        if pet_col.button(
+            "🐾 寵物", key="show_character_pet",
+            type="primary" if st.session_state.character_panel_view == "pet" else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state.character_panel_view = "pet"
+            st.rerun()
+        if title_col.button(
+            "🏅 稱號", key="show_character_titles",
+            type="primary" if st.session_state.character_panel_view == "titles" else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state.character_panel_view = "titles"
+            st.rerun()
+
+
+def _render_slot_selector(profile, slot, save_profile):
+    current_uid = profile["equipment"].get(slot)
+    current_item = find_item(profile, current_uid) if current_uid else None
+    st.markdown(f"#### {SLOT_ICONS[slot]} {SLOT_NAMES[slot]}")
+    if current_item:
+        st.caption("目前裝備")
+        st.write(item_text(current_item))
+    else:
+        st.caption("目前尚未裝備")
+
+    candidates = [item for item in profile["inventory"] if item["slot"] == slot]
+    if candidates:
+        selected_uid = st.selectbox(
+            "可穿戴裝備",
+            [item["uid"] for item in candidates],
+            index=next(
+                (index for index, item in enumerate(candidates) if item["uid"] == current_uid),
+                0,
+            ),
+            format_func=lambda uid: item_text(find_item(profile, uid)),
+            key=f"character_slot_candidate_{slot}",
+        )
+        equip_col, close_col = st.columns(2)
+        if equip_col.button("穿戴此裝備", key=f"character_slot_equip_{slot}", type="primary", use_container_width=True):
+            profile["equipment"][slot] = selected_uid
+            save_profile(profile)
+            st.session_state.character_selected_slot = None
+            st.rerun()
+        if close_col.button("返回人物", key=f"character_slot_close_{slot}", use_container_width=True):
+            st.session_state.character_selected_slot = None
+            st.rerun()
+        if current_item and st.button("卸下目前裝備", key=f"character_slot_remove_{slot}", use_container_width=True):
+            profile["equipment"][slot] = None
+            save_profile(profile)
+            st.session_state.character_selected_slot = None
+            st.rerun()
+    else:
+        st.info("目前沒有可穿戴的此部位裝備。")
+        if st.button("返回人物", key=f"character_slot_empty_close_{slot}", use_container_width=True):
+            st.session_state.character_selected_slot = None
+            st.rerun()
 
 
 def _render_equipment_scene(profile, save_profile):
@@ -78,22 +160,29 @@ def _render_equipment_scene(profile, save_profile):
           min-height:4.45rem;
         }
         @media (max-width:768px) and (orientation:portrait) {
-          .st-key-character-equipment-scene [data-testid="stHorizontalBlock"] {gap:.18rem !important;}
+          .st-key-character-equipment-scene [data-testid="stHorizontalBlock"] {
+            display:flex !important;
+            flex-direction:row !important;
+            flex-wrap:nowrap !important;
+            gap:.18rem !important;
+            width:100% !important;
+            align-items:center !important;
+          }
           .st-key-character-equipment-scene [data-testid="stColumn"]:nth-child(1),
           .st-key-character-equipment-scene [data-testid="stColumn"]:nth-child(3) {
-            flex:0 0 31% !important; width:31% !important;
+            flex:0 0 18% !important;width:18% !important;max-width:18% !important;
           }
           .st-key-character-equipment-scene [data-testid="stColumn"]:nth-child(2) {
-            flex:0 0 36% !important; width:36% !important;
+            flex:0 0 63% !important;width:63% !important;max-width:63% !important;
           }
           .st-key-character-equipment-scene p,
-          .st-key-character-equipment-scene button {font-size:.65rem !important; line-height:1.12 !important;}
-          .st-key-character-equipment-scene [data-testid="stVerticalBlockBorderWrapper"] {
-            padding:.18rem !important;min-height:3.6rem !important;
-          }
+          .st-key-character-equipment-scene button {font-size:.7rem !important;line-height:1.1 !important;}
           .st-key-character-equipment-scene [data-testid="stImage"] img {
-            max-height:19rem !important;object-fit:contain !important;
+            max-height:20rem !important;object-fit:contain !important;
           }
+        }
+        [class*="st-key-character-slot-"] button {
+          min-height:3.45rem !important;font-size:1.45rem !important;padding:.2rem !important;
         }
         </style>
         """,
@@ -103,25 +192,35 @@ def _render_equipment_scene(profile, save_profile):
         left, hero, right = st.columns([3, 3.4, 3], vertical_alignment="center")
         with left:
             for slot in LEFT_SLOTS:
-                _equipment_slot(profile, slot, save_profile, "left")
+                _equipment_slot(profile, slot, "left")
         with hero:
-            hero_file = (
-                "blue-silver-hero-female.webp"
-                if profile.get("gender") == "female"
-                else "blue-silver-hero.webp"
-            )
-            hero_path = Path(__file__).resolve().parent.parent / "assets" / "heroes" / hero_file
-            st.image(str(hero_path), use_container_width=True)
             st.markdown(
                 f"<div style='text-align:center;font-weight:800'>Lv{profile['level']}　{profile['name']}</div>",
                 unsafe_allow_html=True,
             )
+            selected_slot = st.session_state.get("character_selected_slot")
+            if selected_slot in SLOT_NAMES:
+                _render_slot_selector(profile, selected_slot, save_profile)
+            elif selected_slot == "pet":
+                st.info("尚未裝備寵物（下一階段開放）")
+                if st.button("返回人物", key="character_pet_slot_close", use_container_width=True):
+                    st.session_state.character_selected_slot = None
+                    st.rerun()
+            else:
+                hero_file = (
+                    "blue-silver-hero-female.webp"
+                    if profile.get("gender") == "female"
+                    else "blue-silver-hero.webp"
+                )
+                hero_path = Path(__file__).resolve().parent.parent / "assets" / "heroes" / hero_file
+                st.image(str(hero_path), use_container_width=True)
         with right:
             for slot in RIGHT_SLOTS:
-                _equipment_slot(profile, slot, save_profile, "right")
-            with st.container(border=True):
-                st.markdown("**🐾 寵物**")
-                st.caption("尚未裝備（下一階段開放）")
+                _equipment_slot(profile, slot, "right")
+            with st.container(key="character_slot_right_pet"):
+                if st.button("🐾", key="character_pet_equipment_slot", help="寵物（點擊查看）", use_container_width=True):
+                    st.session_state.character_selected_slot = "pet"
+                    st.rerun()
 
 
 def _render_compact_stats(profile):
@@ -267,10 +366,14 @@ def render_character_equipment_hub(profile, save_profile):
         """
         <style>
         @media (max-width:768px) and (orientation:portrait) {
-          [data-testid="stTabs"] [role="tablist"] {gap:0 !important;width:100% !important;}
-          [data-testid="stTabs"] [role="tab"] {
-            flex:1 1 25% !important;min-width:0 !important;padding:.38rem .08rem !important;
-            font-size:.67rem !important;white-space:nowrap !important;
+          .st-key-character-panel-navigation [data-testid="stHorizontalBlock"] {
+            display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;gap:.15rem !important;
+          }
+          .st-key-character-panel-navigation [data-testid="stColumn"] {
+            min-width:0 !important;flex:1 1 25% !important;width:25% !important;
+          }
+          .st-key-character-panel-navigation button {
+            padding:.3rem .05rem !important;font-size:.65rem !important;white-space:nowrap !important;
           }
           .st-key-character-loadout-row [data-testid="stHorizontalBlock"] {
             display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;
@@ -280,16 +383,20 @@ def render_character_equipment_hub(profile, save_profile):
         """,
         unsafe_allow_html=True,
     )
-    current_tab, unused_tab, pet_tab, title_tab = st.tabs(
-        ["⚔️ 目前裝備", "🎒 未使用裝備", "🐾 寵物", "🏅 稱號"]
+    st.markdown(
+        "<style>.st-key-character-hub-frame{border:3px solid #142a38;border-radius:4px;padding:.45rem}</style>",
+        unsafe_allow_html=True,
     )
-    with current_tab:
-        _render_loadout_controls(profile, save_profile)
-        _render_equipment_scene(profile, save_profile)
-        _render_compact_stats(profile)
-    with unused_tab:
-        _render_unused_equipment(profile, save_profile)
-    with pet_tab:
-        _render_pet_placeholder()
-    with title_tab:
-        _render_titles(profile, save_profile)
+    with st.container(key="character_hub_frame"):
+        st.markdown("<h3 style='text-align:center;margin:.1rem 0 .35rem'>角色能力</h3>", unsafe_allow_html=True)
+        _render_panel_navigation(profile, save_profile)
+        view = st.session_state.character_panel_view
+        if view == "equipment":
+            _render_equipment_scene(profile, save_profile)
+            _render_compact_stats(profile)
+        elif view == "unused":
+            _render_unused_equipment(profile, save_profile)
+        elif view == "pet":
+            _render_pet_placeholder()
+        else:
+            _render_titles(profile, save_profile)
