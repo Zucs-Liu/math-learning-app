@@ -1861,6 +1861,8 @@ if st.session_state.screen == "inventory":
 if st.session_state.screen == "character_stats":
     st.session_state.screen = "home"
     st.session_state.show_character_dialog = True
+    st.session_state.character_panel_view = "equipment"
+    st.session_state.character_selected_slot = None
 
 # 手機直立版只微調功能頁的大標題；transform 不會推動下方其他內容。
 if st.session_state.screen not in {"login", "bootstrap", "boss_watch"}:
@@ -2142,6 +2144,8 @@ elif st.session_state.screen == "home":
 
     if nav1[0].button("🧙 角色能力", use_container_width=True):
         st.session_state.show_character_dialog = True
+        st.session_state.character_panel_view = "equipment"
+        st.session_state.character_selected_slot = None
         st.rerun()
     if nav1[1].button("🗺️ 關卡", use_container_width=True):
         st.session_state.scroll_menu_to_top = True
