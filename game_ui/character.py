@@ -399,7 +399,20 @@ def _render_compact_stats(profile):
             display:flex;align-items:center;justify-content:center;
             font-size:clamp(.9rem,3.8vw,1.08rem);line-height:1;margin:0;text-align:center;
           }}
-          .character-stat-list {{height:100%;max-height:none;overflow-y:auto;padding:0;}}
+          .character-stat-list {{
+            height:100%;max-height:none;min-height:0;
+            overflow-x:hidden;overflow-y:scroll !important;
+            overscroll-behavior:contain;touch-action:pan-y;
+            -webkit-overflow-scrolling:touch;
+            padding:0;box-sizing:border-box;
+            scrollbar-gutter:stable;
+          }}
+          .character-stat-list::after {{
+            content:"";display:block;height:3.6rem;min-height:3.6rem;
+          }}
+          .character-stat-list {{scrollbar-width:thin;scrollbar-color:#9ca3af transparent;}}
+          .character-stat-list::-webkit-scrollbar {{width:4px;}}
+          .character-stat-list::-webkit-scrollbar-thumb {{background:#9ca3af;border-radius:999px;}}
           .character-stat-list div {{
             display:flex;align-items:center;justify-content:space-between;
             box-sizing:border-box;height:calc(100% / 6);min-height:calc(100% / 6);
