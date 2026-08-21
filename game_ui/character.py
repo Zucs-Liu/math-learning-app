@@ -656,7 +656,9 @@ def render_character_equipment_dialog(profile, save_profile):
           [data-testid="stDialog"] [role="dialog"] {
             position:absolute !important;inset:0 !important;
             box-sizing:border-box !important;width:100% !important;max-width:100% !important;
-            height:100dvh !important;max-height:100dvh !important;
+            /* role=dialog 位於平台保留 16px 邊距的容器內；若再使用
+               100dvh，底部會多出這段邊距並超過黑框與觸控範圍。 */
+            height:100% !important;max-height:100% !important;
             margin:0 !important;padding:.16rem !important;border-radius:0 !important;
             overflow:hidden !important;overscroll-behavior:none !important;
           }
@@ -709,6 +711,18 @@ def render_character_equipment_dialog(profile, save_profile):
           .st-key-character_equipment_view [data-testid="stMarkdownContainer"]:has(.character-stat-panels) {
             position:static !important;width:100% !important;height:100% !important;
             margin:0 !important;padding:0 !important;background:#fff !important;
+          }
+          /* Streamlit 在 stElementContainer 與 MarkdownContainer 之間另包了
+             stMarkdown。三層都必須吃滿定位容器，否則畫面高度與真正的
+             觸控捲動高度會不同，手指放開時就會回彈。 */
+          .st-key-character_equipment_view [data-testid="stElementContainer"]:has(.character-stat-panels)
+            > [data-testid="stMarkdown"],
+          .st-key-character_equipment_view [data-testid="stElementContainer"]:has(.character-stat-panels)
+            > [data-testid="stMarkdown"] > div,
+          .st-key-character_equipment_view [data-testid="stElementContainer"]:has(.character-stat-panels)
+            [data-testid="stMarkdownContainer"] {
+            width:100% !important;height:100% !important;min-height:0 !important;
+            margin:0 !important;padding:0 !important;box-sizing:border-box !important;
           }
           .character-stat-panels {
             position:static !important;
