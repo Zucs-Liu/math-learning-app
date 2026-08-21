@@ -388,27 +388,26 @@ def _render_compact_stats(profile):
         .character-stat-list span {{white-space:nowrap;font-weight:700;}}
         @media (max-width:768px) and (orientation:portrait) {{
           .character-stat-panels {{
-            gap:.22rem;margin:0;height:33.333dvh !important;
-            min-height:33.333dvh !important;
+            gap:.22rem;margin:0;height:100% !important;
+            min-height:0 !important;
           }}
           .character-stat-box {{
             display:grid;grid-template-rows:2.15rem minmax(0,1fr);
-            height:100%;padding:.18rem .28rem;border-radius:5px;box-sizing:border-box;
+            height:100%;min-height:0;padding:.18rem .28rem;border-radius:5px;box-sizing:border-box;
+            overflow:hidden;isolation:isolate;
           }}
           .character-stat-box h4 {{
             display:flex;align-items:center;justify-content:center;
             font-size:clamp(.9rem,3.8vw,1.08rem);line-height:1;margin:0;text-align:center;
           }}
           .character-stat-list {{
-            height:100%;max-height:none;min-height:0;
+            position:relative;z-index:20;display:block;
+            width:100%;height:100%;max-height:100%;min-height:0;
             overflow-x:hidden;overflow-y:scroll !important;
-            overscroll-behavior:contain;touch-action:pan-y;
+            overscroll-behavior-y:contain;touch-action:pan-y !important;
             -webkit-overflow-scrolling:touch;
-            padding:0;box-sizing:border-box;
+            pointer-events:auto !important;padding:0;box-sizing:border-box;
             scrollbar-gutter:stable;
-          }}
-          .character-stat-list::after {{
-            content:"";display:block;height:3.6rem;min-height:3.6rem;
           }}
           .character-stat-list {{scrollbar-width:thin;scrollbar-color:#9ca3af transparent;}}
           .character-stat-list::-webkit-scrollbar {{width:4px;}}
@@ -423,6 +422,10 @@ def _render_compact_stats(profile):
             height:auto;min-height:calc(100% / 6);flex-shrink:0;
             align-items:center;padding:.12rem 0;
           }}
+          .character-stat-list .character-stat-scroll-spacer {{
+            display:block;height:3.6rem !important;min-height:3.6rem !important;
+            padding:0 !important;border:0 !important;pointer-events:none;
+          }}
         }}
         </style>
         <div class="character-stat-panels">
@@ -435,11 +438,12 @@ def _render_compact_stats(profile):
               <div><b>攻擊</b><span>{stats['attack']:.1f}</span></div>
               <div><b>防禦</b><span>{stats['defense']:.1f}</span></div>
               <div><b>攻速</b><span>{stats['attack_speed']:.2f}/秒</span></div>
+              <div class="character-stat-scroll-spacer" aria-hidden="true"></div>
             </div>
           </section>
           <section class="character-stat-box">
             <h4>特殊詞條</h4>
-            <div class="character-stat-list">{''.join(active_effects)}</div>
+            <div class="character-stat-list">{''.join(active_effects)}<div class="character-stat-scroll-spacer" aria-hidden="true"></div></div>
           </section>
         </div>
         """,
@@ -670,9 +674,10 @@ def render_character_equipment_dialog(profile, save_profile):
           .st-key-character_equipment_view {
             position:absolute !important;left:.45rem !important;right:.45rem !important;
             /* 對齊分頁列下緣；原本 10.35rem 會在分頁下方留下約 70px 空白。 */
-            top:6rem !important;bottom:.1rem !important;
+            top:6rem !important;bottom:.38rem !important;
             width:auto !important;height:auto !important;min-height:0 !important;
             margin:0 !important;padding:0 !important;overflow:hidden !important;
+            isolation:isolate !important;
           }
           .st-key-character_equipment_view > [data-testid="stVerticalBlock"] {
             position:relative !important;display:block !important;
@@ -695,10 +700,11 @@ def render_character_equipment_dialog(profile, save_profile):
             height:100% !important;max-height:100% !important;justify-content:flex-start !important;
           }
           .st-key-character_equipment_view [data-testid="stElementContainer"]:has(.character-stat-panels) {
-            position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;
-            width:100% !important;height:33.333dvh !important;max-height:33.333dvh !important;
+            position:absolute !important;left:.08rem !important;right:.08rem !important;bottom:.08rem !important;
+            width:auto !important;height:calc(33.333dvh - .16rem) !important;
+            max-height:calc(33.333dvh - .16rem) !important;min-height:0 !important;
             margin:0 !important;padding:0 !important;background:#fff !important;z-index:5 !important;
-            overflow:hidden !important;box-sizing:border-box !important;
+            overflow:hidden !important;box-sizing:border-box !important;contain:layout paint !important;
           }
           .st-key-character_equipment_view [data-testid="stMarkdownContainer"]:has(.character-stat-panels) {
             position:static !important;width:100% !important;height:100% !important;
@@ -706,10 +712,20 @@ def render_character_equipment_dialog(profile, save_profile):
           }
           .character-stat-panels {
             position:static !important;
-            width:100% !important;height:100% !important;margin:0 !important;box-sizing:border-box !important;
+            width:100% !important;height:100% !important;min-height:0 !important;
+            margin:0 !important;box-sizing:border-box !important;
           }
-          .character-stat-box {height:100% !important;box-sizing:border-box !important;overflow:hidden !important;}
-          .character-stat-list {max-height:calc(33.333dvh - 2rem) !important;overflow-y:auto !important;}
+          .character-stat-box {
+            position:relative !important;height:100% !important;min-height:0 !important;
+            box-sizing:border-box !important;overflow:hidden !important;
+          }
+          .character-stat-list {
+            height:100% !important;max-height:100% !important;min-height:0 !important;
+            overflow-x:hidden !important;overflow-y:scroll !important;
+            overscroll-behavior-y:contain !important;touch-action:pan-y !important;
+            pointer-events:auto !important;-webkit-overflow-scrolling:touch;
+            contain:content !important;
+          }
           .st-key-character_scroll_view > [data-testid="stVerticalBlockBorderWrapper"] {
             height:calc(100dvh - 6.3rem) !important;max-height:calc(100dvh - 6.3rem) !important;
             overflow-y:auto !important;
