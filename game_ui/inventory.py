@@ -221,14 +221,25 @@ def render_backpack(profile, save_profile):
     st.markdown(
         """
         <style>
-        .st-key-backpack-consumables [data-testid="stColumn"] {
+        [class*="st-key-backpack_consumables"] [data-testid="stColumn"] {
           border:1px solid #d9dee7;border-radius:8px;padding:.35rem !important;min-height:5rem;
         }
         @media (max-width:768px) and (orientation:portrait) {
-          .st-key-backpack-consumables [data-testid="stHorizontalBlock"] {display:flex !important;flex-wrap:nowrap !important;gap:.12rem !important;}
-          .st-key-backpack-consumables [data-testid="stColumn"] {min-width:0 !important;width:20% !important;max-width:20% !important;flex:0 0 calc(20% - .1rem) !important;padding:.12rem !important;min-height:4.3rem;}
-          .st-key-backpack-consumables [data-testid="stMetricLabel"] {font-size:.58rem !important;line-height:1.05 !important;white-space:normal !important;}
-          .st-key-backpack-consumables [data-testid="stMetricValue"] {font-size:1rem !important;line-height:1.1 !important;}
+          [class*="st-key-backpack_consumables"] [data-testid="stHorizontalBlock"] {
+            display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;
+            gap:.12rem !important;width:100% !important;
+          }
+          [class*="st-key-backpack_consumables"] [data-testid="stColumn"] {
+            min-width:0 !important;width:calc(20% - .1rem) !important;
+            max-width:calc(20% - .1rem) !important;flex:0 0 calc(20% - .1rem) !important;
+            padding:.12rem !important;min-height:4.3rem !important;overflow:hidden !important;
+          }
+          [class*="st-key-backpack_consumables"] [data-testid="stMetricLabel"] {
+            font-size:.58rem !important;line-height:1.05 !important;white-space:normal !important;
+          }
+          [class*="st-key-backpack_consumables"] [data-testid="stMetricValue"] {
+            font-size:1rem !important;line-height:1.1 !important;
+          }
         }
         </style>
         """,

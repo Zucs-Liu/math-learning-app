@@ -5,7 +5,7 @@ from pathlib import Path
 import streamlit as st
 
 from game_data.config import SLOT_ICONS, SLOT_NAMES
-from game_logic.economy import dismantle_inventory_items
+from game_logic.economy import dismantle_inventory_items, dismantle_value
 from game_logic.equipment import item_text, player_stats
 from game_logic.loot import find_inventory_item as find_item
 from game_logic.profile import equipped_item_uids
@@ -528,7 +528,16 @@ def _render_compact_stats(profile):
 def _render_unused_equipment(profile, save_profile):
     equipped_uids = equipped_item_uids(profile)
     items = [item for item in profile["inventory"] if item["uid"] not in equipped_uids]
-    st.write(f"### 未使用裝備（{len(items)}件）")
+    title_col, bulk_col = st.columns([3, 2], vertical_alignment="center")
+    title_col.write(f"### 未使用裝備（{len(items)}件）")
+    bulk_mode = st.session_state.get("character_bulk_dismantle_mode", False)
+    if bulk_col.button(
+        "取消多項分解" if bulk_mode else "多項分解",
+        key="toggle_character_bulk_dismantle",
+        use_container_width=True,
+    ):
+        st.session_state.character_bulk_dismantle_mode = not bulk_mode
+        st.rerun()
     filter_col, star_col, sort_col = st.columns(3)
     selected_slot = filter_col.selectbox(
         "部位", ["all", *SLOT_NAMES],
@@ -555,6 +564,50 @@ def _render_unused_equipment(profile, save_profile):
         visible.sort(key=lambda item: (slot_order[item["slot"]], -item["stars"], item["name"]))
     else:
         visible.sort(key=lambda item: (-item["stars"], slot_order[item["slot"]], item["name"]))
+
+    eligible_items = [item for item in items if item["stars"] in (1, 2, 3)]
+    if bulk_mode:
+        selected_items = [
+            item for item in eligible_items
+            if st.session_state.get(f"character_bulk_break_{item['uid']}", False)
+        ]
+        coin_gain, stone_gain = dismantle_value(selected_items)
+        st.info(
+            f"已選擇 {len(selected_items)} 件，可獲得 {coin_gain} 金幣"
+            + (f"、{stone_gain} 顆融煉石" if stone_gain else "")
+            + "。四星以上裝備不可分解。"
+        )
+        confirm_col, clear_col = st.columns(2)
+        if confirm_col.button(
+            "確認分解所選裝備",
+            key="confirm_character_bulk_dismantle",
+            type="primary",
+            disabled=not selected_items,
+            use_container_width=True,
+        ):
+            if dismantle_inventory_items(profile, selected_items):
+                save_profile(profile)
+                for item in eligible_items:
+                    st.session_state.pop(f"character_bulk_break_{item['uid']}", None)
+                st.session_state.character_bulk_dismantle_mode = False
+                st.session_state.character_bulk_dismantle_notice = (
+                    f"已分解 {len(selected_items)} 件裝備，獲得 {coin_gain} 金幣"
+                    + (f"與 {stone_gain} 顆融煉石" if stone_gain else "")
+                    + "。"
+                )
+                st.rerun()
+        if clear_col.button(
+            "取消並清除選取",
+            key="clear_character_bulk_dismantle",
+            use_container_width=True,
+        ):
+            for item in eligible_items:
+                st.session_state.pop(f"character_bulk_break_{item['uid']}", None)
+            st.session_state.character_bulk_dismantle_mode = False
+            st.rerun()
+
+    if st.session_state.get("character_bulk_dismantle_notice"):
+        st.success(st.session_state.pop("character_bulk_dismantle_notice"))
     if not visible:
         st.info("目前沒有符合條件的未使用裝備。")
         return
@@ -562,6 +615,14 @@ def _render_unused_equipment(profile, save_profile):
         columns = st.columns(5)
         for column, item in zip(columns, visible[start:start + 5]):
             label = f"{SLOT_ICONS[item['slot']]} {item['name']}\n{'⭐' * item['stars']}"
+            if bulk_mode:
+                column.checkbox(
+                    label,
+                    key=f"character_bulk_break_{item['uid']}",
+                    disabled=item["stars"] >= 4,
+                    help="四星以上裝備不可分解" if item["stars"] >= 4 else "勾選後可一次分解",
+                )
+                continue
             with column.popover(label, use_container_width=True):
                 render_item_comparison(profile, item)
                 if st.button("裝備", key=f"character_equip_{item['uid']}", use_container_width=True):
