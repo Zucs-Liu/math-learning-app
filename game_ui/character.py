@@ -548,7 +548,7 @@ def render_character_equipment_hub(profile, save_profile):
             display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;
           }
         }
-        .st-key-character_panel_navigation {margin-top:-.45rem !important;}
+        .st-key-character_panel_navigation {margin-top:0 !important;}
         .st-key-character_panel_navigation [data-testid="stHorizontalBlock"] {gap:.35rem !important;}
         .st-key-character_equipment_view > [data-testid="stVerticalBlock"] {gap:.08rem !important;}
         .st-key-character_scroll_view {
@@ -638,6 +638,12 @@ def render_character_equipment_dialog(profile, save_profile):
           color:#e53935 !important;border-color:#111 !important;background:#fff !important;
         }
         @media (max-width:768px) and (orientation:portrait) {
+          /* 對話框最外層會為「樣式、關閉鈕、分頁、內容」各保留一個
+             16px flex gap。前三者本身不佔高度，卻會累積成大片空白；
+             直屏改成真正連續的標題列、分頁列、內容列。 */
+          [data-testid="stDialog"] [role="dialog"] > div > [data-testid="stVerticalBlock"] > [data-testid="stLayoutWrapper"] > [data-testid="stVerticalBlock"] {
+            gap:0 !important;
+          }
           body:has([data-testid="stDialog"]) [data-testid="stHeader"] {display:none !important;}
           body:has([data-testid="stDialog"]) [data-baseweb="modal"] {
             position:fixed !important;inset:0 !important;width:100% !important;height:100dvh !important;
@@ -672,14 +678,32 @@ def render_character_equipment_dialog(profile, save_profile):
           [data-testid="stDialog"] [role="dialog"] h2:first-of-type {
             font-size:1.05rem !important;line-height:1 !important;margin:0 !important;padding:0 !important;
           }
-          .st-key-character_panel_navigation {margin-top:-.15rem !important;margin-bottom:0 !important;}
+          .st-key-character_panel_navigation {
+            margin:0 !important;padding:0 !important;height:2rem !important;min-height:2rem !important;
+          }
+          .st-key-character_panel_navigation > [data-testid="stVerticalBlock"] {
+            height:2rem !important;min-height:2rem !important;gap:0 !important;
+          }
+          .st-key-character_panel_navigation [data-testid="stHorizontalBlock"] {
+            height:2rem !important;min-height:2rem !important;gap:.15rem !important;
+            align-items:stretch !important;
+          }
+          .st-key-character_panel_navigation [data-testid="stColumn"],
+          .st-key-character_panel_navigation [data-testid="stLayoutWrapper"] {
+            height:2rem !important;min-height:2rem !important;margin:0 !important;padding:0 !important;
+          }
+          .st-key-character_panel_navigation button,
+          .st-key-character_panel_navigation [data-baseweb="popover"] {
+            height:2rem !important;min-height:2rem !important;margin:0 !important;
+          }
           .st-key-character_equipment_view {
             position:absolute !important;left:.45rem !important;right:.45rem !important;
-            /* 對齊分頁列下緣；原本 10.35rem 會在分頁下方留下約 70px 空白。 */
-            top:6rem !important;bottom:.38rem !important;
+            /* 標題列下方緊接 2rem 分頁列；第三列從分頁下緣開始。 */
+            top:3.45rem !important;bottom:.38rem !important;
             width:auto !important;height:auto !important;min-height:0 !important;
             margin:0 !important;padding:0 !important;overflow:hidden !important;
             isolation:isolate !important;
+            --character-stats-height:calc((100dvh - 2rem) / 3);
           }
           .st-key-character_equipment_view > [data-testid="stVerticalBlock"] {
             position:relative !important;display:block !important;
@@ -688,7 +712,7 @@ def render_character_equipment_dialog(profile, save_profile):
           /* Streamlit 會替每個元件加 stElementContainer；必須定位這一層，
              否則只定位裡面的 Markdown，寬度會縮成文字本身。 */
           .st-key-character_equipment_view [data-testid="stElementContainer"]:has(.st-key-character_equipment_scene) {
-            position:absolute !important;inset:0 0 33.333dvh 0 !important;
+            position:absolute !important;inset:0 0 var(--character-stats-height) 0 !important;
             width:100% !important;height:auto !important;min-height:0 !important;
             margin:0 !important;padding:0 !important;overflow:hidden !important;
           }
@@ -703,8 +727,8 @@ def render_character_equipment_dialog(profile, save_profile):
           }
           .st-key-character_equipment_view [data-testid="stElementContainer"]:has(.character-stat-panels) {
             position:absolute !important;left:.08rem !important;right:.08rem !important;bottom:.08rem !important;
-            width:auto !important;height:calc(33.333dvh - .16rem) !important;
-            max-height:calc(33.333dvh - .16rem) !important;min-height:0 !important;
+            width:auto !important;height:calc(var(--character-stats-height) - .16rem) !important;
+            max-height:calc(var(--character-stats-height) - .16rem) !important;min-height:0 !important;
             margin:0 !important;padding:0 !important;background:#fff !important;z-index:5 !important;
             overflow:hidden !important;box-sizing:border-box !important;contain:layout paint !important;
           }
