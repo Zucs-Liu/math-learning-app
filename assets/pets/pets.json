@@ -1,0 +1,78 @@
+{
+  "elements": {
+    "wood": {"name": "木", "color": "#35A853", "strong_against": "earth"},
+    "earth": {"name": "土", "color": "#795548", "strong_against": "water"},
+    "water": {"name": "水", "color": "#2196F3", "strong_against": "fire"},
+    "fire": {"name": "火", "color": "#E53935", "strong_against": "wood"},
+    "light": {"name": "光", "color": "#FBC02D", "strong_against": "dark"},
+    "dark": {"name": "暗", "color": "#512DA8", "strong_against": "light"}
+  },
+  "pets": [
+    {
+      "id": "green_cap_mouse",
+      "name": "綠帽鼠",
+      "element": "wood",
+      "animal": "mouse",
+      "images": {
+        "mythic": "assets/pets/wood-green-cap-mouse-mythic.png",
+        "chibi": "assets/pets/wood-green-cap-mouse-chibi.png",
+        "icon": "assets/pets/wood-green-cap-mouse-icon.png"
+      }
+    },
+    {
+      "id": "chocolate_snake",
+      "name": "巧克力蛇",
+      "element": "earth",
+      "animal": "snake",
+      "images": {
+        "mythic": "assets/pets/earth-chocolate-snake-mythic.png",
+        "chibi": "assets/pets/earth-chocolate-snake-chibi.png",
+        "icon": "assets/pets/earth-chocolate-snake-icon.png"
+      }
+    },
+    {
+      "id": "jelly_fish",
+      "name": "果凍魚",
+      "element": "water",
+      "animal": "fish",
+      "images": {
+        "mythic": "assets/pets/water-jelly-fish-mythic.png",
+        "chibi": "assets/pets/water-jelly-fish-chibi.png",
+        "icon": "assets/pets/water-jelly-fish-icon.png"
+      }
+    },
+    {
+      "id": "redtail_dog",
+      "name": "赤尾狗",
+      "element": "fire",
+      "animal": "dog",
+      "images": {
+        "mythic": "assets/pets/fire-redtail-dog-mythic.png",
+        "chibi": "assets/pets/fire-redtail-dog-chibi.png",
+        "icon": "assets/pets/fire-redtail-dog-icon.png"
+      }
+    },
+    {
+      "id": "cunning_fox",
+      "name": "心機狐",
+      "element": "dark",
+      "animal": "fox",
+      "images": {
+        "mythic": "assets/pets/dark-cunning-fox-mythic.png",
+        "chibi": "assets/pets/dark-cunning-fox-chibi.png",
+        "icon": "assets/pets/dark-cunning-fox-icon.png"
+      }
+    },
+    {
+      "id": "big_orange_cat",
+      "name": "大橘",
+      "element": "light",
+      "animal": "cat",
+      "images": {
+        "mythic": "assets/pets/light-big-orange-cat-mythic.png",
+        "chibi": "assets/pets/light-big-orange-cat-chibi.png",
+        "icon": "assets/pets/light-big-orange-cat-icon.png"
+      }
+    }
+  ]
+}
