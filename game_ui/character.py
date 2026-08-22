@@ -638,11 +638,100 @@ def _render_unused_equipment(profile, save_profile):
                     st.caption("四星以上裝備不能分解。")
 
 
-def _render_pet_placeholder():
-    st.write("### 🐾 寵物")
-    st.info("寵物召喚與寵物能力將在下一階段開放。")
-    st.markdown("**當前裝備：尚未裝備寵物**")
-    st.caption("此處已預留寵物立繪、屬性、詞條、技能與兩套寵物配置的位置。")
+def _render_pet_layout_preview():
+    """Render the first pet-panel layout without enabling pet mechanics yet."""
+    pet_path = (
+        Path(__file__).resolve().parent.parent
+        / "assets"
+        / "pets"
+        / "light-big-orange-cat-chibi.png"
+    )
+    with st.container(key="character_pet_preview"):
+        with st.container(key="character_pet_identity_row"):
+            identity_col, picture_col, sort_col = st.columns(
+                [3.6, 2.2, 1.5], vertical_alignment="center"
+            )
+            identity_col.markdown("**Lv1　大橘**")
+            picture_col.button(
+                "切換圖案",
+                key="character_pet_preview_picture",
+                disabled=True,
+                use_container_width=True,
+            )
+            sort_col.button(
+                "排序",
+                key="character_pet_preview_sort",
+                disabled=True,
+                use_container_width=True,
+            )
+
+        with st.container(key="character_pet_page_count"):
+            st.markdown("**1 / 6**")
+
+        with st.container(key="character_pet_stage"):
+            previous_col, art_col, next_col = st.columns(
+                [1, 6, 1], vertical_alignment="center"
+            )
+            previous_col.button(
+                "←",
+                key="character_pet_preview_previous",
+                disabled=True,
+                use_container_width=True,
+            )
+            with art_col:
+                with st.container(key="character_pet_art"):
+                    st.image(str(pet_path), width="stretch")
+            next_col.button(
+                "→",
+                key="character_pet_preview_next",
+                disabled=True,
+                use_container_width=True,
+            )
+
+        with st.container(key="character_pet_action_row"):
+            cultivate_col, skill_col, follow_col = st.columns(3)
+            cultivate_col.button(
+                "培養",
+                key="character_pet_preview_cultivate",
+                disabled=True,
+                use_container_width=True,
+            )
+            skill_col.button(
+                "技能",
+                key="character_pet_preview_skill",
+                disabled=True,
+                use_container_width=True,
+            )
+            follow_col.button(
+                "跟隨",
+                key="character_pet_preview_follow",
+                disabled=True,
+                use_container_width=True,
+            )
+
+        st.markdown(
+            """
+            <div class="character-pet-stat-panels">
+              <section class="character-pet-stat-box">
+                <h4>基礎能力</h4>
+                <div class="character-pet-stat-list">
+                  <div><b>星級</b><span>★☆☆</span></div>
+                  <div><b>Lv</b><span>1</span></div>
+                  <div><b>EXP</b><span>0 / 100</span></div>
+                  <div><b>屬性</b><span>光</span></div>
+                </div>
+              </section>
+              <section class="character-pet-stat-box">
+                <h4>特殊詞條</h4>
+                <div class="character-pet-stat-list">
+                  <div><b>額外裝備掉落機率</b><span>+10%</span></div>
+                  <div><b>跟隨時造成的攻擊轉為光屬性</b><span>光</span></div>
+                </div>
+              </section>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def _render_titles(profile, save_profile):
@@ -692,6 +781,122 @@ def render_character_equipment_hub(profile, save_profile):
         .st-key-character_scroll_view > [data-testid="stVerticalBlockBorderWrapper"] {
           max-height:min(62vh,34rem) !important;overflow-y:auto !important;background:#fff !important;
         }
+        .st-key-character_pet_view {background:#fff;color:#1f2937;}
+        .st-key-character_pet_preview > [data-testid="stVerticalBlock"] {gap:.22rem !important;}
+        .st-key-character_pet_identity_row [data-testid="stHorizontalBlock"],
+        .st-key-character_pet_action_row [data-testid="stHorizontalBlock"],
+        .st-key-character_pet_stage [data-testid="stHorizontalBlock"] {
+          display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;
+          align-items:center !important;
+        }
+        .st-key-character_pet_identity_row p {margin:0 !important;font-size:1.05rem;font-weight:800;}
+        .st-key-character_pet_page_count p {margin:0 !important;}
+        .st-key-character_pet_stage {min-height:19rem;}
+        .st-key-character_pet_art [data-testid="stImage"] img {
+          display:block;max-height:21rem;width:100%;object-fit:contain;border-radius:10px;
+        }
+        .st-key-character_pet_stage button {font-size:1.4rem !important;font-weight:800 !important;}
+        .character-pet-stat-panels {display:grid;grid-template-columns:1fr 1fr;gap:.5rem;}
+        .character-pet-stat-box {
+          border:1px solid #d6dce5;border-radius:8px;padding:.5rem;background:#fff;
+          color:#1f2937;min-width:0;
+        }
+        .character-pet-stat-box * {color:#1f2937 !important;}
+        .character-pet-stat-box h4 {margin:0 0 .38rem;text-align:center;font-size:1rem;}
+        .character-pet-stat-list {overflow-y:auto;}
+        .character-pet-stat-list div {
+          display:flex;justify-content:space-between;gap:.35rem;padding:.18rem 0;
+          border-bottom:1px solid #edf0f4;font-size:.82rem;line-height:1.25;
+        }
+        .character-pet-stat-list div:last-child {border-bottom:0;}
+        .character-pet-stat-list span {white-space:nowrap;font-weight:700;}
+        @media (max-width:768px) and (orientation:portrait) {
+          .st-key-character_pet_view {
+            position:absolute !important;left:.45rem !important;right:.45rem !important;
+            top:3.45rem !important;bottom:.38rem !important;
+            width:auto !important;height:auto !important;margin:0 !important;padding:0 !important;
+            overflow:hidden !important;
+          }
+          .st-key-character_pet_view > [data-testid="stVerticalBlock"] {
+            height:100% !important;min-height:0 !important;gap:0 !important;
+          }
+          .st-key-character_pet_preview,
+          .st-key-character_pet_preview > [data-testid="stVerticalBlock"] {
+            height:100% !important;min-height:0 !important;overflow:hidden !important;
+          }
+          .st-key-character_pet_preview > [data-testid="stVerticalBlock"] {
+            display:grid !important;
+            grid-template-rows:2rem 1.15rem minmax(0,1fr) 2rem 31%;
+            gap:.08rem !important;
+          }
+          .st-key-character_pet_identity_row,
+          .st-key-character_pet_action_row,
+          .st-key-character_pet_stage,
+          .st-key-character_pet_page_count {margin:0 !important;padding:0 !important;min-height:0 !important;}
+          .st-key-character_pet_identity_row [data-testid="stHorizontalBlock"],
+          .st-key-character_pet_action_row [data-testid="stHorizontalBlock"],
+          .st-key-character_pet_stage [data-testid="stHorizontalBlock"] {
+            gap:.12rem !important;height:100% !important;min-height:0 !important;
+          }
+          .st-key-character_pet_identity_row [data-testid="stColumn"],
+          .st-key-character_pet_action_row [data-testid="stColumn"],
+          .st-key-character_pet_stage [data-testid="stColumn"] {
+            min-width:0 !important;width:auto !important;padding:0 !important;
+          }
+          .st-key-character_pet_identity_row [data-testid="stColumn"]:nth-child(1) {
+            flex:0 0 calc(45% - .08rem) !important;max-width:calc(45% - .08rem) !important;
+          }
+          .st-key-character_pet_identity_row [data-testid="stColumn"]:nth-child(2) {
+            flex:0 0 calc(35% - .08rem) !important;max-width:calc(35% - .08rem) !important;
+          }
+          .st-key-character_pet_identity_row [data-testid="stColumn"]:nth-child(3) {
+            flex:0 0 calc(20% - .08rem) !important;max-width:calc(20% - .08rem) !important;
+          }
+          .st-key-character_pet_action_row [data-testid="stColumn"] {
+            flex:0 0 calc(33.333% - .08rem) !important;max-width:calc(33.333% - .08rem) !important;
+          }
+          .st-key-character_pet_stage [data-testid="stColumn"]:nth-child(1),
+          .st-key-character_pet_stage [data-testid="stColumn"]:nth-child(3) {
+            flex:0 0 calc(12% - .08rem) !important;max-width:calc(12% - .08rem) !important;
+          }
+          .st-key-character_pet_stage [data-testid="stColumn"]:nth-child(2) {
+            flex:0 0 calc(76% - .08rem) !important;max-width:calc(76% - .08rem) !important;
+          }
+          .st-key-character_pet_identity_row button,
+          .st-key-character_pet_action_row button {
+            min-height:1.9rem !important;height:1.9rem !important;padding:.05rem !important;
+            font-size:.68rem !important;
+          }
+          .st-key-character_pet_identity_row p {font-size:.78rem !important;white-space:nowrap !important;}
+          .st-key-character_pet_page_count p {font-size:.72rem !important;line-height:1 !important;}
+          .st-key-character_pet_stage {min-height:0 !important;height:100% !important;}
+          .st-key-character_pet_stage button {
+            min-height:2rem !important;height:2rem !important;padding:0 !important;font-size:1rem !important;
+          }
+          .st-key-character_pet_art,
+          .st-key-character_pet_art > [data-testid="stVerticalBlock"],
+          .st-key-character_pet_art [data-testid="stImage"],
+          .st-key-character_pet_art [data-testid="stImage"] > div,
+          .st-key-character_pet_art [data-testid="stImage"] img {
+            height:100% !important;max-height:100% !important;min-height:0 !important;
+          }
+          .st-key-character_pet_art [data-testid="stImage"] img {
+            width:100% !important;object-fit:contain !important;border-radius:8px !important;
+          }
+          .character-pet-stat-panels {height:100%;min-height:0;gap:.22rem;}
+          .character-pet-stat-box {
+            display:grid;grid-template-rows:1.75rem minmax(0,1fr);
+            height:100%;min-height:0;padding:.18rem .25rem;border-radius:5px;box-sizing:border-box;
+          }
+          .character-pet-stat-box h4 {
+            margin:0;display:flex;align-items:center;justify-content:center;
+            font-size:.82rem;line-height:1;
+          }
+          .character-pet-stat-list {
+            min-height:0;height:100%;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;
+          }
+          .character-pet-stat-list div {font-size:.65rem;padding:.16rem 0;align-items:flex-start;}
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -702,13 +907,14 @@ def render_character_equipment_hub(profile, save_profile):
         with st.container(key="character_equipment_view"):
             _render_equipment_scene(profile, save_profile)
             _render_compact_stats(profile)
+    elif view == "pet":
+        with st.container(key="character_pet_view"):
+            _render_pet_layout_preview()
     else:
-        # 未使用裝備、寵物與稱號會持續增加，限制在視窗內獨立捲動。
+        # 未使用裝備與稱號會持續增加，限制在視窗內獨立捲動。
         with st.container(key="character_scroll_view", height=520, border=False):
             if view == "unused":
                 _render_unused_equipment(profile, save_profile)
-            elif view == "pet":
-                _render_pet_placeholder()
             else:
                 _render_titles(profile, save_profile)
 
