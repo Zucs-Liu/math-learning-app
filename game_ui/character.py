@@ -647,17 +647,25 @@ def render_character_equipment_dialog(profile, save_profile):
           body:has([data-testid="stDialog"]) [data-testid="stHeader"] {display:none !important;}
           body:has([data-testid="stDialog"]) [data-baseweb="modal"] {
             position:fixed !important;inset:0 !important;width:100% !important;height:100dvh !important;
-            margin:0 !important;padding:0 !important;overflow:hidden !important;z-index:2147483647 !important;
+            margin:0 !important;padding:0 !important;overflow:hidden !important;z-index:1000 !important;
           }
           body:has([data-testid="stDialog"]) [data-baseweb="modal"] > div {
             margin:0 !important;padding:0 !important;max-width:100% !important;max-height:100dvh !important;
           }
           [data-testid="stDialog"] {
-            position:fixed !important;inset:0 !important;z-index:2147483647 !important;
+            position:fixed !important;inset:0 !important;z-index:1000 !important;
             box-sizing:border-box !important;width:100% !important;height:100dvh !important;
             max-width:100% !important;max-height:100dvh !important;
             padding:0 !important;margin:0 !important;align-items:stretch !important;justify-content:stretch !important;
             overflow:hidden !important;overscroll-behavior:none !important;background:#fff !important;
+          }
+          /* BaseWeb 會把 selectbox、popover 的內容掛在 dialog 外面的 portal。
+             角色視窗若佔用最高 z-index，這些選單其實已開啟卻會被白底蓋住。
+             視窗維持在頁面上方，互動式浮層再高一層即可。 */
+          body:has([data-testid="stDialog"]) [data-baseweb="popover"],
+          body:has([data-testid="stDialog"]) [data-baseweb="menu"],
+          body:has([data-testid="stDialog"]) [role="listbox"] {
+            z-index:2000 !important;
           }
           [data-testid="stDialog"] [role="dialog"] {
             position:absolute !important;inset:0 !important;
