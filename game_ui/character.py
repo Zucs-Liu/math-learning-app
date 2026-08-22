@@ -16,6 +16,25 @@ LEFT_SLOTS = ("helmet", "necklace", "weapon", "gloves", "ring")
 RIGHT_SLOTS = ("armor", "shield", "belt", "boots")
 
 
+def _candidate_option_text(item):
+    """Return a compact two-line label that fits the portrait select menu."""
+    text = item_text(item).replace("｜固定：", "\n").replace("｜詞條：", "｜")
+    replacements = {
+        "菁英BOSS初始血量降低": "菁英血量降低",
+        "第一擊額外扣除菁英BOSS血量": "首擊扣血",
+        "對菁英BOSS傷害": "菁英傷害",
+        "菁英BOSS攻速降低": "菁英攻速降低",
+        "攻擊速度": "攻速",
+        "傷害減免": "減傷",
+        "暴擊率": "暴率",
+        "暴擊傷害": "暴傷",
+        "開場護盾": "護盾",
+    }
+    for original, compact in replacements.items():
+        text = text.replace(original, compact)
+    return text.replace(" +", "+")
+
+
 def _equipment_slot(profile, slot, key_prefix):
     uid = profile["equipment"].get(slot)
     item = find_item(profile, uid) if uid else None
@@ -146,7 +165,8 @@ def _render_slot_selector(profile, slot, save_profile):
                 [item["uid"] for item in candidates],
                 index=None,
                 placeholder="點擊箭頭查看未使用裝備",
-                format_func=lambda uid: item_text(find_item(profile, uid)),
+                # 清單採兩行精簡顯示；選定後，下方仍會顯示完整能力。
+                format_func=lambda uid: _candidate_option_text(find_item(profile, uid)),
                 key=candidate_key,
             )
         else:
@@ -728,13 +748,19 @@ def render_character_equipment_dialog(profile, save_profile):
             max-width:calc(100vw - 1rem) !important;
           }
           body:has([data-testid="stDialog"]) [role="option"] {
-            height:auto !important;min-height:2.5rem !important;
-            align-items:flex-start !important;padding:.42rem .55rem !important;
+            display:block !important;height:auto !important;min-height:3.45rem !important;
+            max-height:none !important;align-items:flex-start !important;
+            padding:.36rem .55rem !important;box-sizing:border-box !important;
           }
           body:has([data-testid="stDialog"]) [role="option"],
           body:has([data-testid="stDialog"]) [role="option"] * {
-            white-space:normal !important;overflow:visible !important;text-overflow:clip !important;
-            overflow-wrap:anywhere !important;word-break:break-word !important;line-height:1.25 !important;
+            white-space:pre-wrap !important;overflow:visible !important;text-overflow:clip !important;
+            overflow-wrap:anywhere !important;word-break:break-word !important;line-height:1.22 !important;
+          }
+          body:has([data-testid="stDialog"]) [role="option"] > div,
+          body:has([data-testid="stDialog"]) [role="option"] span {
+            display:block !important;width:100% !important;max-width:100% !important;
+            height:auto !important;max-height:none !important;box-sizing:border-box !important;
           }
           [data-testid="stDialog"] [role="dialog"] {
             position:absolute !important;inset:0 !important;
