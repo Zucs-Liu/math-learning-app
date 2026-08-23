@@ -1,5 +1,7 @@
 """Character save-data defaults and backward-compatible normalization."""
 
+from game_logic.pets import default_owned_pet, ensure_pet_profile
+
 
 def create_new_profile(name, slot_names, unit_ids):
     return {
@@ -35,6 +37,25 @@ def create_new_profile(name, slot_names, unit_ids):
         "equipment": {slot: None for slot in slot_names},
         "equipment_loadouts": None,
         "active_equipment_loadout": 0,
+        "pets": [default_owned_pet()],
+        "equipped_pet_id": None,
+        "pet_image_style": "chibi",
+        "pet_sort_mode": "acquired",
+        "pet_food_cans": 0,
+        "pet_element_elixirs": {
+            "light": 0, "dark": 0, "wood": 0,
+            "earth": 0, "water": 0, "fire": 0,
+        },
+        "pet_element_souls": {
+            "light": 0, "dark": 0, "wood": 0,
+            "earth": 0, "water": 0, "fire": 0,
+        },
+        "pet_food_boss_mail_sent": [],
+        "summon_tickets": 0,
+        "pet_summon_period": None,
+        "pet_free_summons_used": 0,
+        "pet_paid_summons_used": 0,
+        "pet_summon_chapter_mail_sent": [],
         "unit_best_stars": {unit_id: 0 for unit_id in unit_ids},
         "chapter_reward_claimed": False,
         "collection_reward_claimed": False,
@@ -110,6 +131,7 @@ def normalize_profile_data(profile, name, slot_names, unit_ids, item_chapter_id)
     for slot in slot_names:
         profile["equipment"].setdefault(slot, None)
     ensure_equipment_loadouts(profile, slot_names)
+    ensure_pet_profile(profile)
     for unit_id in unit_ids:
         profile["unit_best_stars"].setdefault(unit_id, 0)
     sync_profile_collection_catalog(profile, item_chapter_id)

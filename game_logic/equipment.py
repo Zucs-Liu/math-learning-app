@@ -85,6 +85,9 @@ def equipped_items(profile):
 
 
 def player_stats(profile):
+    # Import locally to keep the equipment module usable during old-save migration.
+    from game_logic.pets import equipped_pet
+
     level_factor = 1 + 0.10 * (profile["level"] - 1)
     base = {"hp": 100 * level_factor, "attack": 20 * level_factor, "defense": 10 * level_factor, "attack_speed": 1.0}
     flat = {"hp": 0.0, "attack": 0.0, "defense": 0.0, "attack_speed": 0.0}
@@ -121,5 +124,19 @@ def player_stats(profile):
         "shield_pct": min(combat["shield_pct"], 0.50),
         "boss_attack_slow_pct": min(combat["boss_attack_slow_pct"], 0.40),
     }
+    pet = equipped_pet(profile)
+    if pet:
+        pet_bonuses = pet.get("unlocked_bonuses", {})
+        final_stats["hp"] *= 1 + float(pet_bonuses.get("hp_pct", 0.0))
+        final_stats["attack"] *= 1 + float(pet_bonuses.get("attack_pct", 0.0))
+        final_stats["defense"] *= 1 + float(pet_bonuses.get("defense_pct", 0.0))
+        final_stats["attack_speed"] += float(
+            pet_bonuses.get("attack_speed_flat", 0.0)
+        )
+    final_stats["attack_element"] = pet["element"] if pet else None
+    final_stats["attack_element_name"] = pet["element_name"] if pet else None
+    final_stats["attack_element_color"] = pet["element_color"] if pet else None
+    final_stats["equipment_drop_bonus_pct"] = pet["drop_bonus_pct"] if pet else 0.0
+    final_stats["pet_level_bonuses"] = pet.get("unlocked_bonuses", {}) if pet else {}
     final_stats["breakdown"] = {"base": base, "flat": flat, "pct": pct}
     return final_stats

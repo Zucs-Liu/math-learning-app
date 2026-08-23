@@ -215,6 +215,30 @@ def _render_legacy_backpack(profile, save_profile):
         st.info("此分類保留給後續開放的道具與功能。")
 
 
+def _pet_training_consumables(profile):
+    element_names = {
+        "wood": "木", "earth": "土", "water": "水",
+        "fire": "火", "light": "光", "dark": "暗",
+    }
+    items = [("🥫", "美味罐頭", int(profile.get("pet_food_cans", 0)))]
+    elixirs = profile.get("pet_element_elixirs", {})
+    for element in ("wood", "earth", "water", "fire", "light", "dark"):
+        items.append(
+            ("🧪", f"特製仙丹（{element_names[element]}屬性）", int(elixirs.get(element, 0)))
+        )
+    return items
+
+
+def _render_consumable_grid(container_key, consumables):
+    """Render any number of consumables as continuous five-column rows."""
+    with st.container(key=container_key):
+        for start in range(0, len(consumables), 5):
+            row = consumables[start:start + 5]
+            cols = st.columns(5)
+            for col, (icon, name, count) in zip(cols, row):
+                col.metric(f"{icon} {name}", count)
+
+
 def render_backpack(profile, save_profile):
     """The backpack now contains consumables only; gear and titles moved to Character."""
     st.write("### 🧪 消耗道具")
@@ -222,7 +246,15 @@ def render_backpack(profile, save_profile):
         """
         <style>
         [class*="st-key-backpack_consumables"] [data-testid="stColumn"] {
-          border:1px solid #d9dee7;border-radius:8px;padding:.35rem !important;min-height:5rem;
+          border:1px solid #d9dee7;border-radius:8px;padding:.35rem !important;min-height:6rem;
+          overflow:visible !important;
+        }
+        [class*="st-key-backpack_consumables"] [data-testid="stMetricLabel"],
+        [class*="st-key-backpack_consumables"] [data-testid="stMetricLabel"] > div,
+        [class*="st-key-backpack_consumables"] [data-testid="stMetricLabel"] p {
+          white-space:normal !important;overflow:visible !important;text-overflow:clip !important;
+          overflow-wrap:anywhere !important;word-break:break-word !important;
+          -webkit-line-clamp:unset !important;display:block !important;
         }
         @media (max-width:768px) and (orientation:portrait) {
           [class*="st-key-backpack_consumables"] [data-testid="stHorizontalBlock"] {
@@ -232,10 +264,11 @@ def render_backpack(profile, save_profile):
           [class*="st-key-backpack_consumables"] [data-testid="stColumn"] {
             min-width:0 !important;width:calc(20% - .1rem) !important;
             max-width:calc(20% - .1rem) !important;flex:0 0 calc(20% - .1rem) !important;
-            padding:.12rem !important;min-height:4.3rem !important;overflow:hidden !important;
+            padding:.12rem !important;min-height:5.5rem !important;overflow:visible !important;
           }
           [class*="st-key-backpack_consumables"] [data-testid="stMetricLabel"] {
-            font-size:.58rem !important;line-height:1.05 !important;white-space:normal !important;
+            font-size:.58rem !important;line-height:1.08 !important;white-space:normal !important;
+            min-height:2.45rem !important;align-items:flex-start !important;
           }
           [class*="st-key-backpack_consumables"] [data-testid="stMetricValue"] {
             font-size:1rem !important;line-height:1.1 !important;
@@ -247,15 +280,13 @@ def render_backpack(profile, save_profile):
     )
     consumables = [
         ("🎫", "擊殺券", profile["sweep_tickets"]),
+        ("🎟️", "召喚券", int(profile.get("summon_tickets", 0))),
         ("💎", "融煉石", profile["smelting_stones"]),
         ("🧭", "部位融煉石", profile["slot_smelting_stones"]),
         ("🔷", "基礎詞條融煉石", profile["basic_affix_smelting_stones"]),
         ("🔶", "進階詞條融煉石", profile["advanced_affix_smelting_stones"]),
-    ]
-    with st.container(key="backpack_consumables"):
-        cols = st.columns(5)
-        for col, (icon, name, count) in zip(cols, consumables):
-            col.metric(f"{icon} {name}", count)
+    ] + _pet_training_consumables(profile)
+    _render_consumable_grid("backpack_consumables", consumables)
     st.caption("未使用裝備與稱號已移至『角色能力』；背包專門收納消耗道具。")
 
 

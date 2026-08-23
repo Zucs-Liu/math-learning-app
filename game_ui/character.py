@@ -9,13 +9,22 @@ from game_logic.economy import dismantle_inventory_items, dismantle_value
 from game_logic.equipment import item_text, player_stats
 from game_logic.loot import find_inventory_item as find_item
 from game_logic.profile import equipped_item_uids
+from game_logic.pets import (
+    PET_ADVANCE_SOUL_COSTS,
+    PET_TOTAL,
+    advance_pet,
+    ensure_pet_profile,
+    equipped_pet,
+    owned_pet_entries,
+    pet_asset_path,
+    pet_details,
+    use_pet_training_item,
+)
 from game_ui.profile import render_item_comparison
 
 
 LEFT_SLOTS = ("helmet", "necklace", "weapon", "gloves", "ring")
 RIGHT_SLOTS = ("armor", "shield", "belt", "boots")
-
-
 def _candidate_option_text(item):
     """Return a compact two-line label that fits the portrait select menu."""
     text = item_text(item).replace("｜固定：", "\n").replace("｜詞條：", "｜")
@@ -212,6 +221,7 @@ def _render_slot_selector(profile, slot, save_profile):
 
 
 def _render_equipment_scene(profile, save_profile):
+    current_pet = equipped_pet(profile)
     st.markdown(
         """
         <style>
@@ -384,6 +394,53 @@ def _render_equipment_scene(profile, save_profile):
         [class*="st-key-character_slot_"] button p {
           font-size:clamp(1.65rem,7vw,2.15rem) !important;line-height:1 !important;
         }
+        /* 寵物第十格使用真正的 PNG 小圖。透明按鈕覆蓋圖片，保留原本
+           點擊進入寵物分頁的行為，也避開雲端瀏覽器阻擋 CSS data URI。 */
+        .st-key-character_slot_right_pet {
+          position:relative !important;aspect-ratio:1/1 !important;
+          width:100% !important;min-height:0 !important;overflow:hidden !important;
+          border:1px solid #d6dce5 !important;border-radius:.55rem !important;background:#fff !important;
+        }
+        .st-key-character_slot_right_pet > [data-testid="stElementContainer"]:has([data-testid="stImage"]) {
+          position:absolute !important;inset:.12rem !important;z-index:4 !important;
+          width:auto !important;height:auto !important;margin:0 !important;
+          pointer-events:none !important;
+        }
+        .st-key-character_slot_right_pet > [data-testid="stElementContainer"]:has([data-testid="stImage"])
+        > [data-testid="stFullScreenFrame"] {
+          width:100% !important;height:100% !important;
+        }
+        .st-key-character_slot_right_pet [data-testid="stImage"] {
+          position:relative !important;inset:auto !important;z-index:4 !important;
+          width:100% !important;height:100% !important;margin:0 !important;pointer-events:none !important;
+        }
+        .st-key-character_slot_right_pet [data-testid="stImage"] > div,
+        .st-key-character_slot_right_pet [data-testid="stFullScreenFrame"] {
+          width:100% !important;height:100% !important;
+        }
+        .st-key-character_slot_right_pet [data-testid="stImage"] img {
+          display:block !important;width:100% !important;height:100% !important;
+          max-width:100% !important;max-height:100% !important;object-fit:contain !important;
+        }
+        .st-key-character_slot_right_pet .character-equipped-pet-icon {
+          position:absolute !important;inset:.12rem !important;z-index:2 !important;
+          display:block !important;width:calc(100% - .24rem) !important;
+          height:calc(100% - .24rem) !important;object-fit:contain !important;
+          pointer-events:none !important;
+        }
+        .st-key-character_pet_equipment_slot {
+          position:absolute !important;inset:0 !important;z-index:3 !important;
+          width:100% !important;height:100% !important;margin:0 !important;
+          background:transparent !important;
+        }
+        .st-key-character_pet_equipment_slot > div,
+        .st-key-character_pet_equipment_slot [data-testid="stElementContainer"] {
+          background:transparent !important;
+        }
+        .st-key-character_pet_equipment_slot button {
+          width:100% !important;height:100% !important;min-height:0 !important;
+          opacity:0 !important;cursor:pointer !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -403,11 +460,6 @@ def _render_equipment_scene(profile, save_profile):
                 selected_slot = st.session_state.get("character_selected_slot")
                 if selected_slot in SLOT_NAMES:
                     _render_slot_selector(profile, selected_slot, save_profile)
-                elif selected_slot == "pet":
-                    st.info("尚未裝備寵物（下一階段開放）")
-                    if st.button("返回人物", key="character_pet_slot_close", use_container_width=True):
-                        st.session_state.character_selected_slot = None
-                        st.rerun()
                 else:
                     hero_file = (
                         "blue-silver-hero-female-hd.png"
@@ -424,13 +476,34 @@ def _render_equipment_scene(profile, save_profile):
                 for slot in RIGHT_SLOTS:
                     _equipment_slot(profile, slot, "right")
                 with st.container(key="character_slot_right_pet"):
-                    if st.button("🐾", key="character_pet_equipment_slot", help="寵物（點擊查看）", use_container_width=True):
-                        st.session_state.character_selected_slot = "pet"
+                    pet_help = (
+                        f"跟隨寵物：{current_pet['display_name']}（點擊查看）"
+                        if current_pet else "尚未跟隨寵物（點擊查看）"
+                    )
+                    if current_pet:
+                        # Use Streamlit's native media pipeline.  Raw data-URI images
+                        # can be filtered or detached from their positioned parent on
+                        # Community Cloud/mobile, leaving an apparently empty slot.
+                        st.image(
+                            str(pet_asset_path(current_pet, "icon")),
+                            width="stretch",
+                        )
+                    if st.button(
+                        "檢視寵物" if current_pet else "🐾",
+                        key="character_pet_equipment_slot",
+                        help=pet_help,
+                        use_container_width=True,
+                    ):
+                        if current_pet:
+                            st.session_state.character_pet_selected_id = current_pet["id"]
+                        st.session_state.character_panel_view = "pet"
+                        st.session_state.character_selected_slot = None
                         st.rerun()
 
 
 def _render_compact_stats(profile):
     stats = player_stats(profile)
+    current_pet = equipped_pet(profile)
     special_specs = [
         ("菁英BOSS初始血量降低", stats["boss_hp_reduction"]),
         ("第一擊額外扣除菁英BOSS血量", stats["first_hit_percent"]),
@@ -444,11 +517,43 @@ def _render_compact_stats(profile):
     active_effects = [
         f"<div><b>{name}</b><span>+{value:.0%}</span></div>"
         for name, value in special_specs if value
-    ] or ["<div><b>目前無特殊詞條</b><span>—</span></div>"]
+    ]
+    if current_pet:
+        active_effects.extend(
+            [
+                (
+                    "<div><b>寵物・額外裝備掉落機率</b>"
+                    f"<span>+{current_pet['drop_bonus_pct']:.0%}</span></div>"
+                ),
+                (
+                    "<div><b>寵物・攻擊屬性</b>"
+                    f"<span>{current_pet['element_name']}</span></div>"
+                ),
+            ]
+        )
+        bonus_labels = (
+            ("hp_pct", "寵物・HP加成", "+25%"),
+            ("attack_pct", "寵物・攻擊加成", "+25%"),
+            ("defense_pct", "寵物・防禦加成", "+25%"),
+            ("attack_speed_flat", "寵物・攻速加成", "+0.250/秒"),
+        )
+        for key, label, display in bonus_labels:
+            if current_pet.get("unlocked_bonuses", {}).get(key):
+                active_effects.append(f"<div><b>{label}</b><span>{display}</span></div>")
+    if not active_effects:
+        active_effects = ["<div><b>目前無特殊詞條</b><span>—</span></div>"]
     exp_text = (
         f"{profile['exp']} / {profile['level'] * 100}"
         if profile["level"] < 20 else "已滿級"
     )
+    attack_label = "攻擊"
+    attack_row_style = ""
+    if current_pet:
+        attack_label += f"（{current_pet['element_name']}屬性）"
+        attack_row_style = (
+            f" style=\"border-top:2px solid {current_pet['element_color']};"
+            f"border-bottom:2px solid {current_pet['element_color']};\""
+        )
     st.markdown(
         f"""
         <style>
@@ -511,7 +616,7 @@ def _render_compact_stats(profile):
               <div><b>等級</b><span>Lv{profile['level']}</span></div>
               <div><b>EXP</b><span>{exp_text}</span></div>
               <div><b>HP</b><span>{stats['hp']:.1f}</span></div>
-              <div><b>攻擊</b><span>{stats['attack']:.1f}</span></div>
+              <div{attack_row_style}><b>{attack_label}</b><span>{stats['attack']:.1f}</span></div>
               <div><b>防禦</b><span>{stats['defense']:.1f}</span></div>
               <div><b>攻速</b><span>{stats['attack_speed']:.2f}/秒</span></div>
             </div>
@@ -639,100 +744,270 @@ def _render_unused_equipment(profile, save_profile):
                     st.caption("四星以上裝備不能分解。")
 
 
-def _render_pet_layout_preview():
-    """Render the first pet-panel layout without enabling pet mechanics yet."""
-    pet_path = (
-        Path(__file__).resolve().parent.parent
-        / "assets"
-        / "pets"
-        / "light-big-orange-cat-chibi.png"
-    )
+def _render_pet_layout_preview(profile, save_profile):
+    """Render owned pets, persistent art preference, sorting and follow state."""
+    ensure_pet_profile(profile)
+    sort_options = ("acquired", "element", "stars")
+    sort_labels = {
+        "acquired": "獲得時間（舊→新）",
+        "element": "屬性（光暗木土水火）",
+        "stars": "星級（一星→三星）",
+    }
+    selected_sort = profile.get("pet_sort_mode", "acquired")
+    pets = owned_pet_entries(profile, selected_sort)
+    selected_id = st.session_state.get("character_pet_selected_id")
+    owned_ids = [entry["id"] for entry in pets]
+    if selected_id not in owned_ids:
+        selected_id = profile.get("equipped_pet_id") if profile.get("equipped_pet_id") in owned_ids else owned_ids[0]
+        st.session_state.character_pet_selected_id = selected_id
+    current_index = owned_ids.index(selected_id)
+    current_pet = pet_details(profile, selected_id)
+
     with st.container(key="character_pet_preview"):
         with st.container(key="character_pet_identity_row"):
             identity_col, picture_col, sort_col = st.columns(
-                [3.6, 2.2, 1.5], vertical_alignment="center"
+                [3.1, 1.7, 2.7], vertical_alignment="center"
             )
-            identity_col.markdown("**Lv1　大橘**")
-            picture_col.button(
+            identity_col.markdown(
+                f"**Lv{current_pet['level']}　{current_pet['display_name']}**"
+            )
+            if picture_col.button(
                 "切換圖案",
                 key="character_pet_preview_picture",
-                disabled=True,
+                help=(
+                    "目前使用Q版大圖，點擊切換神話大圖"
+                    if profile["pet_image_style"] == "chibi"
+                    else "目前使用神話大圖，點擊切換Q版大圖"
+                ),
                 use_container_width=True,
-            )
-            sort_col.button(
+            ):
+                profile["pet_image_style"] = (
+                    "mythic" if profile["pet_image_style"] == "chibi" else "chibi"
+                )
+                save_profile(profile)
+                st.rerun()
+            chosen_sort = sort_col.selectbox(
                 "排序",
-                key="character_pet_preview_sort",
-                disabled=True,
-                use_container_width=True,
+                sort_options,
+                index=sort_options.index(selected_sort),
+                format_func=lambda value: sort_labels[value],
+                key="character_pet_sort_choice",
+                label_visibility="collapsed",
             )
+            if chosen_sort != selected_sort:
+                profile["pet_sort_mode"] = chosen_sort
+                save_profile(profile)
+                st.rerun()
 
         with st.container(key="character_pet_page_count"):
-            st.markdown("**1 / 6**")
+            st.markdown(f"**{current_index + 1} / {PET_TOTAL}**")
 
         with st.container(key="character_pet_stage"):
             previous_col, art_col, next_col = st.columns(
                 [1, 6, 1], vertical_alignment="center"
             )
-            previous_col.button(
+            if previous_col.button(
                 "←",
                 key="character_pet_preview_previous",
-                disabled=True,
+                disabled=len(pets) <= 1,
                 use_container_width=True,
-            )
+            ):
+                st.session_state.character_pet_selected_id = pets[(current_index - 1) % len(pets)]["id"]
+                st.rerun()
             with art_col:
                 with st.container(key="character_pet_art"):
-                    st.image(str(pet_path), width="stretch")
-            next_col.button(
+                    st.image(
+                        str(pet_asset_path(current_pet, profile["pet_image_style"])),
+                        width="stretch",
+                    )
+            if next_col.button(
                 "→",
                 key="character_pet_preview_next",
-                disabled=True,
+                disabled=len(pets) <= 1,
                 use_container_width=True,
-            )
+            ):
+                st.session_state.character_pet_selected_id = pets[(current_index + 1) % len(pets)]["id"]
+                st.rerun()
 
         with st.container(key="character_pet_action_row"):
             cultivate_col, skill_col, follow_col = st.columns(3)
-            cultivate_col.button(
-                "培養",
-                key="character_pet_preview_cultivate",
-                disabled=True,
-                use_container_width=True,
-            )
+            with cultivate_col.popover("培養", use_container_width=True):
+                st.caption(
+                    f"美味罐頭 ×{int(profile.get('pet_food_cans', 0))}｜"
+                    f"特製仙丹（{current_pet['element_name']}屬性）×"
+                    f"{int(profile.get('pet_element_elixirs', {}).get(current_pet['element'], 0))}"
+                )
+                can_disabled = (
+                    int(profile.get("pet_food_cans", 0)) <= 0
+                    or int(current_pet["level"]) >= int(profile.get("level", 1))
+                )
+                can_count = int(profile.get("pet_food_cans", 0))
+                can_quantity = st.number_input(
+                    "使用美味罐頭數量",
+                    min_value=1,
+                    max_value=max(1, can_count),
+                    value=1,
+                    step=1,
+                    disabled=can_disabled,
+                    key=f"train_pet_can_quantity_{selected_id}",
+                )
+                if st.button(
+                    f"＋ 使用 {int(can_quantity)} 個美味罐頭（每個 EXP +30）",
+                    key=f"train_pet_can_{selected_id}",
+                    disabled=can_disabled,
+                    use_container_width=True,
+                ):
+                    result = use_pet_training_item(
+                        profile, selected_id, "can", quantity=int(can_quantity)
+                    )
+                    if result["ok"]:
+                        save_profile(profile)
+                        st.session_state.pet_training_notice = (
+                            f"使用 {result['items_used']} 個美味罐頭，"
+                            f"{current_pet['display_name']}獲得 {result['exp_added']} EXP"
+                            + (f"，升到 Lv{result['pet']['level']}！" if result["levels"] else "！")
+                            + (" 已達目前勇者等級上限，其餘道具未消耗。" if result.get("stopped_at_cap") else "")
+                        )
+                    else:
+                        st.session_state.pet_training_notice = result["reason"]
+                    st.rerun()
+                elixir_count = int(
+                    profile.get("pet_element_elixirs", {}).get(current_pet["element"], 0)
+                )
+                elixir_disabled = (
+                    elixir_count <= 0
+                    or int(current_pet["level"]) >= int(profile.get("level", 1))
+                )
+                elixir_quantity = st.number_input(
+                    f"使用特製仙丹（{current_pet['element_name']}屬性）數量",
+                    min_value=1,
+                    max_value=max(1, elixir_count),
+                    value=1,
+                    step=1,
+                    disabled=elixir_disabled,
+                    key=f"train_pet_elixir_quantity_{selected_id}",
+                )
+                if st.button(
+                    f"＋ 使用 {int(elixir_quantity)} 個特製仙丹（每個 EXP +50）",
+                    key=f"train_pet_elixir_{selected_id}",
+                    disabled=elixir_disabled,
+                    use_container_width=True,
+                ):
+                    result = use_pet_training_item(
+                        profile,
+                        selected_id,
+                        f"elixir:{current_pet['element']}",
+                        quantity=int(elixir_quantity),
+                    )
+                    if result["ok"]:
+                        save_profile(profile)
+                        st.session_state.pet_training_notice = (
+                            f"使用 {result['items_used']} 個特製仙丹，"
+                            f"{current_pet['display_name']}獲得 {result['exp_added']} EXP"
+                            + (f"，升到 Lv{result['pet']['level']}！" if result["levels"] else "！")
+                            + (" 已達目前勇者等級上限，其餘道具未消耗。" if result.get("stopped_at_cap") else "")
+                        )
+                    else:
+                        st.session_state.pet_training_notice = result["reason"]
+                    st.rerun()
             skill_col.button(
                 "技能",
                 key="character_pet_preview_skill",
                 disabled=True,
                 use_container_width=True,
             )
-            follow_col.button(
-                "跟隨",
+            follow_clicked = follow_col.button(
+                "取消跟隨" if profile.get("equipped_pet_id") == selected_id else "跟隨",
                 key="character_pet_preview_follow",
-                disabled=True,
                 use_container_width=True,
             )
 
-        st.markdown(
-            """
-            <div class="character-pet-stat-panels">
-              <section class="character-pet-stat-box">
-                <h4>基礎能力</h4>
-                <div class="character-pet-stat-list">
-                  <div><b>星級</b><span>★☆☆</span></div>
-                  <div><b>Lv</b><span>1</span></div>
-                  <div><b>EXP</b><span>0 / 100</span></div>
-                  <div><b>屬性</b><span>光</span></div>
-                </div>
-              </section>
-              <section class="character-pet-stat-box">
-                <h4>特殊詞條</h4>
-                <div class="character-pet-stat-list">
-                  <div><b>額外裝備掉落機率</b><span>+10%</span></div>
-                  <div><b>跟隨時造成的攻擊轉為光屬性</b><span>光</span></div>
-                </div>
-              </section>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        # Follow behaves like equipping the tenth slot.  The rerun also refreshes
+        # the character attack element, special traits and the pet-slot icon.
+        if follow_clicked:
+            profile["equipped_pet_id"] = (
+                None if profile.get("equipped_pet_id") == selected_id else selected_id
+            )
+            save_profile(profile)
+            st.rerun()
+
+        training_notice = st.session_state.pop("pet_training_notice", None)
+        if training_notice:
+            st.toast(training_notice)
+
+        star_count = max(1, min(3, int(current_pet.get("stars", 1))))
+        # HTML entities plus a text-symbol font prevent mobile browsers from
+        # turning the earned star into a yellow emoji.  ★☆☆ therefore means Lv1.
+        star_text = "&#9733;" * star_count + "&#9734;" * (3 - star_count)
+        element_souls = int(
+            profile.get("pet_element_souls", {}).get(current_pet["element"], 0)
         )
+        advance_cost = PET_ADVANCE_SOUL_COSTS.get(star_count)
+        with st.container(key="character_pet_stats_section"):
+            star_col, soul_col, advance_col = st.columns(
+                [2.2, 3.2, 1.25], vertical_alignment="center"
+            )
+            star_col.markdown(
+                f'<div class="pet-advance-stars">星級　<span>{star_text}</span></div>',
+                unsafe_allow_html=True,
+            )
+            soul_col.markdown(
+                f'<div class="pet-soul-count">{current_pet["element_name"]}屬性元神 ×{element_souls}</div>',
+                unsafe_allow_html=True,
+            )
+            advance_clicked = advance_col.button(
+                "進階",
+                key=f"advance_pet_{selected_id}",
+                disabled=star_count >= 3,
+                help=(
+                    "已達三星"
+                    if star_count >= 3
+                    else f"消耗 {advance_cost} 個{current_pet['element_name']}屬性元神"
+                ),
+                use_container_width=True,
+            )
+            st.markdown(
+                f"""
+                <div class="character-pet-stat-panels">
+                  <section class="character-pet-stat-box">
+                    <h4>基礎能力</h4>
+                    <div class="character-pet-stat-list">
+                      <div><b>Lv</b><span>{current_pet['level']}</span></div>
+                      <div><b>EXP ＋</b><span>{current_pet['exp']} / {current_pet['exp_required']}</span></div>
+                      <div><b>屬性</b><span>{current_pet['element_name']}</span></div>
+                    </div>
+                  </section>
+                  <section class="character-pet-stat-box">
+                    <h4>特殊詞條</h4>
+                    <div class="character-pet-stat-list">
+                      <div><b>額外裝備掉落機率</b><span>+{current_pet['drop_bonus_pct']:.0%}</span></div>
+                      <div><b>跟隨時造成的攻擊轉為{current_pet['element_name']}屬性</b><span>{current_pet['element_name']}</span></div>
+                      <div><b>Lv5・跟隨時增加HP</b><span>{'+25%' if current_pet['level'] >= 5 else '未解鎖'}</span></div>
+                      <div><b>Lv10・跟隨時增加攻擊</b><span>{'+25%' if current_pet['level'] >= 10 else '未解鎖'}</span></div>
+                      <div><b>Lv15・跟隨時增加防禦</b><span>{'+25%' if current_pet['level'] >= 15 else '未解鎖'}</span></div>
+                      <div><b>Lv20・跟隨時增加攻速</b><span>{'+0.250/秒' if current_pet['level'] >= 20 else '未解鎖'}</span></div>
+                    </div>
+                  </section>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        if advance_clicked:
+            result = advance_pet(profile, selected_id)
+            if result["ok"]:
+                save_profile(profile)
+                st.session_state.pet_advance_notice = (
+                    f"{result['pet']['display_name']}已進階為 {result['pet']['stars']} 星！"
+                    f"剩餘元神 ×{result['souls_remaining']}"
+                )
+            else:
+                st.session_state.pet_advance_notice = result["reason"]
+            st.rerun()
+
+        advance_notice = st.session_state.pop("pet_advance_notice", None)
+        if advance_notice:
+            st.toast(advance_notice)
 
         with st.container(key="character_pet_summon_row"):
             st.button(
@@ -768,6 +1043,40 @@ def render_character_equipment_hub(profile, save_profile):
     st.markdown(
         """
         <style>
+        /* Streamlit 的按鈕、下拉選單與 Markdown 元件各自可能指定字型；
+           角色能力視窗內統一強制使用標楷體字族。星號等符號另於下方保留符號字型。 */
+        .st-key-character_panel_navigation,
+        .st-key-character_panel_navigation *,
+        .st-key-character_equipment_view,
+        .st-key-character_equipment_view *,
+        .st-key-character_scroll_view,
+        .st-key-character_scroll_view *,
+        .st-key-character_pet_view,
+        .st-key-character_pet_view * {
+          font-family:DFKai-SB,BiauKai,"標楷體",KaiTi,STKaiti,"Noto Serif TC",serif !important;
+        }
+        .st-key-character_panel_navigation .material-symbols-rounded,
+        .st-key-character_panel_navigation .material-symbols-outlined,
+        .st-key-character_panel_navigation [data-testid="stIconMaterial"],
+        .st-key-character_panel_navigation [data-testid="stIconMaterial"] *,
+        .st-key-character_equipment_view .material-symbols-rounded,
+        .st-key-character_equipment_view .material-symbols-outlined,
+        .st-key-character_equipment_view [data-testid="stIconMaterial"],
+        .st-key-character_equipment_view [data-testid="stIconMaterial"] *,
+        .st-key-character_scroll_view .material-symbols-rounded,
+        .st-key-character_scroll_view .material-symbols-outlined,
+        .st-key-character_scroll_view [data-testid="stIconMaterial"],
+        .st-key-character_scroll_view [data-testid="stIconMaterial"] *,
+        .st-key-character_pet_view .material-symbols-rounded,
+        .st-key-character_pet_view .material-symbols-outlined,
+        .st-key-character_pet_view [data-testid="stIconMaterial"],
+        .st-key-character_pet_view [data-testid="stIconMaterial"] * {
+          font-family:"Material Symbols Rounded" !important;
+          font-weight:normal !important;font-style:normal !important;
+          letter-spacing:normal !important;text-transform:none !important;
+          white-space:nowrap !important;word-wrap:normal !important;
+          -webkit-font-feature-settings:"liga" !important;font-feature-settings:"liga" !important;
+        }
         @media (max-width:768px) and (orientation:portrait) {
           .st-key-character_panel_navigation [data-testid="stHorizontalBlock"]:has(.st-key-character_nav_equipment) {
             display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;gap:.15rem !important;
@@ -826,8 +1135,25 @@ def render_character_equipment_hub(profile, save_profile):
         }
         .character-pet-stat-list div > b {overflow-wrap:anywhere;}
         .character-pet-stat-list div > span {justify-content:flex-end;white-space:nowrap;font-weight:700;}
+        .character-pet-stat-list .pet-star-level {
+          color:#111 !important;font-family:Arial,"Segoe UI Symbol","Noto Sans Symbols 2",sans-serif !important;
+          font-weight:900 !important;letter-spacing:.08em !important;
+        }
         .character-pet-stat-list div:last-child > b,
         .character-pet-stat-list div:last-child > span {border-bottom:0;}
+        .st-key-character_pet_stats_section > [data-testid="stVerticalBlock"] {
+          height:100%;min-height:0;display:grid;grid-template-rows:1.75rem minmax(0,1fr);gap:.15rem !important;
+        }
+        .st-key-character_pet_stats_section [data-testid="stHorizontalBlock"] {
+          display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;
+          align-items:center !important;gap:.22rem !important;
+        }
+        .st-key-character_pet_stats_section [data-testid="stColumn"] {min-width:0 !important;}
+        .pet-advance-stars,.pet-soul-count {font-size:.8rem;font-weight:800;line-height:1.1;white-space:nowrap;}
+        .pet-advance-stars span {
+          font-family:Arial,"Segoe UI Symbol","Noto Sans Symbols 2",sans-serif !important;
+          color:#111 !important;font-weight:900;letter-spacing:.06em;
+        }
         @media (max-width:768px) and (orientation:portrait) {
           .st-key-character_pet_view {
             position:absolute !important;left:.45rem !important;right:.45rem !important;
@@ -844,7 +1170,7 @@ def render_character_equipment_hub(profile, save_profile):
           }
           .st-key-character_pet_preview > [data-testid="stVerticalBlock"] {
             display:grid !important;
-            grid-template-rows:2.15rem 1.05rem minmax(0,1fr) 2rem 9.35rem 2rem;
+            grid-template-rows:2.15rem 1.05rem minmax(0,1fr) 2rem 10.8rem 2rem;
             gap:.08rem !important;
           }
           .st-key-character_pet_identity_row,
@@ -862,13 +1188,13 @@ def render_character_equipment_hub(profile, save_profile):
             min-width:0 !important;width:auto !important;padding:0 !important;
           }
           .st-key-character_pet_identity_row [data-testid="stColumn"]:nth-child(1) {
-            flex:0 0 calc(45% - .08rem) !important;max-width:calc(45% - .08rem) !important;
+            flex:0 0 calc(39% - .08rem) !important;max-width:calc(39% - .08rem) !important;
           }
           .st-key-character_pet_identity_row [data-testid="stColumn"]:nth-child(2) {
-            flex:0 0 calc(35% - .08rem) !important;max-width:calc(35% - .08rem) !important;
+            flex:0 0 calc(25% - .08rem) !important;max-width:calc(25% - .08rem) !important;
           }
           .st-key-character_pet_identity_row [data-testid="stColumn"]:nth-child(3) {
-            flex:0 0 calc(20% - .08rem) !important;max-width:calc(20% - .08rem) !important;
+            flex:0 0 calc(36% - .08rem) !important;max-width:calc(36% - .08rem) !important;
           }
           .st-key-character_pet_action_row [data-testid="stColumn"] {
             flex:0 0 calc(33.333% - .08rem) !important;max-width:calc(33.333% - .08rem) !important;
@@ -885,11 +1211,17 @@ def render_character_equipment_hub(profile, save_profile):
             min-height:1.9rem !important;height:1.9rem !important;padding:.05rem !important;
             font-size:.68rem !important;
           }
+          .st-key-character_pet_identity_row [data-testid="stSelectbox"],
+          .st-key-character_pet_identity_row [data-baseweb="select"],
+          .st-key-character_pet_identity_row [data-baseweb="select"] > div {
+            min-height:1.9rem !important;height:1.9rem !important;margin:0 !important;
+            font-size:.63rem !important;line-height:1 !important;
+          }
           .st-key-character_pet_identity_row p {
             font-size:clamp(.92rem,4vw,1.08rem) !important;
             line-height:1 !important;font-weight:900 !important;white-space:nowrap !important;
           }
-          .st-key-character_pet_page_count p {font-size:.72rem !important;line-height:1 !important;}
+          .st-key-character_pet_page_count p {font-size:.95rem !important;line-height:1 !important;font-weight:900 !important;}
           .st-key-character_pet_stage {min-height:0 !important;height:100% !important;}
           .st-key-character_pet_stage button {
             min-height:2rem !important;height:2rem !important;padding:0 !important;font-size:1rem !important;
@@ -905,6 +1237,18 @@ def render_character_equipment_hub(profile, save_profile):
             width:100% !important;object-fit:contain !important;border-radius:8px !important;
           }
           .character-pet-stat-panels {height:100%;min-height:0;gap:.22rem;}
+          .st-key-character_pet_stats_section,
+          .st-key-character_pet_stats_section > [data-testid="stVerticalBlock"] {
+            height:100% !important;min-height:0 !important;overflow:hidden !important;
+          }
+          .st-key-character_pet_stats_section > [data-testid="stVerticalBlock"] {
+            display:grid !important;grid-template-rows:1.55rem minmax(0,1fr) !important;gap:.08rem !important;
+          }
+          .st-key-character_pet_stats_section [data-testid="stHorizontalBlock"] {height:1.55rem !important;}
+          .st-key-character_pet_stats_section button {
+            min-height:1.45rem !important;height:1.45rem !important;padding:.02rem .12rem !important;font-size:.68rem !important;
+          }
+          .pet-advance-stars,.pet-soul-count {font-size:clamp(.58rem,2.45vw,.72rem) !important;}
           .character-pet-stat-box {
             display:grid;grid-template-rows:1.75rem minmax(0,1fr);
             height:100%;min-height:0;padding:.18rem .25rem;border-radius:5px;box-sizing:border-box;
@@ -948,7 +1292,7 @@ def render_character_equipment_hub(profile, save_profile):
             _render_compact_stats(profile)
     elif view == "pet":
         with st.container(key="character_pet_view"):
-            _render_pet_layout_preview()
+            _render_pet_layout_preview(profile, save_profile)
     else:
         # 未使用裝備與稱號會持續增加，限制在視窗內獨立捲動。
         with st.container(key="character_scroll_view", height=520, border=False):
@@ -958,14 +1302,19 @@ def render_character_equipment_hub(profile, save_profile):
                 _render_titles(profile, save_profile)
 
 
-def _close_character_dialog():
+def _dismiss_character_dialog():
+    """Reset dialog-only state after the native dialog close button is used."""
     st.session_state.show_character_dialog = False
     st.session_state.character_panel_view = "equipment"
     st.session_state.character_selected_slot = None
-    st.rerun()
 
 
-@st.dialog("角色能力", width="large", dismissible=False)
+@st.dialog(
+    "角色能力",
+    width="large",
+    dismissible=True,
+    on_dismiss=_dismiss_character_dialog,
+)
 def render_character_equipment_dialog(profile, save_profile):
     """Show the character hub as a theme-independent modal over the home screen."""
     st.markdown(
@@ -976,6 +1325,33 @@ def render_character_equipment_dialog(profile, save_profile):
           background:#fff !important;color:#1f2937 !important;
           border:3px solid #111 !important;border-radius:6px !important;
           max-height:calc(100vh - .5rem) !important;
+          font-family:DFKai-SB,BiauKai,"標楷體",KaiTi,STKaiti,"Noto Serif TC",serif !important;
+        }
+        [data-testid="stDialog"] [role="dialog"] *,
+        body:has([data-testid="stDialog"]) [data-baseweb="popover"] *,
+        body:has([data-testid="stDialog"]) [role="listbox"] * {
+          font-family:DFKai-SB,BiauKai,"標楷體",KaiTi,STKaiti,"Noto Serif TC",serif !important;
+        }
+        /* 星級符號與 Streamlit 功能圖示不能改用中文字型，否則可能變成方框。 */
+        [data-testid="stDialog"] [role="dialog"] .pet-star-level,
+        [data-testid="stDialog"] [role="dialog"] .pet-star-level *,
+        [data-testid="stDialog"] [role="dialog"] .material-symbols-rounded,
+        [data-testid="stDialog"] [role="dialog"] .material-symbols-outlined,
+        [data-testid="stDialog"] [role="dialog"] [data-testid="stIconMaterial"],
+        [data-testid="stDialog"] [role="dialog"] [data-testid="stIconMaterial"] *,
+        body:has([data-testid="stDialog"]) [data-baseweb="popover"] .material-symbols-rounded,
+        body:has([data-testid="stDialog"]) [data-baseweb="popover"] .material-symbols-outlined,
+        body:has([data-testid="stDialog"]) [data-baseweb="popover"] [data-testid="stIconMaterial"],
+        body:has([data-testid="stDialog"]) [data-baseweb="popover"] [data-testid="stIconMaterial"] *,
+        body:has([data-testid="stDialog"]) [role="listbox"] .material-symbols-rounded,
+        body:has([data-testid="stDialog"]) [role="listbox"] .material-symbols-outlined,
+        body:has([data-testid="stDialog"]) [role="listbox"] [data-testid="stIconMaterial"],
+        body:has([data-testid="stDialog"]) [role="listbox"] [data-testid="stIconMaterial"] * {
+          font-family:"Material Symbols Rounded" !important;
+          font-weight:normal !important;font-style:normal !important;
+          letter-spacing:normal !important;text-transform:none !important;
+          white-space:nowrap !important;word-wrap:normal !important;
+          -webkit-font-feature-settings:"liga" !important;font-feature-settings:"liga" !important;
         }
         [data-testid="stDialog"] [role="dialog"] > div {
           overflow-y:auto !important;
@@ -1004,18 +1380,21 @@ def render_character_equipment_dialog(profile, save_profile):
         [data-testid="stDialog"] [role="dialog"] h2:first-of-type {
           text-align:center !important;width:100% !important;justify-content:center !important;
         }
-        .st-key-character_dialog_close {
-          position:absolute !important;right:.65rem !important;top:.55rem !important;z-index:20 !important;
+        /* 使用 Streamlit 原生對話框關閉鈕。它真正位於 role=dialog 內，
+           螢幕旋轉或重新繪製時不會脫離視窗，也不會留下空白容器。 */
+        [data-testid="stDialog"] [role="dialog"] > button[aria-label="Close"] {
+          position:absolute !important;inset:auto .45rem auto auto !important;
+          top:.4rem !important;z-index:20 !important;
           width:2.45rem !important;height:2.45rem !important;
-        }
-        .st-key-character_dialog_close button {
-          width:2.45rem !important;height:2.45rem !important;min-height:2.45rem !important;
+          min-width:2.45rem !important;min-height:2.45rem !important;
+          margin:0 !important;
           padding:0 !important;border:2px solid #111 !important;border-radius:4px !important;
-          background:#fff !important;color:#e53935 !important;font-size:1.35rem !important;font-weight:900 !important;
+          background:#fff !important;color:#e53935 !important;
+          display:flex !important;align-items:center !important;justify-content:center !important;
+          visibility:visible !important;opacity:1 !important;pointer-events:auto !important;
         }
-        [data-testid="stDialog"] [role="dialog"] .st-key-character_dialog_close button,
-        [data-testid="stDialog"] [role="dialog"] .st-key-character_dialog_close button * {
-          color:#e53935 !important;border-color:#111 !important;background:#fff !important;
+        [data-testid="stDialog"] [role="dialog"] > button[aria-label="Close"] svg {
+          width:1.05rem !important;height:1.05rem !important;color:#e53935 !important;
         }
         @media (max-width:768px) and (orientation:portrait) {
           /* 對話框最外層會為「樣式、關閉鈕、分頁、內容」各保留一個
@@ -1181,18 +1560,23 @@ def render_character_equipment_dialog(profile, save_profile):
             height:calc(100dvh - 6.3rem) !important;max-height:calc(100dvh - 6.3rem) !important;
             overflow-y:auto !important;overscroll-behavior:contain !important;
           }
-          .st-key-character_dialog_close {
-            right:.28rem !important;top:.2rem !important;width:2rem !important;height:2rem !important;
+          [data-testid="stDialog"] [role="dialog"] > button[aria-label="Close"] {
+            inset:auto max(.28rem,env(safe-area-inset-right)) auto auto !important;
+            top:max(.2rem,env(safe-area-inset-top)) !important;
+            width:2rem !important;height:2rem !important;
+            min-width:2rem !important;min-height:2rem !important;
           }
-          .st-key-character_dialog_close button {
-            width:2rem !important;height:2rem !important;min-height:2rem !important;font-size:1.05rem !important;
+        }
+        @media (max-width:1024px) and (orientation:landscape) {
+          [data-testid="stDialog"] [role="dialog"] > button[aria-label="Close"] {
+            inset:auto max(.42rem,env(safe-area-inset-right)) auto auto !important;
+            top:max(.3rem,env(safe-area-inset-top)) !important;
+            width:2.25rem !important;height:2.25rem !important;
+            min-width:2.25rem !important;min-height:2.25rem !important;
           }
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
-    with st.container(key="character_dialog_close"):
-        if st.button("✕", key="close_character_dialog", help="關閉"):
-            _close_character_dialog()
     render_character_equipment_hub(profile, save_profile)

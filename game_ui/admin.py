@@ -17,6 +17,7 @@ def render_admin_panel(db_connection, callbacks):
     delete_student = callbacks["delete_student"]
     ensure_teacher_profile = callbacks["ensure_teacher_profile"]
     game_feedback_rows = callbacks["game_feedback_rows"]
+    grant_all_pets_to_player = callbacks["grant_all_pets_to_player"]
     mark_feedback_replied = callbacks["mark_feedback_replied"]
     ranking_rows = callbacks["ranking_rows"]
     render_announcement_content = callbacks["render_announcement_content"]
@@ -54,6 +55,13 @@ def render_admin_panel(db_connection, callbacks):
         else:
             st.warning(teacher_name_error)
     st.caption("老師測試角色不需要學生代碼或額外PIN，也不會占用學生編號或學生排名。")
+    if st.button("發送全部六隻寵物給老師測試角色", use_container_width=True):
+        ensure_teacher_profile(teacher_hero_name or teacher_default_name)
+        granted = grant_all_pets_to_player("__TEACHER__")
+        if granted:
+            st.success(f"已發送：{'、'.join(granted)}。")
+        else:
+            st.info("老師測試角色已擁有全部六隻寵物。")
     st.divider()
     admin_section = st.selectbox(
         "選擇管理功能",
@@ -113,6 +121,16 @@ def render_admin_panel(db_connection, callbacks):
                 delete_student(selected_code)
                 st.success(f"已刪除 {selected_code}。")
                 st.rerun()
+            if st.button(
+                "發送全部六隻寵物（測試）",
+                key=f"grant_all_pets_{selected_code}",
+                use_container_width=True,
+            ):
+                granted = grant_all_pets_to_player(selected_code)
+                if granted:
+                    st.success(f"已發送給 {selected_code}：{'、'.join(granted)}。")
+                else:
+                    st.info(f"{selected_code} 已擁有全部六隻寵物。")
             detail_profile = student_learning_detail(selected_code)
             if detail_profile:
                 detail_stats = player_stats(detail_profile)
@@ -150,6 +168,19 @@ def render_admin_panel(db_connection, callbacks):
                     f"🎫 擊殺券：{detail_profile.get('sweep_tickets', 0)}｜"
                     f"目前稱號：{detail_profile.get('equipped_title') or '未佩戴'}｜"
                     f"已解鎖稱號：{'、'.join(detail_profile.get('titles', [])) or '無'}"
+                )
+                owned_pets = detail_profile.get("pets", [])
+                st.caption(
+                    "🐾 已擁有寵物："
+                    + (
+                        "、".join(
+                            f"{pet.get('nickname', pet.get('id', '寵物'))} "
+                            f"{'★' * max(1, min(3, int(pet.get('stars', 1))))}"
+                            f"{'☆' * (3 - max(1, min(3, int(pet.get('stars', 1)))))}"
+                            for pet in owned_pets
+                        )
+                        if owned_pets else "無"
+                    )
                 )
     
                 st.write("### 學習與通關進度")
@@ -556,4 +587,3 @@ def render_admin_panel(db_connection, callbacks):
         st.session_state.created_account = None
         st.session_state.screen = "login"
         st.rerun()
-
