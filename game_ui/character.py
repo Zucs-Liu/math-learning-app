@@ -815,11 +815,19 @@ def render_character_equipment_hub(profile, save_profile):
         .character-pet-stat-box h4 {margin:0 0 .38rem;text-align:center;font-size:1rem;}
         .character-pet-stat-list {overflow-y:auto;}
         .character-pet-stat-list div {
-          display:flex;justify-content:space-between;gap:.35rem;padding:.18rem 0;
-          border-bottom:1px solid #edf0f4;font-size:.82rem;line-height:1.25;
+          display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.35rem;
+          width:100%;box-sizing:border-box;padding:0;
+          border-bottom:0;font-size:.82rem;line-height:1.25;
         }
-        .character-pet-stat-list div:last-child {border-bottom:0;}
-        .character-pet-stat-list span {white-space:nowrap;font-weight:700;}
+        .character-pet-stat-list div > b,
+        .character-pet-stat-list div > span {
+          display:flex;align-items:center;min-width:0;height:100%;box-sizing:border-box;
+          padding:.18rem 0;border-bottom:1px solid #dfe4ea;
+        }
+        .character-pet-stat-list div > b {overflow-wrap:anywhere;}
+        .character-pet-stat-list div > span {justify-content:flex-end;white-space:nowrap;font-weight:700;}
+        .character-pet-stat-list div:last-child > b,
+        .character-pet-stat-list div:last-child > span {border-bottom:0;}
         @media (max-width:768px) and (orientation:portrait) {
           .st-key-character_pet_view {
             position:absolute !important;left:.45rem !important;right:.45rem !important;
@@ -913,7 +921,11 @@ def render_character_equipment_hub(profile, save_profile):
           }
           .character-pet-stat-list div {
             box-sizing:border-box;height:auto;min-height:0;
-            font-size:clamp(.66rem,2.8vw,.8rem);padding:.08rem 0;align-items:center;
+            font-size:clamp(.66rem,2.8vw,.8rem);padding:0;align-items:stretch;
+          }
+          .character-pet-stat-list div > b,
+          .character-pet-stat-list div > span {
+            padding:.08rem 0;line-height:1.12;
           }
           .st-key-character_pet_summon_row,
           .st-key-character_pet_summon_row > [data-testid="stVerticalBlock"] {
