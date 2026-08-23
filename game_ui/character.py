@@ -734,6 +734,15 @@ def _render_pet_layout_preview():
             unsafe_allow_html=True,
         )
 
+        with st.container(key="character_pet_summon_row"):
+            st.button(
+                "前往召喚",
+                key="character_pet_preview_summon",
+                disabled=True,
+                help="寵物召喚功能將在下一階段接上。",
+                use_container_width=True,
+            )
+
 
 def _render_titles(profile, save_profile):
     st.write("### 🏅 稱號")
@@ -790,7 +799,7 @@ def render_character_equipment_hub(profile, save_profile):
           display:flex !important;flex-direction:row !important;flex-wrap:nowrap !important;
           align-items:center !important;
         }
-        .st-key-character_pet_identity_row p {margin:0 !important;font-size:1.05rem;font-weight:800;}
+        .st-key-character_pet_identity_row p {margin:0 !important;font-size:1.18rem;font-weight:800;}
         .st-key-character_pet_page_count p {margin:0 !important;}
         .st-key-character_pet_stage {min-height:19rem;}
         .st-key-character_pet_art [data-testid="stImage"] img {
@@ -827,7 +836,7 @@ def render_character_equipment_hub(profile, save_profile):
           }
           .st-key-character_pet_preview > [data-testid="stVerticalBlock"] {
             display:grid !important;
-            grid-template-rows:2rem 1.15rem minmax(0,1fr) 2rem 31%;
+            grid-template-rows:2.15rem 1.05rem minmax(0,1fr) 2rem 9.35rem 2rem;
             gap:.08rem !important;
           }
           .st-key-character_pet_identity_row,
@@ -868,7 +877,10 @@ def render_character_equipment_hub(profile, save_profile):
             min-height:1.9rem !important;height:1.9rem !important;padding:.05rem !important;
             font-size:.68rem !important;
           }
-          .st-key-character_pet_identity_row p {font-size:.78rem !important;white-space:nowrap !important;}
+          .st-key-character_pet_identity_row p {
+            font-size:clamp(.92rem,4vw,1.08rem) !important;
+            line-height:1 !important;font-weight:900 !important;white-space:nowrap !important;
+          }
           .st-key-character_pet_page_count p {font-size:.72rem !important;line-height:1 !important;}
           .st-key-character_pet_stage {min-height:0 !important;height:100% !important;}
           .st-key-character_pet_stage button {
@@ -888,6 +900,7 @@ def render_character_equipment_hub(profile, save_profile):
           .character-pet-stat-box {
             display:grid;grid-template-rows:1.75rem minmax(0,1fr);
             height:100%;min-height:0;padding:.18rem .25rem;border-radius:5px;box-sizing:border-box;
+            overflow:hidden;
           }
           .character-pet-stat-box h4 {
             margin:0;display:flex;align-items:center;justify-content:center;
@@ -895,8 +908,21 @@ def render_character_equipment_hub(profile, save_profile):
           }
           .character-pet-stat-list {
             min-height:0;height:100%;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;
+            display:grid;grid-auto-rows:calc(100% / 4);align-content:start;
+            -webkit-overflow-scrolling:touch;
           }
-          .character-pet-stat-list div {font-size:.65rem;padding:.16rem 0;align-items:flex-start;}
+          .character-pet-stat-list div {
+            box-sizing:border-box;height:auto;min-height:0;
+            font-size:clamp(.66rem,2.8vw,.8rem);padding:.08rem 0;align-items:center;
+          }
+          .st-key-character_pet_summon_row,
+          .st-key-character_pet_summon_row > [data-testid="stVerticalBlock"] {
+            height:2rem !important;min-height:2rem !important;margin:0 !important;padding:0 !important;
+          }
+          .st-key-character_pet_summon_row button {
+            height:2rem !important;min-height:2rem !important;padding:.05rem !important;
+            font-size:.78rem !important;font-weight:800 !important;
+          }
         }
         </style>
         """,
