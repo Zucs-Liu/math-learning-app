@@ -466,17 +466,18 @@ def _render_compact_stats(profile):
             min-height:0 !important;
           }}
           .character-stat-box {{
-            display:grid;grid-template-rows:2.15rem minmax(0,1fr);
+            display:flex;flex-direction:column;
             height:100%;min-height:0;padding:.18rem .28rem;border-radius:5px;box-sizing:border-box;
             overflow:hidden;isolation:isolate;
           }}
           .character-stat-box h4 {{
             display:flex;align-items:center;justify-content:center;
-            font-size:clamp(.9rem,3.8vw,1.08rem);line-height:1;margin:0;text-align:center;
+            flex:0 0 2.15rem;font-size:clamp(.9rem,3.8vw,1.08rem);
+            line-height:1;margin:0;text-align:center;
           }}
           .character-stat-list {{
             position:relative;z-index:20;display:block;
-            width:100%;height:100%;max-height:100%;min-height:0;
+            flex:1 1 auto;width:100%;height:auto;max-height:none;min-height:0;
             overflow-x:hidden;overflow-y:scroll !important;
             overscroll-behavior-y:contain;touch-action:pan-y !important;
             -webkit-overflow-scrolling:touch;
@@ -488,36 +489,36 @@ def _render_compact_stats(profile):
           .character-stat-list::-webkit-scrollbar-thumb {{background:#9ca3af;border-radius:999px;}}
           .character-stat-list div {{
             display:flex;align-items:center;justify-content:space-between;
-            box-sizing:border-box;height:calc(100% / 6);min-height:calc(100% / 6);
+            box-sizing:border-box;height:auto;min-height:0;
             font-size:clamp(.72rem,3.1vw,.92rem);line-height:1.05;padding:.05rem 0;
           }}
+          .character-stat-list-basic {{
+            display:grid !important;grid-template-rows:repeat(6,minmax(0,1fr));
+            overflow-y:hidden !important;
+          }}
+          .character-stat-list-basic div {{height:auto !important;min-height:0 !important;}}
+          .character-stat-list-special > div {{
+            min-height:calc(100% / 6);height:auto;flex-shrink:0;
+          }}
           .character-stat-list div b {{min-width:0;line-height:1.12;overflow-wrap:anywhere;}}
-          .character-stat-box:nth-child(2) .character-stat-list div {{
-            height:auto;min-height:calc(100% / 6);flex-shrink:0;
-            align-items:center;padding:.12rem 0;
-          }}
-          .character-stat-list .character-stat-scroll-spacer {{
-            display:block;height:3.6rem !important;min-height:3.6rem !important;
-            padding:0 !important;border:0 !important;pointer-events:none;
-          }}
+          .character-stat-box:nth-child(2) .character-stat-list div {{align-items:center;padding:.12rem 0;}}
         }}
         </style>
         <div class="character-stat-panels">
           <section class="character-stat-box">
             <h4>基礎能力</h4>
-            <div class="character-stat-list">
+            <div class="character-stat-list character-stat-list-basic">
               <div><b>等級</b><span>Lv{profile['level']}</span></div>
               <div><b>EXP</b><span>{exp_text}</span></div>
               <div><b>HP</b><span>{stats['hp']:.1f}</span></div>
               <div><b>攻擊</b><span>{stats['attack']:.1f}</span></div>
               <div><b>防禦</b><span>{stats['defense']:.1f}</span></div>
               <div><b>攻速</b><span>{stats['attack_speed']:.2f}/秒</span></div>
-              <div class="character-stat-scroll-spacer" aria-hidden="true"></div>
             </div>
           </section>
           <section class="character-stat-box">
             <h4>特殊詞條</h4>
-            <div class="character-stat-list">{''.join(active_effects)}<div class="character-stat-scroll-spacer" aria-hidden="true"></div></div>
+            <div class="character-stat-list character-stat-list-special">{''.join(active_effects)}</div>
           </section>
         </div>
         """,
