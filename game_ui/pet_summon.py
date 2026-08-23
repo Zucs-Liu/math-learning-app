@@ -95,6 +95,13 @@ def _render_summon_styles():
         .st-key-summon_content_gallery [data-testid="stColumn"]:nth-child(2) [data-testid="stImage"] img {
           display:block !important;margin-inline:auto !important;object-fit:contain !important;
         }
+        .st-key-pet_summon_result_art [data-testid="stImage"] {
+          display:flex !important;justify-content:center !important;width:100% !important;
+        }
+        .st-key-pet_summon_result_art [data-testid="stImage"] img {
+          display:block !important;width:min(100%,24rem) !important;max-height:48vh !important;
+          object-fit:contain !important;margin-inline:auto !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -146,7 +153,11 @@ def _render_contents():
         if previous_col.button("←", key="summon_content_previous", use_container_width=True):
             st.session_state.summon_catalog_index = (index - 1) % len(available)
             st.rerun()
-        image_col.image(pet_asset_path(pet, "mythic"), use_container_width=True)
+        with image_col:
+            centered_image_cols = st.columns([1, 10, 1])
+            centered_image_cols[1].image(
+                pet_asset_path(pet, "mythic"), use_container_width=True
+            )
         if next_col.button("→", key="summon_content_next", use_container_width=True):
             st.session_state.summon_catalog_index = (index + 1) % len(available)
             st.rerun()
@@ -180,15 +191,86 @@ def _render_result(result):
             f"已擁有，自動轉化為{element_name}屬性元神 ×1"
             f"（目前 ×{result['soul_count']}）"
         )
-    st.success(f"召喚成功：{pet['display_name']}｜{result_text}")
-    result_col, text_col = st.columns([2, 3], vertical_alignment="center")
-    result_col.image(pet_asset_path(pet, "chibi"), use_container_width=True)
-    text_col.markdown(
-        f"### {pet['display_name']}\n"
-        f"**{pet['element_name']}屬性｜{'★' * int(pet['stars'])}{'☆' * (3 - int(pet['stars']))}**"
+    st.success(f"召喚成功｜{result_text}")
+    with st.container(key="pet_summon_result_art"):
+        result_image_cols = st.columns([1, 5, 1])
+        result_image_cols[1].image(
+            pet_asset_path(pet, "mythic"), use_container_width=True
+        )
+    st.markdown(
+        f"<div style='text-align:center;'>"
+        f"<h3 style='margin:.2rem 0;color:{pet['element_color']};'>{pet['display_name']}</h3>"
+        f"<strong>{pet['element_name']}屬性｜"
+        f"{'★' * int(pet['stars'])}{'☆' * (3 - int(pet['stars']))}</strong>"
+        f"</div>",
+        unsafe_allow_html=True,
     )
     if result.get("payment") == "coins":
         st.info(f"本次使用 {PET_SUMMON_COIN_COST} 金幣；剩餘金幣：{result['coins_remaining']}")
+
+
+def _dismiss_summon_result_dialog():
+    st.session_state.pet_summon_result = None
+
+
+@st.dialog(
+    "召喚結果",
+    width="large",
+    dismissible=True,
+    on_dismiss=_dismiss_summon_result_dialog,
+)
+def _render_result_dialog(profile, save_profile):
+    result = st.session_state.get("pet_summon_result")
+    if not result:
+        return
+
+    _render_result(result)
+
+    paid_remaining = max(
+        0,
+        PET_PAID_SUMMONS_PER_DAY - int(profile.get("pet_paid_summons_used", 0)),
+    )
+    tickets = int(profile.get("summon_tickets", 0))
+    coins = int(profile.get("coins", 0))
+    if tickets > 0:
+        next_payment = f"繼續召喚將消耗召喚券 ×1（目前 ×{tickets}），不消耗金幣。"
+        can_continue = paid_remaining > 0
+    else:
+        next_payment = (
+            f"召喚券不足，繼續召喚將消耗 {PET_SUMMON_COIN_COST} 金幣；"
+            f"目前 {coins}，召喚後剩餘 {coins - PET_SUMMON_COIN_COST}。"
+            if coins >= PET_SUMMON_COIN_COST
+            else f"召喚券不足，繼續召喚需要 {PET_SUMMON_COIN_COST} 金幣；"
+            f"目前 {coins}，尚缺 {PET_SUMMON_COIN_COST - coins}。"
+        )
+        can_continue = paid_remaining > 0 and coins >= PET_SUMMON_COIN_COST
+
+    st.warning(next_payment)
+    leave_col, continue_col = st.columns(2)
+    if leave_col.button(
+        "離開召喚",
+        key="leave_pet_summon_result",
+        use_container_width=True,
+    ):
+        st.session_state.pet_summon_result = None
+        st.rerun()
+    if continue_col.button(
+        f"繼續召喚（剩餘 {paid_remaining}/10）",
+        key="continue_pet_summon_result",
+        type="primary",
+        disabled=not can_continue,
+        use_container_width=True,
+    ):
+        next_result = summon_pet(
+            profile,
+            mode="paid",
+            available_pet_ids=_available_pet_ids(),
+        )
+        if next_result["ok"]:
+            save_profile(profile)
+            st.session_state.pet_summon_result = next_result
+            st.rerun()
+        st.error(next_result["reason"])
 
 
 def render_pet_summon_screen(profile, save_profile, daily_period):
@@ -232,7 +314,8 @@ def render_pet_summon_screen(profile, save_profile, daily_period):
 
     image_path = Path(__file__).resolve().parent.parent / "assets" / "pets" / "pet-summon-collection.png"
     with st.container(key="pet_summon_collection"):
-        st.image(image_path, use_container_width=True)
+        collection_cols = st.columns([1, 3, 1])
+        collection_cols[1].image(image_path, use_container_width=True)
 
     free_used = int(profile.get("pet_free_summons_used", 0))
     paid_used = int(profile.get("pet_paid_summons_used", 0))
@@ -284,7 +367,4 @@ def render_pet_summon_screen(profile, save_profile, daily_period):
         st.error(result["reason"])
 
     if st.session_state.get("pet_summon_result"):
-        _render_result(st.session_state.pet_summon_result)
-        if st.button("關閉召喚結果", key="close_pet_summon_result", use_container_width=True):
-            st.session_state.pet_summon_result = None
-            st.rerun()
+        _render_result_dialog(profile, save_profile)
