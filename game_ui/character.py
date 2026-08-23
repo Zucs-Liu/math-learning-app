@@ -11,7 +11,6 @@ from game_logic.loot import find_inventory_item as find_item
 from game_logic.profile import equipped_item_uids
 from game_logic.pets import (
     PET_ADVANCE_SOUL_COSTS,
-    PET_DISMANTLE_COIN_BONUS,
     PET_TOTAL,
     advance_pet,
     ensure_pet_profile,
