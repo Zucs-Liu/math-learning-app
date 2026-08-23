@@ -1025,13 +1025,19 @@ def _render_pet_layout_preview(profile, save_profile):
             st.toast(advance_notice)
 
         with st.container(key="character_pet_summon_row"):
-            st.button(
+            go_to_summon = st.button(
                 "前往召喚",
                 key="character_pet_preview_summon",
-                disabled=True,
-                help="寵物召喚功能將在下一階段接上。",
                 use_container_width=True,
             )
+        if go_to_summon:
+            st.session_state.show_character_dialog = False
+            st.session_state.character_panel_view = "equipment"
+            st.session_state.character_selected_slot = None
+            st.session_state.pet_summon_view = "main"
+            st.session_state.pet_summon_result = None
+            st.session_state.screen = "pet_summon"
+            st.rerun()
 
 
 def _render_titles(profile, save_profile):
