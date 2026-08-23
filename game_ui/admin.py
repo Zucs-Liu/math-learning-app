@@ -215,6 +215,26 @@ def render_admin_panel(db_connection, callbacks):
                         "部位": f"{SLOT_ICONS[slot]} {slot_name}",
                         "裝備": item_text(equipped) if equipped else "尚未裝備",
                     })
+                equipped_pet_id = detail_profile.get("equipped_pet_id")
+                equipped_pet = next(
+                    (
+                        pet for pet in detail_profile.get("pets", [])
+                        if pet.get("id") == equipped_pet_id
+                    ),
+                    None,
+                )
+                if equipped_pet:
+                    pet_stars = max(1, min(3, int(equipped_pet.get("stars", 1))))
+                    pet_text = (
+                        f"{equipped_pet.get('nickname', equipped_pet_id)} "
+                        f"{'⭐' * pet_stars}｜Lv{int(equipped_pet.get('level', 1))}"
+                    )
+                else:
+                    pet_text = "目前沒有跟隨寵物"
+                equipment_rows.append({
+                    "部位": "🐾 跟隨寵物",
+                    "裝備": pet_text,
+                })
                 st.dataframe(equipment_rows, hide_index=True, use_container_width=True)
     
                 st.write(f"### 完整物品欄（{len(detail_profile['inventory'])}件）")
