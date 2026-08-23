@@ -131,6 +131,7 @@ from game_logic.equipment import (
     item_text,
     player_stats,
 )
+from game_logic.pets import equipped_pet, ensure_pet_profile, grant_all_pets
 from game_ui.common import (
     force_top_before_navigation,
     remove_stale_elements_before,
@@ -156,6 +157,7 @@ from game_ui.inventory import render_backpack, render_gallery
 from game_ui.economy import render_economy_screen
 from game_ui.admin import render_admin_panel
 from game_ui.character import render_character_equipment_dialog, render_character_equipment_hub
+from game_ui.pet_summon import render_pet_summon_screen
 
 st.set_page_config(page_title="數學冒險", page_icon="⚔️", layout="wide")
 
@@ -164,6 +166,38 @@ st.set_page_config(page_title="數學冒險", page_icon="⚔️", layout="wide")
 st.markdown(
     """
     <style>
+    :root,
+    html,
+    body,
+    [data-testid="stAppViewContainer"],
+    [data-testid="stAppViewContainer"] *,
+    [data-baseweb="portal"],
+    [data-baseweb="portal"] *,
+    [data-baseweb="modal"],
+    [data-baseweb="modal"] *,
+    [data-baseweb="popover"],
+    [data-baseweb="popover"] *,
+    [role="listbox"],
+    [role="listbox"] * {
+        font-family: DFKai-SB, BiauKai, "標楷體", KaiTi, STKaiti, "Noto Serif TC", serif !important;
+    }
+    /* 保留 Streamlit 的功能圖示字型，避免眼睛、箭頭等圖示變成英文文字。 */
+    .material-symbols-rounded,
+    .material-symbols-outlined,
+    [data-testid="stIconMaterial"],
+    [data-testid="stIconMaterial"] * {
+        font-family: "Material Symbols Rounded" !important;
+        font-weight: normal !important;
+        font-style: normal !important;
+        letter-spacing: normal !important;
+        text-transform: none !important;
+        white-space: nowrap !important;
+        word-wrap: normal !important;
+        direction: ltr !important;
+        -webkit-font-feature-settings: "liga" !important;
+        -webkit-font-smoothing: antialiased !important;
+        font-feature-settings: "liga" !important;
+    }
     div[data-baseweb="tab-list"],
     div[data-testid="stTabs"] div[role="tablist"] {
         position: static !important;
@@ -486,6 +520,15 @@ def sync_teacher_test_profile(profile):
         notices.append("老師測試資源補發：10000 金幣及三種特殊熔煉石各 100 顆")
         changed = True
 
+    if not profile.get("teacher_pet_training_resources_granted_v1"):
+        ensure_pet_profile(profile)
+        profile["pet_food_cans"] = int(profile.get("pet_food_cans", 0)) + 100
+        for element in profile["pet_element_elixirs"]:
+            profile["pet_element_elixirs"][element] += 20
+        profile["teacher_pet_training_resources_granted_v1"] = True
+        notices.append("老師測試寵物培養資源補發：美味罐頭100個、六屬性特製仙丹各20個")
+        changed = True
+
     # The testing character represents maximum currently obtainable progress.
     for unit_id in UNITS:
         if profile["unit_best_stars"].get(unit_id, 0) < 3:
@@ -583,6 +626,79 @@ def verify_student(code, pin):
     return False, "學生代碼或PIN錯誤；連續錯誤5次會鎖定5分鐘"
 
 
+PET_FOOD_BOSS_REWARDS = {
+    ("1", "normal"): ("boss_wins", 5),
+    ("1", "elite"): ("elite_boss_wins", 10),
+    ("2", "normal"): ("chapter2_boss_wins", 5),
+    ("2", "elite"): ("chapter2_elite_boss_wins", 10),
+    ("3", "normal"): ("chapter3_boss_wins", 5),
+    ("3", "elite"): ("chapter3_elite_boss_wins", 10),
+    ("4", "normal"): ("chapter4_boss_wins", 5),
+    ("4", "elite"): ("chapter4_elite_boss_wins", 10),
+    ("5", "normal"): ("chapter5_boss_wins", 5),
+    ("5", "elite"): ("chapter5_elite_boss_wins", 10),
+}
+
+
+def sync_pet_food_boss_mail(profile, student_code):
+    """Send each one-time BOSS pet-food reward, including historical clears."""
+    ensure_pet_profile(profile)
+    sent = set(profile.get("pet_food_boss_mail_sent", []))
+    changed = False
+    for (chapter_id, boss_type), (wins_key, quantity) in PET_FOOD_BOSS_REWARDS.items():
+        marker = f"{chapter_id}:{boss_type}"
+        if marker in sent or int(profile.get(wins_key, 0) or 0) <= 0:
+            continue
+        boss_label = "普通BOSS" if boss_type == "normal" else "菁英BOSS"
+        create_mail_record(
+            db_connection,
+            student_code,
+            f"第{chapter_id}章{boss_label}培養獎勵",
+            f"依通關紀錄補發：美味罐頭 ×{quantity}。領取後可用於寵物培養。",
+            json.dumps({"pet_food_cans": quantity}, ensure_ascii=False),
+            False,
+            database_timestamp(),
+        )
+        sent.add(marker)
+        changed = True
+    if changed:
+        profile["pet_food_boss_mail_sent"] = sorted(sent)
+    return changed
+
+
+PET_SUMMON_CHAPTER_REWARDS = {
+    "1": "boss_wins",
+    "2": "chapter2_boss_wins",
+    "3": "chapter3_boss_wins",
+    "4": "chapter4_boss_wins",
+    "5": "chapter5_boss_wins",
+}
+
+
+def sync_pet_summon_ticket_mail(profile, student_code):
+    """補發並記錄每章普通 BOSS 首次通關的兩張召喚券。"""
+    ensure_pet_profile(profile)
+    sent = set(profile.get("pet_summon_chapter_mail_sent", []))
+    changed = False
+    for chapter_id, wins_key in PET_SUMMON_CHAPTER_REWARDS.items():
+        if chapter_id in sent or int(profile.get(wins_key, 0) or 0) <= 0:
+            continue
+        create_mail_record(
+            db_connection,
+            student_code,
+            f"第{chapter_id}章通關召喚券",
+            "依章節通關紀錄補發：召喚券 ×2。可前往寵物召喚使用。",
+            json.dumps({"summon_tickets": 2}, ensure_ascii=False),
+            False,
+            database_timestamp(),
+        )
+        sent.add(chapter_id)
+        changed = True
+    if changed:
+        profile["pet_summon_chapter_mail_sent"] = sorted(sent)
+    return changed
+
+
 def get_profile():
     code = st.session_state.active_player
     cached = st.session_state.get("_profile_cache")
@@ -597,6 +713,10 @@ def get_profile():
             save_profile(cached_profile)
         if code == "__TEACHER__" and sync_teacher_test_profile(cached_profile):
             save_profile(cached_profile)
+        if sync_pet_food_boss_mail(cached_profile, code):
+            save_profile(cached_profile)
+        if sync_pet_summon_ticket_mail(cached_profile, code):
+            save_profile(cached_profile)
         return cached_profile
     row = fetch_profile_row(db_connection, code)
     if not row:
@@ -609,9 +729,11 @@ def get_profile():
     retroactively_grant_tasks(profile, code)
     retroactively_grant_chapter3_rewards(profile)
     teacher_synced = code == "__TEACHER__" and sync_teacher_test_profile(profile)
+    pet_food_mail_synced = sync_pet_food_boss_mail(profile, code)
+    pet_summon_mail_synced = sync_pet_summon_ticket_mail(profile, code)
     normalized_changed = (
         json.dumps(profile, ensure_ascii=False, sort_keys=True) != original_profile_json
-    ) or teacher_synced
+    ) or teacher_synced or pet_food_mail_synced or pet_summon_mail_synced
     if profile.get("collection_reward_claimed") and not achievement_item(profile, "chapter-1-collection"):
         profile["inventory"].append(make_collection_reward())
         profile["collection_item_claimed"] = True
@@ -850,6 +972,17 @@ def mark_all_mail_read(student_code):
     return set_all_mail_read(db_connection, student_code)
 
 
+def claim_all_mail(student_code, mails):
+    """領取所有尚未領取的附件，並將信箱內所有信件標為已讀。"""
+    claimed_count = 0
+    for mail in mails:
+        if mail.get("reward") and not mail.get("is_claimed"):
+            if claim_mail_reward(mail["id"], student_code):
+                claimed_count += 1
+    marked_count = mark_all_mail_read(student_code)
+    return claimed_count, marked_count
+
+
 def claim_mail_reward(mail_id, student_code):
     row = fetch_mail_reward(db_connection, mail_id, student_code)
     if not row or row["is_claimed"] or not row["reward_json"]:
@@ -858,7 +991,16 @@ def claim_mail_reward(mail_id, student_code):
     profile = get_profile()
     profile["coins"] += int(reward.get("coins", 0))
     profile["sweep_tickets"] += int(reward.get("sweep_tickets", 0))
+    profile["summon_tickets"] = int(profile.get("summon_tickets", 0)) + int(
+        reward.get("summon_tickets", 0)
+    )
     profile["smelting_stones"] += int(reward.get("smelting_stones", 0))
+    profile["pet_food_cans"] = int(profile.get("pet_food_cans", 0)) + int(
+        reward.get("pet_food_cans", 0)
+    )
+    for element, quantity in (reward.get("pet_element_elixirs") or {}).items():
+        if element in profile.get("pet_element_elixirs", {}):
+            profile["pet_element_elixirs"][element] += int(quantity)
     save_profile(profile)
     set_mail_claimed(db_connection, mail_id, student_code)
     return True
@@ -972,6 +1114,26 @@ def student_learning_detail(code):
     if not row:
         return None
     return normalize_profile(json.loads(row["profile_json"]), row["hero_name"])
+
+
+def grant_all_pets_to_player(code):
+    """Teacher-only helper: persist all missing catalog pets without duplication."""
+    row = fetch_student_learning_detail(db_connection, code)
+    if not row:
+        return []
+    profile = normalize_profile(json.loads(row["profile_json"]), row["hero_name"])
+    granted = grant_all_pets(profile, stars=1)
+    if granted:
+        update_profile_record(
+            db_connection,
+            code,
+            profile["name"],
+            json.dumps(profile, ensure_ascii=False),
+        )
+        cached = st.session_state.get("_profile_cache")
+        if cached and cached.get("code") == code:
+            st.session_state.pop("_profile_cache", None)
+    return granted
 
 
 def student_question_rows(code, errors_only=False, limit=200):
@@ -1630,10 +1792,23 @@ def process_rewards():
     profile["unit_best_stars"][unit_id] = new_best
     if old_best == 0 and new_best > 0 and award_unit_ticket(profile, unit_id):
         st.session_state.extra_reward_messages.append("首次通過新單元，獲得1張擊殺券！")
+    unit_chapter = unit_id.split("-", 1)[0]
+    if st.session_state.stars > 0 and unit_chapter in {"1", "2", "3", "4", "5"}:
+        profile["pet_food_cans"] = int(profile.get("pet_food_cans", 0)) + 2
+        st.session_state.extra_reward_messages.append("寵物培養掉落：美味罐頭 ×2")
     item = make_random_item(profile, unit_id, st.session_state.stars)
     if item:
         profile["inventory"].append(item)
         st.session_state.pending_item_uid = item["uid"]
+        current_pet = equipped_pet(profile)
+        bonus_chance = current_pet["drop_bonus_pct"] if current_pet else 0.0
+        if bonus_chance and secrets.randbelow(10_000) < round(bonus_chance * 10_000):
+            bonus_item = make_random_item(profile, unit_id, st.session_state.stars)
+            if bonus_item:
+                profile["inventory"].append(bonus_item)
+                st.session_state.extra_reward_messages.append(
+                    f"{current_pet['display_name']}觸發額外掉落：{item_text(bonus_item)}"
+                )
     elif st.session_state.stars > 0:
         st.session_state.drop_exhausted = True
     if (
@@ -1915,7 +2090,7 @@ if st.session_state.screen in {"login", "home"}:
 
 home_return_screens = {
     "character_stats", "menu", "backpack", "gallery", "rankings", "economy", "daily_tasks",
-    "announcements", "feedback", "mailbox", "quiz", "quiz_result", "sweep_result", "boss_ready", "boss_result",
+    "announcements", "feedback", "mailbox", "pet_summon", "quiz", "quiz_result", "sweep_result", "boss_ready", "boss_result",
 }
 if st.session_state.get("active_player") and st.session_state.screen in home_return_screens:
     render_page_close_button(st.session_state.screen)
@@ -2027,6 +2202,7 @@ elif st.session_state.screen == "admin_panel":
             "delete_student": delete_student,
             "ensure_teacher_profile": ensure_teacher_profile,
             "game_feedback_rows": game_feedback_rows,
+            "grant_all_pets_to_player": grant_all_pets_to_player,
             "mark_feedback_replied": mark_feedback_replied,
             "ranking_rows": ranking_rows,
             "render_announcement_content": render_announcement_content,
@@ -2176,7 +2352,11 @@ elif st.session_state.screen == "home":
     if nav2[3].button("📋 任務", use_container_width=True):
         st.session_state.screen = "daily_tasks"
         st.rerun()
-    nav3[0].button("🥚 寵物召喚｜尚未開放", disabled=True, use_container_width=True)
+    if nav3[0].button("🥚 寵物召喚", use_container_width=True):
+        st.session_state.pet_summon_view = "main"
+        st.session_state.pet_summon_result = None
+        st.session_state.screen = "pet_summon"
+        st.rerun()
     if nav3[1].button("💬 問題回報", use_container_width=True):
         st.session_state.scroll_feedback_to_top = True
         st.session_state.screen = "feedback"
@@ -2210,6 +2390,10 @@ elif st.session_state.screen == "home":
         st.session_state.active_player = None
         st.session_state.screen = "login"
         st.rerun()
+
+elif st.session_state.screen == "pet_summon":
+    profile = get_profile()
+    render_pet_summon_screen(profile, save_profile, current_daily_period())
 
 elif st.session_state.screen == "announcements":
     scroll_page_to_top("scroll_announcements_to_top")
@@ -2264,14 +2448,25 @@ elif st.session_state.screen == "mailbox":
         "信件分類", ["未閱讀", "已閱讀"], horizontal=True, key="mailbox_filter"
     )
     unread_count = sum(1 for mail in mails if not mail["is_read"])
+    claimable_count = sum(
+        1 for mail in mails if mail.get("reward") and not mail.get("is_claimed")
+    )
     if st.button(
-        f"✅ 一鍵全部已讀（{unread_count}）",
-        key="mailbox_mark_all_read",
-        disabled=unread_count == 0,
+        f"🎁 一鍵領收（附件 {claimable_count}｜未讀 {unread_count}）",
+        key="mailbox_claim_all",
+        disabled=claimable_count == 0 and unread_count == 0,
+        type="primary" if claimable_count else "secondary",
         use_container_width=True,
     ):
-        marked_count = mark_all_mail_read(st.session_state.active_player)
-        st.session_state.mailbox_notice = f"已將 {marked_count} 封信件標示為已讀。"
+        claimed_count, marked_count = claim_all_mail(
+            st.session_state.active_player, mails
+        )
+        notice_parts = []
+        if claimed_count:
+            notice_parts.append(f"已領取 {claimed_count} 封附件獎勵")
+        if marked_count:
+            notice_parts.append(f"已將 {marked_count} 封信件標示為已讀")
+        st.session_state.mailbox_notice = "；".join(notice_parts) + "。"
         st.rerun()
     mailbox_notice = st.session_state.pop("mailbox_notice", None)
     if mailbox_notice:
@@ -2289,8 +2484,18 @@ elif st.session_state.screen == "mailbox":
             reward_parts.append(f"🪙 金幣 ×{reward['coins']}")
         if reward.get("sweep_tickets"):
             reward_parts.append(f"🎫 擊殺券 ×{reward['sweep_tickets']}")
+        if reward.get("summon_tickets"):
+            reward_parts.append(f"🎟️ 召喚券 ×{reward['summon_tickets']}")
         if reward.get("smelting_stones"):
             reward_parts.append(f"💎 融煉石 ×{reward['smelting_stones']}")
+        if reward.get("pet_food_cans"):
+            reward_parts.append(f"🥫 美味罐頭 ×{reward['pet_food_cans']}")
+        for element, quantity in (reward.get("pet_element_elixirs") or {}).items():
+            element_name = {
+                "wood": "木", "earth": "土", "water": "水",
+                "fire": "火", "light": "光", "dark": "暗",
+            }.get(element, element)
+            reward_parts.append(f"🧪 {element_name}屬性特製仙丹 ×{quantity}")
         claimed_label = "｜✅ 已領取" if mail["is_claimed"] else ""
         with st.expander(f"{mail['subject']}｜{mail['created_at']}{claimed_label}"):
             st.write(mail["message"])
