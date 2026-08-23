@@ -16,6 +16,7 @@ PET_FREE_SUMMONS_PER_DAY = 1
 PET_PAID_SUMMONS_PER_DAY = 10
 PET_SUMMON_COIN_COST = 2000
 PET_ADVANCE_SOUL_COSTS = {1: 2, 2: 6}
+PET_DISMANTLE_COIN_BONUS = 0.20
 
 
 @lru_cache(maxsize=1)
@@ -269,6 +270,14 @@ def pet_unlocked_bonuses(pet):
         "defense_pct": 0.25 if level >= 15 else 0.0,
         "attack_speed_flat": 0.25 if level >= 20 else 0.0,
     }
+
+
+def pet_dismantle_coin_bonus(profile):
+    """Return the followed pet's dismantling bonus after its two-star advance."""
+    pet = equipped_pet(profile)
+    if not pet or int(pet.get("stars", 1)) < 2:
+        return 0.0
+    return PET_DISMANTLE_COIN_BONUS
 
 
 def add_pet_experience(profile, pet_id, amount):

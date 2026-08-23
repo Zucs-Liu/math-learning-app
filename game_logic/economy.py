@@ -7,6 +7,7 @@ call these helpers and decide when a changed profile should be persisted.
 from datetime import datetime, timedelta, timezone
 
 from game_logic.profile import clear_equipment_item_uids
+from game_logic.pets import pet_dismantle_coin_bonus
 import random
 import uuid
 
@@ -243,10 +244,12 @@ def craft_special_stone(profile, stone_key):
     return True
 
 
-def dismantle_value(items):
+def dismantle_value(items, profile=None):
     """Return coins and ordinary smelting stones yielded by equipment."""
+    base_coins = sum(item["stars"] * 100 for item in items)
+    coin_bonus = pet_dismantle_coin_bonus(profile) if profile is not None else 0.0
     return (
-        sum(item["stars"] * 100 for item in items),
+        int(round(base_coins * (1 + coin_bonus))),
         sum(1 for item in items if item["stars"] == 3),
     )
 
@@ -254,7 +257,7 @@ def dismantle_value(items):
 def dismantle_inventory_items(profile, items):
     if any(item["stars"] >= 4 for item in items):
         return False
-    coins, stones = dismantle_value(items)
+    coins, stones = dismantle_value(items, profile)
     profile["coins"] += coins
     profile["smelting_stones"] += stones
     remove_inventory_entries(profile, [item["uid"] for item in items])
