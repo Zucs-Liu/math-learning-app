@@ -1,5 +1,7 @@
 """Pet summon screen, rate disclosure, catalog preview, and result display."""
 
+import base64
+from functools import lru_cache
 from pathlib import Path
 
 import streamlit as st
@@ -16,6 +18,12 @@ from game_logic.pets import (
 
 
 ELEMENT_ORDER = ("light", "dark", "wood", "earth", "water", "fire")
+
+
+@lru_cache(maxsize=1)
+def _collection_image_data_uri(image_path):
+    encoded = base64.b64encode(Path(image_path).read_bytes()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
 
 
 def _render_summon_styles():
@@ -89,6 +97,20 @@ def _render_summon_styles():
           display:block !important;width:min(62%,28rem) !important;height:auto !important;
           object-fit:contain !important;margin-inline:auto !important;
         }
+        .st-key-pet_summon_collection,
+        .st-key-pet_summon_collection > div,
+        .st-key-pet_summon_collection [data-testid="stMarkdown"],
+        .st-key-pet_summon_collection [data-testid="stMarkdownContainer"] {
+          width:100% !important;max-width:none !important;
+        }
+        .pet-summon-collection-centered {
+          display:grid;width:100%;grid-template-columns:1fr 1fr;align-items:center;
+        }
+        .pet-summon-collection-centered img {
+          display:block;grid-column:1 / -1;justify-self:center;
+          width:min(62%,28rem);height:auto;max-height:45vh;
+          object-fit:contain;margin:0;
+        }
         .st-key-summon_content_gallery [data-testid="stColumn"]:nth-child(2) [data-testid="stImage"] {
           display:flex !important;justify-content:center !important;
         }
@@ -115,6 +137,8 @@ def _special_affixes(pet, elements):
         f"跟隨時，勇者攻擊轉為{element['name']}屬性。",
         f"對{strong}屬性 BOSS 傷害增加 15%。",
         "每個單元增加 10% 額外掉落裝備機率。",
+        "二星被動：分解裝備獲得的金幣數量加20%。",
+        "三星主動技能：尚未開放。",
     ]
 
 
@@ -314,8 +338,12 @@ def render_pet_summon_screen(profile, save_profile, daily_period):
 
     image_path = Path(__file__).resolve().parent.parent / "assets" / "pets" / "pet-summon-collection.png"
     with st.container(key="pet_summon_collection"):
-        collection_cols = st.columns([1, 3, 1])
-        collection_cols[1].image(image_path, use_container_width=True)
+        st.markdown(
+            f'<div class="pet-summon-collection-centered">'
+            f'<img src="{_collection_image_data_uri(str(image_path))}" alt="寵物召喚集合圖">'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
     free_used = int(profile.get("pet_free_summons_used", 0))
     paid_used = int(profile.get("pet_paid_summons_used", 0))

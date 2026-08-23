@@ -11,6 +11,7 @@ from game_logic.loot import find_inventory_item as find_item
 from game_logic.profile import equipped_item_uids
 from game_logic.pets import (
     PET_ADVANCE_SOUL_COSTS,
+    PET_DISMANTLE_COIN_BONUS,
     PET_TOTAL,
     advance_pet,
     ensure_pet_profile,
@@ -529,6 +530,10 @@ def _render_compact_stats(profile):
                     "<div><b>寵物・攻擊屬性</b>"
                     f"<span>{current_pet['element_name']}</span></div>"
                 ),
+                (
+                    "<div><b>寵物・分解裝備金幣</b>"
+                    f"<span>{'+20%' if int(current_pet.get('stars', 1)) >= 2 else '未解鎖'}</span></div>"
+                ),
             ]
         )
         bonus_labels = (
@@ -677,7 +682,7 @@ def _render_unused_equipment(profile, save_profile):
             item for item in eligible_items
             if st.session_state.get(f"character_bulk_break_{item['uid']}", False)
         ]
-        coin_gain, stone_gain = dismantle_value(selected_items)
+        coin_gain, stone_gain = dismantle_value(selected_items, profile)
         st.info(
             f"已選擇 {len(selected_items)} 件，可獲得 {coin_gain} 金幣"
             + (f"、{stone_gain} 顆融煉石" if stone_gain else "")
@@ -910,10 +915,9 @@ def _render_pet_layout_preview(profile, save_profile):
                     else:
                         st.session_state.pet_training_notice = result["reason"]
                     st.rerun()
-            skill_col.button(
+            skill_clicked = skill_col.button(
                 "技能",
                 key="character_pet_preview_skill",
-                disabled=True,
                 use_container_width=True,
             )
             follow_clicked = follow_col.button(
@@ -930,6 +934,12 @@ def _render_pet_layout_preview(profile, save_profile):
             )
             save_profile(profile)
             st.rerun()
+
+        if skill_clicked:
+            if int(current_pet.get("stars", 1)) < 3:
+                st.toast("請先將寵物進階到三星，才能獲得主動技能。")
+            else:
+                st.toast("三星主動技能尚未開放。")
 
         training_notice = st.session_state.pop("pet_training_notice", None)
         if training_notice:
@@ -982,6 +992,8 @@ def _render_pet_layout_preview(profile, save_profile):
                     <div class="character-pet-stat-list">
                       <div><b>額外裝備掉落機率</b><span>+{current_pet['drop_bonus_pct']:.0%}</span></div>
                       <div><b>跟隨時造成的攻擊轉為{current_pet['element_name']}屬性</b><span>{current_pet['element_name']}</span></div>
+                      <div><b>二星・分解裝備獲得的金幣數量加20%</b><span>{'+20%' if star_count >= 2 else '未解鎖'}</span></div>
+                      <div><b>三星・主動技能</b><span>尚未開放</span></div>
                       <div><b>Lv5・跟隨時增加HP</b><span>{'+25%' if current_pet['level'] >= 5 else '未解鎖'}</span></div>
                       <div><b>Lv10・跟隨時增加攻擊</b><span>{'+25%' if current_pet['level'] >= 10 else '未解鎖'}</span></div>
                       <div><b>Lv15・跟隨時增加防禦</b><span>{'+25%' if current_pet['level'] >= 15 else '未解鎖'}</span></div>
@@ -997,9 +1009,13 @@ def _render_pet_layout_preview(profile, save_profile):
             result = advance_pet(profile, selected_id)
             if result["ok"]:
                 save_profile(profile)
+                if int(result["pet"]["stars"]) == 2:
+                    unlock_notice = "解鎖被動能力：分解裝備獲得的金幣數量加20%！"
+                else:
+                    unlock_notice = "獲得主動技能：尚未開放。"
                 st.session_state.pet_advance_notice = (
                     f"{result['pet']['display_name']}已進階為 {result['pet']['stars']} 星！"
-                    f"剩餘元神 ×{result['souls_remaining']}"
+                    f"{unlock_notice}剩餘元神 ×{result['souls_remaining']}"
                 )
             else:
                 st.session_state.pet_advance_notice = result["reason"]
