@@ -6,12 +6,14 @@ from game_data.config import AFFIX_NAMES, CHAPTERS, SLOT_ICONS, SLOT_NAMES
 from game_logic.economy import (
     BASIC_AFFIXES,
     SHOP_ITEM_PRICE,
+    SHOP_SOUL_PRICE,
     SPECIAL_STONE_CRAFT_COST,
     SPECIAL_STONE_KEYS,
     craft_special_stone,
     purchase_shop_entry,
 )
 from game_logic.equipment import fixed_text, item_chapter_id, item_text
+from game_logic.pets import pet_catalog
 from game_logic.profile import equipped_item_uids
 from game_ui.common import render_bottom_home_button
 from game_ui.profile import render_item_comparison
@@ -68,6 +70,24 @@ def render_economy_screen(
         st.divider()
 
     if mode == "shop":
+        st.markdown(
+            """
+            <style>
+            .st-key-shop_portrait { display: none; }
+            @media (orientation: portrait) {
+                .st-key-shop_landscape { display: none; }
+                .st-key-shop_portrait { display: block; }
+                .st-key-shop_portrait [data-testid="stVerticalBlockBorderWrapper"] p,
+                .st-key-shop_portrait [data-testid="stVerticalBlockBorderWrapper"]
+                    [data-testid="stCaptionContainer"] { font-size: 0.82rem; line-height: 1.25; }
+                .st-key-shop_portrait [data-testid="stVerticalBlockBorderWrapper"] h4 {
+                    font-size: 1rem; line-height: 1.25; overflow-wrap: anywhere;
+                }
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
         generated = datetime.fromisoformat(profile["shop"]["generated_at"].replace("Z", "+00:00"))
         next_refresh = generated + timedelta(hours=24)
         remaining = max(0, int((next_refresh - datetime.now(timezone.utc)).total_seconds()))
@@ -76,7 +96,8 @@ def render_economy_screen(
         info_col, refresh_col = st.columns([4, 1])
         info_col.info(
             f"目前提供{CHAPTERS[highest_shop_chapter(profile)]['number']}強度的三星裝備；"
-            f"每件{SHOP_ITEM_PRICE}金幣。自動刷新剩餘約 {hours}小時{minutes}分。"
+            f"裝備每件{SHOP_ITEM_PRICE}金幣，屬性元神每個{SHOP_SOUL_PRICE}金幣。"
+            f"自動刷新剩餘約 {hours}小時{minutes}分。"
         )
         refresh_cost = shop_paid_refresh_cost(profile)
         paid_refresh_count = int(profile["shop"].get("paid_refresh_count", 0) or 0)
@@ -93,27 +114,48 @@ def render_economy_screen(
             f"本輪已刷新 {paid_refresh_count} 次；每5次費用加倍，24小時自動刷新後重設。"
         )
         shop_entries = profile["shop"]["items"]
-        for row_start in (0, 3):
-            columns = st.columns(3)
-            for col, entry in zip(columns, shop_entries[row_start:row_start + 3]):
+
+        def render_shop_card(entry, key_suffix):
+            is_soul = entry.get("kind") == "pet_element_soul"
+            if is_soul:
+                element = entry["element"]
+                element_data = pet_catalog()[1][element]
+                price = SHOP_SOUL_PRICE
+                st.markdown(f"#### ✨ {element_data['name']}屬性元神")
+                st.write("寵物進階素材｜數量 ×1")
+                st.caption(f"目前持有：{profile['pet_element_souls'].get(element, 0)} 個")
+            else:
                 item = entry["item"]
-                with col.container(border=True):
-                    st.markdown(f"#### {SLOT_ICONS[item['slot']]} {item['name']}")
-                    st.write(f"{'⭐' * item['stars']}｜{fixed_text(item)}")
-                    st.write(f"詞條：{AFFIX_NAMES[item['affix_stat']]} +{item['affix_value']:.0%}")
-                    current = find_item(profile, profile["equipment"].get(item["slot"]))
-                    st.caption(f"目前穿戴：{item_text(current) if current else '此部位尚未裝備'}")
-                    if entry.get("sold"):
-                        st.button("已售完", disabled=True, key=f"sold_{entry['shop_id']}", use_container_width=True)
-                    elif st.button(
-                        f"🪙 {SHOP_ITEM_PRICE}｜購買",
-                        disabled=profile["coins"] < SHOP_ITEM_PRICE,
-                        key=f"buy_{entry['shop_id']}", use_container_width=True,
-                    ):
-                        if purchase_shop_entry(profile, entry):
-                            save_profile(profile)
-                            st.session_state.shop_purchase_uid = item["uid"]
-                            st.rerun()
+                price = SHOP_ITEM_PRICE
+                st.markdown(f"#### {SLOT_ICONS[item['slot']]} {item['name']}")
+                st.write(f"{'⭐' * item['stars']}｜{fixed_text(item)}")
+                st.write(f"詞條：{AFFIX_NAMES[item['affix_stat']]} +{item['affix_value']:.0%}")
+                current = find_item(profile, profile["equipment"].get(item["slot"]))
+                st.caption(f"目前穿戴：{item_text(current) if current else '此部位尚未裝備'}")
+            if entry.get("sold"):
+                st.button("已售完", disabled=True, key=f"sold_{key_suffix}_{entry['shop_id']}", use_container_width=True)
+            elif st.button(
+                f"🪙 {price}｜購買",
+                disabled=profile["coins"] < price,
+                key=f"buy_{key_suffix}_{entry['shop_id']}", use_container_width=True,
+            ):
+                if purchase_shop_entry(profile, entry):
+                    save_profile(profile)
+                    st.session_state.shop_purchase_uid = None if is_soul else entry["item"]["uid"]
+                    st.rerun()
+
+        with st.container(key="shop_landscape"):
+            for row_start in (0, 3):
+                columns = st.columns(3)
+                for col, entry in zip(columns, shop_entries[row_start:row_start + 3]):
+                    with col.container(border=True):
+                        render_shop_card(entry, "landscape")
+        with st.container(key="shop_portrait"):
+            for row_start in (0, 2, 4):
+                columns = st.columns(2)
+                for col, entry in zip(columns, shop_entries[row_start:row_start + 2]):
+                    with col.container(border=True):
+                        render_shop_card(entry, "portrait")
     else:
         st.info(
             "選擇三件同章節、同星級裝備：3件一星→同章節1件二星；"
