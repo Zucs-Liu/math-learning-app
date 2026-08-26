@@ -138,5 +138,15 @@ def player_stats(profile):
     final_stats["attack_element_color"] = pet["element_color"] if pet else None
     final_stats["equipment_drop_bonus_pct"] = pet["drop_bonus_pct"] if pet else 0.0
     final_stats["pet_level_bonuses"] = pet.get("unlocked_bonuses", {}) if pet else {}
+    final_stats["pet_skill"] = (
+        {
+            **pet["skill"],
+            "pet_id": pet["id"],
+            "element": pet["element"],
+            "level": int(pet["level"]),
+        }
+        if pet and int(pet.get("stars", 1)) >= 3 and pet.get("skill")
+        else None
+    )
     final_stats["breakdown"] = {"base": base, "flat": flat, "pct": pct}
     return final_stats
