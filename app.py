@@ -77,7 +77,7 @@ from game_data.config import (
     UNITS,
 )
 from game_logic.questions import make_question
-from game_logic.combat import simulate_battle
+from game_logic.combat import battle_passive_effects, merge_simultaneous_action_event, simulate_battle
 from game_logic.authentication import (
     create_short_login_token,
     make_pin_hash,
@@ -142,6 +142,7 @@ from game_ui.common import (
 )
 from game_ui.battle import (
     battle_presentation_state,
+    render_battle_status_effects,
     render_battle_scene,
     render_chapter_boss_card,
 )
@@ -3055,19 +3056,27 @@ elif st.session_state.screen == "boss_watch":
         elapsed = time.time() - st.session_state.battle_started_at
         simulated_elapsed, active_skill, presentation_duration = battle_presentation_state(result, elapsed)
         visible = [e for e in result["events"] if e["time"] <= simulated_elapsed]
-        event = visible[-1]
+        event = merge_simultaneous_action_event(visible)
         profile = get_profile()
         config = BOSS_CONFIGS[
             f"{st.session_state.selected_chapter}_{st.session_state.selected_boss_type}"
         ]
         title_prefix = f"「{profile['equipped_title']}」" if profile.get("equipped_title") else ""
+        stats = player_stats(profile)
+        passive_effects = battle_passive_effects(
+            stats,
+            st.session_state.selected_boss_type,
+            st.session_state.selected_chapter,
+        )
         render_health_bar(
             f"{title_prefix}{profile['name']}",
             event["player_hp"], result["events"][0]["player_hp"], "#2185d0"
         )
+        render_battle_status_effects(passive_effects["player"])
         render_health_bar(
             config["name"], event["boss_hp"], result["events"][0]["boss_hp"], "#e53935"
         )
+        render_battle_status_effects(passive_effects["boss"])
         render_battle_scene(
             event, st.session_state.selected_chapter,
             st.session_state.selected_boss_type, len(visible), active_skill,

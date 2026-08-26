@@ -1,6 +1,10 @@
 import unittest
 
-from game_logic.combat import simulate_battle
+from game_logic.combat import (
+    battle_passive_effects,
+    merge_simultaneous_action_event,
+    simulate_battle,
+)
 from game_logic.pets import element_matchup
 
 
@@ -34,6 +38,35 @@ class ElementCombatTests(unittest.TestCase):
         disadvantaged = simulate_battle(combat_stats("wood"), "elite", "3")
         self.assertIn("造成115.0傷害", advantaged["events"][1]["text"])
         self.assertIn("造成85.0傷害", disadvantaged["events"][1]["text"])
+
+    def test_same_time_light_pet_event_preserves_hero_action(self):
+        visible = [
+            {"time": 0.0, "text": "戰鬥開始", "boss_hp": 1200, "player_hp": 100},
+            {"time": 0.0, "text": "勇者第1擊造成100.0傷害", "boss_hp": 1100, "player_hp": 100},
+            {
+                "time": 0.0,
+                "text": "大橘為重造成25真實傷害",
+                "boss_hp": 1075,
+                "player_hp": 100,
+                "event_type": "pet_skill",
+                "damage": 25,
+            },
+        ]
+        merged = merge_simultaneous_action_event(visible)
+        self.assertEqual(merged["simultaneous_hero_text"], visible[1]["text"])
+        self.assertEqual(merged["boss_hp"], 1075)
+
+    def test_passive_effects_are_assigned_to_modified_health_bar(self):
+        stats = combat_stats("water")
+        stats["pet_skill"] = {"name": "魚躍龍門", "element": "water", "level": 3}
+        effects = battle_passive_effects(stats, "normal", "3")
+        self.assertEqual(effects["player"], [])
+        self.assertEqual(effects["boss"][0]["text"], "魚躍龍門：BOSS 最大 HP -10%")
+
+        stats["pet_skill"] = {"name": "心有餘力不足", "element": "dark", "level": 3}
+        effects = battle_passive_effects(stats, "elite", "5")
+        self.assertIn("勇者傷害 +10%", effects["player"][0]["text"])
+        self.assertIn("勇者傷害 -40%", effects["player"][1]["text"])
 
 
 if __name__ == "__main__":
