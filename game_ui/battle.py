@@ -14,6 +14,48 @@ APP_ROOT = Path(__file__).resolve().parent.parent
 SKILL_CINEMATIC_SECONDS = 1.5
 SKILL_DRAGON_FLIGHT_SECONDS = 2.0
 SKILL_IMPACT_SECONDS = 1.0
+ELEMENT_DAMAGE_COLORS = {
+    "light": "#FBC02D",
+    "dark": "#8E6BD8",
+    "wood": "#35A853",
+    "earth": "#A56A43",
+    "water": "#2196F3",
+    "fire": "#E53935",
+}
+
+
+def render_battle_status_effects(effects):
+    """Render compact persistent-effect badges below one health bar."""
+    if not effects:
+        return
+    badges = []
+    for effect in effects:
+        color = ELEMENT_DAMAGE_COLORS.get(effect.get("element"), "#6B7280")
+        arrow = "↑" if effect.get("direction") == "increase" else "↓"
+        badges.append(
+            f'<span class="battle-effect-badge" style="border-color:{color};color:{color}">'
+            f'{arrow} {effect["text"]}</span>'
+        )
+    st.markdown(
+        """
+        <style>
+        .battle-effect-row {
+          display:flex;flex-wrap:wrap;gap:.22rem .38rem;
+          margin:-.35rem 0 .45rem;padding-left:13%;
+          font-size:clamp(.68rem,2.4vw,.82rem);line-height:1.25;
+        }
+        .battle-effect-badge {
+          display:inline-block;padding:.08rem .38rem;border:1px solid;
+          border-radius:999px;background:rgba(255,255,255,.72);
+          font-weight:700;white-space:normal;
+        }
+        @media (max-width:600px) {
+          .battle-effect-row {padding-left:0;margin-top:-.2rem;}
+        }
+        </style>
+        """ + f'<div class="battle-effect-row">{"".join(badges)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def battle_presentation_state(result, real_elapsed):
@@ -82,9 +124,14 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
     active_skill_text = active_skill.get("text", "") if active_skill else ""
     is_lightning_skill = "天降雷劫" in active_skill_text
     is_wind_skill = "狂風驟雨" in active_skill_text
-    hero_attacking = event["text"].startswith("勇者") and active_skill is None
+    boss_config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
+    boss_skill_damage_color = ELEMENT_DAMAGE_COLORS.get(
+        boss_config.get("element"), "#FFFFFF"
+    )
+    action_text = event.get("simultaneous_hero_text", event["text"])
+    hero_attacking = action_text.startswith("勇者") and active_skill is None
     boss_attacking = ("BOSS第" in event["text"] or "BOSS發動" in event["text"]) and active_skill is None
-    critical_hit = "暴擊" in event["text"]
+    critical_hit = "暴擊" in action_text
     hero_defeated = event.get("player_hp", 1) <= 0
     boss_defeated = event.get("boss_hp", 1) <= 0
     hero_class = "fighter hero hero-attack" if hero_attacking else "fighter hero"
@@ -106,7 +153,7 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
     hero_claws = '<div class="claw-hit hero-claw"><i></i><i></i><i></i></div>' if hero_hit else ""
     boss_claws = '<div class="claw-hit boss-claw"><i></i><i></i><i></i></div>' if boss_hit else ""
     sword_slash = '<div class="sword-slash"></div>' if hero_attacking else ""
-    damage_match = re.search(r"造成\s*([0-9.]+)", event["text"])
+    damage_match = re.search(r"造成\s*([0-9.]+)", action_text)
     damage_text = damage_match.group(1) if damage_match else ""
     damage_overlay = ""
     if damage_text and active_skill is None:
@@ -114,7 +161,18 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
         critical_class = " critical-number" if critical_hit else ""
         prefix = "暴擊 " if critical_hit else "-"
         damage_overlay = f'<div class="damage-number {target_class}{critical_class}">{prefix}{damage_text}</div>'
-    boss_config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
+    pet_damage_overlay = ""
+    pet_damage = float(event.get("damage", 0) or 0)
+    if event.get("event_type") == "pet_skill" and pet_damage > 0 and active_skill is None:
+        pet_damage_label = "真實傷害" if "真實傷害" in event["text"] else "寵物傷害"
+        pet_damage_color = ELEMENT_DAMAGE_COLORS.get(
+            event.get("pet_element"), "#FFFFFF"
+        )
+        pet_damage_overlay = (
+            f'<div class="true-damage-number pet-damage-on-boss" '
+            f'style="color:{pet_damage_color}">'
+            f'{pet_damage_label} -{pet_damage:g}</div>'
+        )
     boss_image = boss_image_data_uri(boss_config["image"])
     hero_image = hero_image_data_uri(gender)
     hero_visual = (
@@ -147,7 +205,8 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
             )
         skill_overlay = (
             '<div class="skill-aftermath-layer">'
-            f'<div class="true-damage-number">{impact_text}</div>'
+            f'<div class="true-damage-number" style="color:{boss_skill_damage_color}">'
+            f'{impact_text}</div>'
             '</div>'
         )
     elif skill_flight:
@@ -351,6 +410,7 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
         .skill-aftermath-layer {{position:absolute;inset:0;z-index:10;pointer-events:none;}}
         .true-damage-number {{position:absolute;left:10%;top:20%;font-size:30px;font-weight:900;color:#fff3a0;
           text-shadow:0 2px 2px #500,0 0 10px #ff2700;opacity:0;animation:trueDamage{event_sequence} 1s ease-out forwards;}}
+        .pet-damage-on-boss {{left:auto;right:10%;top:20%;}}
         .skill-impact-arena {{animation:arenaImpact{event_sequence} 1s ease-in-out;}}
         .damage-number {{position:absolute;z-index:8;top:38px;font-size:28px;font-weight:900;color:#fff;text-shadow:0 2px 2px #000,0 0 8px #e00000;animation:damageRise{event_sequence} .85s ease-out forwards;}}
         .damage-on-hero {{left:18%;}} .damage-on-boss {{right:18%;}}
@@ -393,6 +453,7 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
           .battle-arena {{height:250px;padding:14px;}}
           .eastern-fire-dragon {{width:165vw;left:105%;top:-35%;}}
           .true-damage-number {{left:5%;top:14%;font-size:25px;}}
+          .pet-damage-on-boss {{left:auto;right:5%;}}
           .tornado-stage {{width:96vw;height:94vh;top:3vh;}}
           .tornado-ribbons path {{stroke-width:18;}}
         }}
@@ -401,6 +462,7 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
           <div class="{hero_class}">{hero_visual}{hero_claws}{sword_slash}<span>勇者</span></div>
           <div class="{boss_class}">{boss_visual}{boss_claws}<span>{boss_config['name']}</span></div>
           {damage_overlay}
+          {pet_damage_overlay}
           {skill_overlay}
         </div>
         """,
