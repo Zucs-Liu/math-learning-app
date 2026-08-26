@@ -10,16 +10,16 @@ PROFILE_CACHE_SECONDS = 300
 SHORT_LOGIN_SECONDS = 300
 
 BOSS_CONFIGS = {
-    "1_normal": {"name": "荒野魔狼", "image": "wild-wolf.webp", "hp": 300, "damage": 10, "interval": 2.0, "exp": 100},
-    "1_elite": {"name": "血月狼人", "image": "blood-moon-werewolf.webp", "hp": 400, "damage": 30, "interval": 1.5, "exp": 150},
-    "2_normal": {"name": "刺甲蜘蛛", "image": "thorn-armor-spider.webp", "hp": 600, "damage": 20, "interval": 2.0, "exp": 150},
-    "2_elite": {"name": "魅惑影蛛", "image": "charming-shadow-spider.webp", "hp": 800, "damage": 60, "interval": 1.5, "exp": 200},
-    "3_normal": {"name": "深淵魔龍", "image": "abyss-dragon.webp", "hp": 900, "damage": 30, "interval": 2.0, "exp": 200, "critical_rate": 0.50},
-    "3_elite": {"name": "烈焰龍王", "image": "flame-dragon-king.webp", "hp": 1200, "damage": 90, "interval": 1.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 50},
-    "4_normal": {"name": "六尾雷狐", "image": "six-tail-thunder-fox.webp", "hp": 1200, "damage": 40, "interval": 2.0, "exp": 250, "defense_reduction": 20},
-    "4_elite": {"name": "九尾天狐", "image": "nine-tail-celestial-fox.webp", "hp": 1600, "damage": 120, "interval": 1.5, "exp": 300, "skill": "天降雷劫", "skill_hp_threshold": 0.5, "true_damage": 70},
-    "5_normal": {"name": "寒冰巨鯰", "image": "ice-giant-catfish.webp", "hp": 1500, "damage": 50, "interval": 2.0, "exp": 300, "hero_speed_reduction": 0.4},
-    "5_elite": {"name": "暴風熊王", "image": "storm-bear-king.webp", "hp": 2000, "damage": 150, "interval": 1.5, "exp": 350, "skill": "狂風驟雨", "hero_damage_reduction": 0.40, "skill_at_start": True},
+    "1_normal": {"name": "荒野魔狼", "element": "dark", "image": "wild-wolf.webp", "hp": 300, "damage": 10, "interval": 2.0, "exp": 100},
+    "1_elite": {"name": "血月狼人", "element": "dark", "image": "blood-moon-werewolf.webp", "hp": 400, "damage": 30, "interval": 1.5, "exp": 150},
+    "2_normal": {"name": "刺甲蜘蛛", "element": "earth", "image": "thorn-armor-spider.webp", "hp": 600, "damage": 20, "interval": 2.0, "exp": 150},
+    "2_elite": {"name": "魅惑影蛛", "element": "dark", "image": "charming-shadow-spider.webp", "hp": 800, "damage": 60, "interval": 1.5, "exp": 200},
+    "3_normal": {"name": "深淵魔龍", "element": "wood", "image": "abyss-dragon.webp", "hp": 900, "damage": 30, "interval": 2.0, "exp": 200, "critical_rate": 0.50},
+    "3_elite": {"name": "烈焰龍王", "element": "fire", "image": "flame-dragon-king.webp", "hp": 1200, "damage": 90, "interval": 1.5, "exp": 250, "skill": "火龍斬", "skill_interval": 5.0, "true_damage": 50},
+    "4_normal": {"name": "六尾雷狐", "element": "light", "image": "six-tail-thunder-fox.webp", "hp": 1200, "damage": 40, "interval": 2.0, "exp": 250, "defense_reduction": 20},
+    "4_elite": {"name": "九尾天狐", "element": "light", "image": "nine-tail-celestial-fox.webp", "hp": 1600, "damage": 120, "interval": 1.5, "exp": 300, "skill": "天降雷劫", "skill_hp_threshold": 0.5, "true_damage": 70},
+    "5_normal": {"name": "寒冰巨鯰", "element": "water", "image": "ice-giant-catfish.webp", "hp": 1500, "damage": 50, "interval": 2.0, "exp": 300, "hero_speed_reduction": 0.4},
+    "5_elite": {"name": "暴風熊王", "element": "water", "image": "storm-bear-king.webp", "hp": 2000, "damage": 150, "interval": 1.5, "exp": 350, "skill": "狂風驟雨", "hero_damage_reduction": 0.40, "skill_at_start": True},
 }
 
 BOSS_MAX_HP = 400
