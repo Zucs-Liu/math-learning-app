@@ -13,6 +13,10 @@
       "name": "綠帽鼠",
       "element": "wood",
       "animal": "mouse",
+      "skill": {
+        "name": "盤根錯節",
+        "description": "戰鬥開始發動：降低土屬性BOSS攻速0.300次／秒；增加火屬性BOSS攻速0.300次／秒；降低其他屬性BOSS攻速0.150次／秒。"
+      },
       "images": {
         "mythic": "assets/pets/wood-green-cap-mouse-mythic.png",
         "chibi": "assets/pets/wood-green-cap-mouse-chibi.png",
@@ -24,6 +28,10 @@
       "name": "巧克力蛇",
       "element": "earth",
       "animal": "snake",
+      "skill": {
+        "name": "吞天裂地",
+        "description": "戰鬥開始發動：每秒對BOSS造成寵物等級×5點傷害，可被BOSS傷害減免抵銷；面對木屬性BOSS時改為每秒回復等量血量。"
+      },
       "images": {
         "mythic": "assets/pets/earth-chocolate-snake-mythic.png",
         "chibi": "assets/pets/earth-chocolate-snake-chibi.png",
@@ -35,6 +43,10 @@
       "name": "果凍魚",
       "element": "water",
       "animal": "fish",
+      "skill": {
+        "name": "魚躍龍門",
+        "description": "戰鬥開始發動：降低火屬性BOSS 20%最大HP；增加土屬性BOSS 20%最大HP；降低其他屬性BOSS 10%最大HP。"
+      },
       "images": {
         "mythic": "assets/pets/water-jelly-fish-mythic.png",
         "chibi": "assets/pets/water-jelly-fish-chibi.png",
@@ -46,6 +58,10 @@
       "name": "赤尾狗",
       "element": "fire",
       "animal": "dog",
+      "skill": {
+        "name": "烈焰咆嘯",
+        "description": "戰鬥開始發動：每5秒造成300點傷害；對木屬性BOSS造成600點；對水屬性BOSS不造成傷害。傷害可被BOSS傷害減免抵銷。"
+      },
       "images": {
         "mythic": "assets/pets/fire-redtail-dog-mythic.png",
         "chibi": "assets/pets/fire-redtail-dog-chibi.png",
@@ -57,6 +73,10 @@
       "name": "心機狐",
       "element": "dark",
       "animal": "fox",
+      "skill": {
+        "name": "心有餘力不足",
+        "description": "戰鬥開始發動：對光屬性BOSS傷害增加25%；對暗屬性BOSS傷害降低25%；對其他屬性BOSS傷害增加10%。"
+      },
       "images": {
         "mythic": "assets/pets/dark-cunning-fox-mythic.png",
         "chibi": "assets/pets/dark-cunning-fox-chibi.png",
@@ -68,6 +88,10 @@
       "name": "大橘",
       "element": "light",
       "animal": "cat",
+      "skill": {
+        "name": "大橘為重",
+        "description": "戰鬥開始發動：勇者每次攻擊額外造成寵物等級×5點真實傷害；面對光屬性BOSS時改為每次攻擊回復等量血量。"
+      },
       "images": {
         "mythic": "assets/pets/light-big-orange-cat-mythic.png",
         "chibi": "assets/pets/light-big-orange-cat-chibi.png",
