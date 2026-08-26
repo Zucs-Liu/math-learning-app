@@ -2657,11 +2657,11 @@ elif st.session_state.screen == "daily_tasks":
         st.caption("每日登入於台灣時間上午8:00重置；單元練習任務於每日凌晨0:00重置。")
         task_left, task_right = st.columns([3, 2])
         task_left.write("**每日登入一次**")
-        task_left.caption("獎勵：200金幣")
+        task_left.caption("獎勵：2000金幣")
         if profile.get("daily_login_claimed"):
             task_right.success("✅ 已完成並領取")
-        elif task_right.button("領取200金幣", type="primary", use_container_width=True):
-            profile["coins"] += 200
+        elif task_right.button("領取2000金幣", type="primary", use_container_width=True):
+            profile["coins"] += 2000
             profile["daily_login_claimed"] = True
             save_profile(profile)
             st.rerun()
