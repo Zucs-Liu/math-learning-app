@@ -411,6 +411,10 @@ def render_battle_scene(event, chapter_id, boss_type, event_sequence, active_ski
 def render_chapter_boss_card(chapter_id, boss_type, unlocked):
     """在章節單元下方顯示 BOSS 能力與挑戰入口。"""
     config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
+    element_name = {
+        "light": "光", "dark": "暗", "wood": "木",
+        "earth": "土", "water": "水", "fire": "火",
+    }[config["element"]]
     is_elite = boss_type == "elite"
     label = "菁英 BOSS" if is_elite else "一般 BOSS"
     with st.container(border=True):
@@ -420,7 +424,7 @@ def render_chapter_boss_card(chapter_id, boss_type, unlocked):
             image_col.image(image_path, width=72)
         else:
             image_col.markdown("## 🐉")
-        info_col.markdown(f"### {label}｜{config['name']}")
+        info_col.markdown(f"### {label}｜{config['name']}｜{element_name}屬性")
         info_col.write(
             f"**HP：{config['hp']}**　｜　"
             f"**攻擊：每 {config['interval']:g} 秒造成 {config['damage']} 傷害**"
