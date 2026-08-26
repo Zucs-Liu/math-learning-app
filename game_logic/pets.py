@@ -17,6 +17,7 @@ PET_PAID_SUMMONS_PER_DAY = 10
 PET_SUMMON_COIN_COST = 2000
 PET_ADVANCE_SOUL_COSTS = {1: 2, 2: 6}
 PET_DISMANTLE_COIN_BONUS = 0.20
+PET_ELEMENT_DAMAGE_BONUS = 0.15
 
 
 @lru_cache(maxsize=1)
@@ -26,6 +27,18 @@ def pet_catalog():
     data = json.loads(path.read_text(encoding="utf-8"))
     pets = {entry["id"]: entry for entry in data["pets"]}
     return pets, data["elements"]
+
+
+def element_matchup(attack_element, boss_element):
+    """Return advantage state and multiplier for an elemental hero attack."""
+    elements = pet_catalog()[1]
+    if attack_element not in elements or boss_element not in elements:
+        return "neutral", 1.0
+    if elements[attack_element]["strong_against"] == boss_element:
+        return "advantage", 1.0 + PET_ELEMENT_DAMAGE_BONUS
+    if elements[boss_element]["strong_against"] == attack_element:
+        return "disadvantage", 1.0 - PET_ELEMENT_DAMAGE_BONUS
+    return "neutral", 1.0
 
 
 def default_owned_pet():

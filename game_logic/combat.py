@@ -5,14 +5,17 @@ database rewards stay in ``app.py``.
 """
 
 from game_data.config import BOSS_CONFIGS
+from game_logic.pets import element_matchup
 
 
 def simulate_battle(stats, boss_type, chapter_id):
     config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
     boss_element = config["element"]
     pet_skill = stats.get("pet_skill")
+    attack_element = stats.get("attack_element")
     pet_element = pet_skill.get("element") if pet_skill else None
     pet_level = int(pet_skill.get("level", 0)) if pet_skill else 0
+    _, element_damage_multiplier = element_matchup(attack_element, boss_element)
     elite_boss_reduction = stats["boss_hp_reduction"] if boss_type == "elite" else 0.0
     elite_boss_damage = stats["boss_damage_pct"] if boss_type == "elite" else 0.0
     elite_boss_slow = stats["boss_attack_slow_pct"] if boss_type == "elite" else 0.0
@@ -91,7 +94,12 @@ def simulate_battle(stats, boss_type, chapter_id):
                 0.0,
                 1 + elite_boss_damage - config.get("hero_damage_reduction", 0.0),
             )
-            normal_damage = stats["attack"] * damage_multiplier * pet_damage_multiplier
+            normal_damage = (
+                stats["attack"]
+                * damage_multiplier
+                * pet_damage_multiplier
+                * element_damage_multiplier
+            )
             if is_critical:
                 normal_damage *= 1.5 + stats["critical_damage"]
             damage = normal_damage + (boss_max * elite_first_hit if hero_hits == 1 else 0)
