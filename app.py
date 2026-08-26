@@ -2939,6 +2939,13 @@ elif st.session_state.screen == "boss_ready":
           line-height:1.25;
           white-space:nowrap;
         }}
+        @media (max-width:768px) and (orientation:portrait) {{
+          .boss-ready-title {{
+            max-width:100%;
+            white-space:normal;
+            overflow-wrap:anywhere;
+          }}
+        }}
         </style>
         <h3 class="boss-ready-title">🐉 {CHAPTERS[chapter_id]['number']}{boss_label}：{config['name']}｜{element_name}屬性</h3>
         """,
