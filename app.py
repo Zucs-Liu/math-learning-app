@@ -2924,12 +2924,29 @@ elif st.session_state.screen == "boss_ready":
         unsafe_allow_html=True,
     )
     with st.container(key="boss_mobile_stats"):
-        render_stats(profile, show_exp=False)
+        render_stats(profile, show_exp=False, boss_element=config["element"])
     st.divider()
-    st.subheader(f"🐉 {CHAPTERS[chapter_id]['number']}{boss_label}：{config['name']}")
+    element_name = {
+        "light": "光", "dark": "暗", "wood": "木",
+        "earth": "土", "water": "水", "fire": "火",
+    }[config["element"]]
+    st.markdown(
+        f"""
+        <style>
+        .boss-ready-title {{
+          margin:0 0 .75rem;
+          font-size:clamp(.76rem, 3.7vw, 2rem);
+          line-height:1.25;
+          white-space:nowrap;
+        }}
+        </style>
+        <h3 class="boss-ready-title">🐉 {CHAPTERS[chapter_id]['number']}{boss_label}：{config['name']}｜{element_name}屬性</h3>
+        """,
+        unsafe_allow_html=True,
+    )
     boss_image_path = Path(__file__).parent / "assets" / "bosses" / config["image"]
     if boss_image_path.exists():
-        st.image(boss_image_path, width=320, caption=config["name"])
+        st.image(boss_image_path, width=320, caption=f"{config['name']}｜{element_name}屬性")
     else:
         st.warning("BOSS 圖片素材尚未安裝，目前暫時使用預設圖示。")
     st.write("### BOSS 能力與技能")
