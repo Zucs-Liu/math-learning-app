@@ -7,12 +7,14 @@ call these helpers and decide when a changed profile should be persisted.
 from datetime import datetime, timedelta, timezone
 
 from game_logic.profile import clear_equipment_item_uids
-from game_logic.pets import pet_dismantle_coin_bonus
+from game_logic.pets import PET_ELEMENT_ORDER, ensure_pet_profile, pet_dismantle_coin_bonus
 import random
 import uuid
 
 
 SHOP_ITEM_PRICE = 500
+SHOP_SOUL_PRICE = 3000
+SHOP_SOUL_CHANCE = 0.20
 SHOP_ITEM_COUNT = 6
 SHOP_REFRESH_HOURS = 24
 SPECIAL_STONE_CRAFT_COST = 5
@@ -80,6 +82,40 @@ def make_shop_inventory_item(
     }
 
 
+def make_shop_entry(
+    profile,
+    chapters,
+    units,
+    chapter_unit_ids,
+    slot_names,
+    affix_names,
+    affix_values,
+    gear_names,
+    fixed_value_for,
+    chapter_id=None,
+):
+    """Create one independently rolled shop slot."""
+    if random.random() < SHOP_SOUL_CHANCE:
+        return {
+            "shop_id": uuid.uuid4().hex,
+            "sold": False,
+            "kind": "pet_element_soul",
+            "element": random.choice(PET_ELEMENT_ORDER),
+        }
+    return make_shop_inventory_item(
+        profile,
+        chapters,
+        units,
+        chapter_unit_ids,
+        slot_names,
+        affix_names,
+        affix_values,
+        gear_names,
+        fixed_value_for,
+        chapter_id,
+    )
+
+
 def paid_shop_refresh_cost(profile):
     """Double the cost after each group of five paid refreshes."""
     refresh_count = int(
@@ -117,7 +153,7 @@ def refresh_shop_inventory(
     profile["shop"] = {
         "generated_at": (now_utc or datetime.now(timezone.utc)).isoformat(),
         "items": [
-            make_shop_inventory_item(
+            make_shop_entry(
                 profile,
                 chapters,
                 units,
@@ -228,11 +264,20 @@ def make_forged_inventory_item(
 
 def purchase_shop_entry(profile, entry):
     """Buy one unsold shop entry; return whether the purchase succeeded."""
-    if entry.get("sold") or profile.get("coins", 0) < SHOP_ITEM_PRICE:
+    is_soul = entry.get("kind") == "pet_element_soul"
+    price = SHOP_SOUL_PRICE if is_soul else SHOP_ITEM_PRICE
+    element = entry.get("element") if is_soul else None
+    if is_soul and element not in PET_ELEMENT_ORDER:
         return False
-    profile["coins"] -= SHOP_ITEM_PRICE
+    if entry.get("sold") or profile.get("coins", 0) < price:
+        return False
+    profile["coins"] -= price
     entry["sold"] = True
-    profile["inventory"].append(entry["item"])
+    if is_soul:
+        ensure_pet_profile(profile)
+        profile["pet_element_souls"][element] += 1
+    else:
+        profile["inventory"].append(entry["item"])
     return True
 
 
