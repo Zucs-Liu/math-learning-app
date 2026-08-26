@@ -8,6 +8,75 @@ from game_data.config import BOSS_CONFIGS
 from game_logic.pets import element_matchup
 
 
+def merge_simultaneous_action_event(visible_events):
+    """Keep a hero action visible when a same-time pet event updates the HP last."""
+    event = visible_events[-1]
+    if event.get("event_type") != "pet_skill":
+        return event
+    hero_event = next(
+        (
+            candidate
+            for candidate in reversed(visible_events[:-1])
+            if candidate["time"] == event["time"]
+            and candidate["text"].startswith("勇者")
+        ),
+        None,
+    )
+    if not hero_event:
+        return event
+    return {**event, "simultaneous_hero_text": hero_event["text"]}
+
+
+def battle_passive_effects(stats, boss_type, chapter_id):
+    """Describe persistent skill effects by the combatant they modify."""
+    config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
+    boss_element = config["element"]
+    pet_skill = stats.get("pet_skill")
+    pet_element = pet_skill.get("element") if pet_skill else None
+    effects = {"player": [], "boss": []}
+
+    if pet_element == "dark":
+        multiplier = 1.25 if boss_element == "light" else 0.75 if boss_element == "dark" else 1.10
+        delta = multiplier - 1
+        effects["player"].append({
+            "text": f"{pet_skill['name']}：勇者傷害 {delta:+.0%}",
+            "direction": "increase" if delta > 0 else "decrease",
+            "element": pet_element,
+        })
+    elif pet_element == "water":
+        multiplier = 0.8 if boss_element == "fire" else 1.2 if boss_element == "earth" else 0.9
+        delta = multiplier - 1
+        effects["boss"].append({
+            "text": f"{pet_skill['name']}：BOSS 最大 HP {delta:+.0%}",
+            "direction": "increase" if delta > 0 else "decrease",
+            "element": pet_element,
+        })
+    elif pet_element == "wood":
+        delta = -0.300 if boss_element == "earth" else 0.300 if boss_element == "fire" else -0.150
+        effects["boss"].append({
+            "text": f"{pet_skill['name']}：BOSS 攻速 {delta:+.3f}／秒",
+            "direction": "increase" if delta > 0 else "decrease",
+            "element": pet_element,
+        })
+
+    if config.get("defense_reduction"):
+        effects["player"].append({
+            "text": f"BOSS 被動：勇者防禦 -{config['defense_reduction']:g}",
+            "direction": "decrease", "element": boss_element,
+        })
+    if config.get("hero_speed_reduction"):
+        effects["player"].append({
+            "text": f"BOSS 被動：勇者攻速 -{config['hero_speed_reduction']:.3f}／秒",
+            "direction": "decrease", "element": boss_element,
+        })
+    if config.get("hero_damage_reduction"):
+        effects["player"].append({
+            "text": f"{config.get('skill', 'BOSS技能')}：勇者傷害 -{config['hero_damage_reduction']:.0%}",
+            "direction": "decrease", "element": boss_element,
+        })
+    return effects
+
+
 def simulate_battle(stats, boss_type, chapter_id):
     config = BOSS_CONFIGS[f"{chapter_id}_{boss_type}"]
     boss_element = config["element"]
