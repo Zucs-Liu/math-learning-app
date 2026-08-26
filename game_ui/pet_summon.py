@@ -89,6 +89,7 @@ def _render_summon_styles():
           .summon-pet-name {font-size:1.25rem !important;margin:.15rem 0 !important;}
           .summon-affixes {font-size:.88rem !important;line-height:1.25 !important;margin:.15rem 0 !important;}
           .summon-affixes > div {padding:.12rem .2rem !important;border-bottom:1px solid #e5e7eb;}
+          .summon-skill-detail {font-size:.86rem !important;line-height:1.35 !important;}
         }
         .st-key-pet_summon_collection [data-testid="stImage"] {
           display:flex !important;justify-content:center !important;width:100% !important;
@@ -123,6 +124,10 @@ def _render_summon_styles():
         .st-key-pet_summon_result_art [data-testid="stImage"] img {
           display:block !important;width:min(100%,24rem) !important;max-height:48vh !important;
           object-fit:contain !important;margin-inline:auto !important;
+        }
+        .summon-skill-detail {
+          margin:.5rem 0 .2rem;padding:.55rem .65rem;text-align:left;
+          border:1px solid #d1d5db;border-radius:8px;background:#f9fafb;
         }
         </style>
         """,
@@ -196,6 +201,10 @@ def _render_contents():
               </div>
               <div class="summon-affixes" style="text-align:left;">
                 <strong>特殊詞條</strong>{affix_html}
+              </div>
+              <div class="summon-skill-detail">
+                <strong>三星技能「{pet['skill']['name']}」</strong><br>
+                {pet['skill']['description']}
               </div>
               <div style="font-size:.82rem;color:#6b7280;">{index + 1} / {len(available)}</div>
             </div>

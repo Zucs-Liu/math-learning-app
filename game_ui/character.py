@@ -754,6 +754,22 @@ def _render_unused_equipment(profile, save_profile):
 
 def _render_pet_layout_preview(profile, save_profile):
     """Render owned pets, persistent art preference, sorting and follow state."""
+    st.markdown(
+        """
+        <style>
+        .st-key-character_pet_skill_modal {
+          position:fixed !important;left:50% !important;top:50% !important;
+          transform:translate(-50%,-50%) !important;z-index:1000002 !important;
+          width:min(88vw,32rem) !important;max-height:78vh !important;overflow-y:auto !important;
+          padding:1rem 1.1rem !important;background:#fff !important;color:#1f2937 !important;
+          border:3px solid #111 !important;border-radius:12px !important;
+          box-shadow:0 18px 60px rgba(0,0,0,.42) !important;
+        }
+        .st-key-character_pet_skill_modal h3 {margin:.1rem 0 .55rem !important;text-align:center;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     ensure_pet_profile(profile)
     sort_options = ("acquired", "element", "stars")
     sort_labels = {
@@ -918,18 +934,39 @@ def _render_pet_layout_preview(profile, save_profile):
                     else:
                         st.session_state.pet_training_notice = result["reason"]
                     st.rerun()
-            with skill_col.popover("技能", use_container_width=True):
-                st.markdown(f"### {current_pet['skill']['name']}")
-                st.write(current_pet["skill"]["description"])
-                if int(current_pet.get("stars", 1)) < 3:
-                    st.warning("請先將寵物進階到三星，才能解鎖此技能。")
-                else:
-                    st.success("技能已解鎖；跟隨此寵物時會在戰鬥中發動。")
+            skill_clicked = skill_col.button(
+                "技能",
+                key="character_pet_preview_skill",
+                use_container_width=True,
+            )
             follow_clicked = follow_col.button(
                 "取消跟隨" if profile.get("equipped_pet_id") == selected_id else "跟隨",
                 key="character_pet_preview_follow",
                 use_container_width=True,
             )
+
+        if skill_clicked:
+            st.session_state.character_pet_skill_modal_id = selected_id
+            st.rerun()
+
+        skill_modal_id = st.session_state.get("character_pet_skill_modal_id")
+        if skill_modal_id:
+            skill_pet = pet_details(profile, skill_modal_id)
+            if skill_pet:
+                with st.container(key="character_pet_skill_modal"):
+                    st.markdown(f"### {skill_pet['skill']['name']}")
+                    st.write(skill_pet["skill"]["description"])
+                    if int(skill_pet.get("stars", 1)) < 3:
+                        st.warning("請先將寵物進階到三星，才能解鎖此技能。")
+                    else:
+                        st.success("技能已解鎖；跟隨此寵物時會在戰鬥中發動。")
+                    if st.button(
+                        "關閉技能說明",
+                        key="close_character_pet_skill_modal",
+                        use_container_width=True,
+                    ):
+                        st.session_state.character_pet_skill_modal_id = None
+                        st.rerun()
 
         # Follow behaves like equipping the tenth slot.  The rerun also refreshes
         # the character attack element, special traits and the pet-slot icon.
@@ -1034,6 +1071,7 @@ def _render_pet_layout_preview(profile, save_profile):
             st.session_state.show_character_dialog = False
             st.session_state.character_panel_view = "equipment"
             st.session_state.character_selected_slot = None
+            st.session_state.character_pet_skill_modal_id = None
             st.session_state.pet_summon_view = "main"
             st.session_state.pet_summon_result = None
             st.session_state.screen = "pet_summon"
@@ -1328,6 +1366,7 @@ def _dismiss_character_dialog():
     st.session_state.show_character_dialog = False
     st.session_state.character_panel_view = "equipment"
     st.session_state.character_selected_slot = None
+    st.session_state.character_pet_skill_modal_id = None
 
 
 @st.dialog(
