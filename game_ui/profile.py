@@ -7,6 +7,7 @@ import streamlit as st
 from game_data.config import SLOT_ICONS, SLOT_NAMES
 from game_logic.equipment import item_text, player_stats
 from game_logic.loot import find_inventory_item as find_item
+from game_logic.pets import PET_ELEMENT_DAMAGE_BONUS, element_matchup, pet_catalog
 
 
 def render_item_comparison(profile, new_item):
@@ -58,7 +59,7 @@ def render_item_comparison(profile, new_item):
         st.caption("更換後人物能力沒有變動。")
 
 
-def render_stats(profile, show_exp=True):
+def render_stats(profile, show_exp=True, boss_element=None):
     stats = player_stats(profile)
     breakdown = stats["breakdown"]
     base = breakdown["base"]
@@ -108,6 +109,21 @@ def render_stats(profile, show_exp=True):
         ("菁英BOSS攻速降低", stats["boss_attack_slow_pct"]),
     ]
     active_effects = [f"{name} +{value:.0%}" for name, value in special_effects if value]
+    if boss_element:
+        matchup, _ = element_matchup(stats["attack_element"], boss_element)
+        elements = pet_catalog()[1]
+        attack_name = stats.get("attack_element_name")
+        boss_name = elements.get(boss_element, {}).get("name")
+        if matchup == "advantage":
+            active_effects.append(
+                f"目前{attack_name}屬剋制{boss_name}屬，傷害增加{PET_ELEMENT_DAMAGE_BONUS:.0%}"
+            )
+        elif matchup == "disadvantage":
+            active_effects.append(
+                f"目前{attack_name}屬被{boss_name}屬剋制，傷害降低{PET_ELEMENT_DAMAGE_BONUS:.0%}"
+            )
+        else:
+            active_effects.append("目前未剋制")
     if active_effects:
         st.caption("附屬能力：" + "｜".join(active_effects))
     else:
@@ -123,4 +139,3 @@ def render_stats(profile, show_exp=True):
             st.caption(f"EXP：{profile['exp']} / {profile['level'] * 100}")
         else:
             st.caption("已達最高等級 Lv20")
-
