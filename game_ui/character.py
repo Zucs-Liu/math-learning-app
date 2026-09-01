@@ -754,22 +754,6 @@ def _render_unused_equipment(profile, save_profile):
 
 def _render_pet_layout_preview(profile, save_profile):
     """Render owned pets, persistent art preference, sorting and follow state."""
-    st.markdown(
-        """
-        <style>
-        .st-key-character_pet_skill_modal {
-          position:fixed !important;left:50% !important;top:50% !important;
-          transform:translate(-50%,-50%) !important;z-index:1000002 !important;
-          width:min(88vw,32rem) !important;max-height:78vh !important;overflow-y:auto !important;
-          padding:1rem 1.1rem !important;background:#fff !important;color:#1f2937 !important;
-          border:3px solid #111 !important;border-radius:12px !important;
-          box-shadow:0 18px 60px rgba(0,0,0,.42) !important;
-        }
-        .st-key-character_pet_skill_modal h3 {margin:.1rem 0 .55rem !important;text-align:center;}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
     ensure_pet_profile(profile)
     sort_options = ("acquired", "element", "stars")
     sort_labels = {
@@ -1160,6 +1144,15 @@ def render_character_equipment_hub(profile, save_profile):
           max-height:min(62vh,34rem) !important;overflow-y:auto !important;background:#fff !important;
         }
         .st-key-character_pet_view {background:#fff;color:#1f2937;}
+        .st-key-character_pet_skill_modal {
+          position:fixed !important;left:50% !important;top:50% !important;
+          transform:translate(-50%,-50%) !important;z-index:1000002 !important;
+          width:min(88vw,32rem) !important;max-height:78vh !important;overflow-y:auto !important;
+          padding:1rem 1.1rem !important;background:#fff !important;color:#1f2937 !important;
+          border:3px solid #111 !important;border-radius:12px !important;
+          box-shadow:0 18px 60px rgba(0,0,0,.42) !important;
+        }
+        .st-key-character_pet_skill_modal h3 {margin:.1rem 0 .55rem !important;text-align:center;}
         .st-key-character_pet_preview > [data-testid="stVerticalBlock"] {gap:.22rem !important;}
         .st-key-character_pet_identity_row [data-testid="stHorizontalBlock"],
         .st-key-character_pet_action_row [data-testid="stHorizontalBlock"],
@@ -1181,7 +1174,10 @@ def render_character_equipment_hub(profile, save_profile):
         }
         .character-pet-stat-box * {color:#1f2937 !important;}
         .character-pet-stat-box h4 {margin:0 0 .38rem;text-align:center;font-size:1rem;}
-        .character-pet-stat-list {overflow-y:auto;}
+        .character-pet-stat-list {
+          min-height:0;overflow-y:auto !important;overscroll-behavior-y:contain;
+          touch-action:pan-y !important;-webkit-overflow-scrolling:touch;
+        }
         .character-pet-stat-list div {
           display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.35rem;
           width:100%;box-sizing:border-box;padding:0;
@@ -1318,9 +1314,10 @@ def render_character_equipment_hub(profile, save_profile):
             font-size:.82rem;line-height:1;
           }
           .character-pet-stat-list {
-            min-height:0;height:100%;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;
+            min-height:0;height:100%;overflow-x:hidden !important;overflow-y:scroll !important;
+            overscroll-behavior-y:contain;touch-action:pan-y !important;
             display:grid;grid-auto-rows:calc(100% / 4);align-content:start;
-            -webkit-overflow-scrolling:touch;
+            -webkit-overflow-scrolling:touch;scrollbar-gutter:stable;
           }
           .character-pet-stat-list div {
             box-sizing:border-box;height:auto;min-height:0;
