@@ -127,3 +127,10 @@ def render_chapter_reward_status(profile, chapter_id):
             st.success(f"第五章三星全裝收藏已完成：100 EXP＋★★★★ 第五章・極寒潮汐項鍊｜固定：菁英BOSS初始血量降低 {fixed_value_for('5', 'necklace', 4)[1]:.0%}｜詞條：受到傷害降低 +25%")
         if profile["chapter5_elite_reward_claimed"]:
             st.success(f"第五章菁英征服已完成：★★★★ 第五章・暴風王盾｜固定：防禦力 +{fixed_value_for('5', 'shield', 4)[1]:g}｜詞條：對菁英BOSS傷害 +25%")
+    elif chapter_id == "6":
+        if profile["chapter6_reward_claimed"]:
+            st.success(f"第六章滿星成就已完成：★★★★ 第六章・黃金比例手甲｜固定：攻擊力 +{fixed_value_for('6', 'gloves', 4)[1]:g}｜詞條：攻擊力 +25%")
+        if profile["chapter6_collection_reward_claimed"]:
+            st.success(f"第六章三星全裝收藏已完成：100 EXP＋★★★★ 第六章・等比靈環｜固定：第一擊額外傷害 {fixed_value_for('6', 'ring', 4)[1]:.0%}｜詞條：暴擊率 +25%")
+        if profile["chapter6_elite_reward_claimed"]:
+            st.success(f"第六章菁英征服已完成：★★★★ 第六章・鬼火王刃｜固定：攻擊力 +{fixed_value_for('6', 'weapon', 4)[1]:g}｜詞條：對菁英BOSS傷害 +25%")

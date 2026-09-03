@@ -203,6 +203,8 @@ def render_admin_panel(db_connection, callbacks):
                     f"第四章菁英BOSS：{detail_profile.get('chapter4_elite_boss_wins', 0)}次",
                     f"第五章一般BOSS：{detail_profile.get('chapter5_boss_wins', 0)}次",
                     f"第五章菁英BOSS：{detail_profile.get('chapter5_elite_boss_wins', 0)}次",
+                    f"第六章一般BOSS：{detail_profile.get('chapter6_boss_wins', 0)}次",
+                    f"第六章菁英BOSS：{detail_profile.get('chapter6_elite_boss_wins', 0)}次",
                 ]
                 st.caption("｜".join(boss_progress))
     

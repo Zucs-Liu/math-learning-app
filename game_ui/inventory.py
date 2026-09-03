@@ -347,6 +347,11 @@ def render_gallery(profile, chapter_unit_ids, unit_unlocked, start_quiz):
                 ("chapter-5-collection", four_star_item_name("5", "極寒潮汐項鍊"), "necklace", "收集第五章九部位三星", "collection"),
                 ("chapter-5-elite", four_star_item_name("5", "暴風王盾"), "shield", "首次擊敗第五章菁英BOSS「暴風熊王」", "elite"),
             ],
+            "6": [
+                ("chapter-6", four_star_item_name("6", "黃金比例手甲"), "gloves", "完成第六章所有三星單元", "unit"),
+                ("chapter-6-collection", four_star_item_name("6", "等比靈環"), "ring", "收集第六章九部位三星", "collection"),
+                ("chapter-6-elite", four_star_item_name("6", "鬼火王刃"), "weapon", "首次擊敗第六章菁英BOSS「鬼火王」", "elite"),
+            ],
         }
         owned_four_slots = collected_achievement_slots(profile, 4)
         st.write(f"#### 全系列四星部位 {len(owned_four_slots)}/9")
@@ -381,6 +386,7 @@ def render_gallery(profile, chapter_unit_ids, unit_unlocked, start_quiz):
                     "3": "chapter3_boss_wins",
                     "4": "chapter4_boss_wins",
                     "5": "chapter5_boss_wins",
+                    "6": "chapter6_boss_wins",
                 }[gallery_chapter], 0) > 0
                 if col.button("前往菁英BOSS", key=f"elite_go_{unit_key}", disabled=not elite_ready, use_container_width=True):
                     st.session_state.selected_chapter = gallery_chapter

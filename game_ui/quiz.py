@@ -25,7 +25,9 @@ def render_quiz_panel(submit_quiz_answer):
         cols[3].metric("答對", st.session_state.correct)
     st.progress(min(1.0, st.session_state.attempts / MAX_QUESTIONS))
 
-    if st.session_state.question.get("fraction"):
+    if st.session_state.question.get("ratio_pair"):
+        st.markdown(f"## {st.session_state.question['text']}")
+    elif st.session_state.question.get("fraction"):
         question = st.session_state.question
         source_numbers = re.findall(r"\d+", str(question.get("text", "")))
         source_numerator = question.get(
@@ -76,28 +78,25 @@ def render_quiz_panel(submit_quiz_answer):
         st.markdown(f"## {st.session_state.question['text']}")
 
     with st.form("answer_form"):
-        if st.session_state.question.get("fraction"):
+        if st.session_state.question.get("fraction") or st.session_state.question.get("ratio_pair"):
             fraction_col = st.columns([1, 2, 1])[1]
             fraction_col.number_input(
-                "分子",
+                "前項" if st.session_state.question.get("ratio_pair") else "分子",
                 value=None,
                 step=1,
                 format="%d",
                 key="answer_numerator",
-                placeholder="分子",
+                placeholder="前項" if st.session_state.question.get("ratio_pair") else "分子",
             )
-            fraction_col.markdown(
-                "<div style='height:3px;background:currentColor;margin:-.25rem 0 .4rem;'></div>",
-                unsafe_allow_html=True,
-            )
+            fraction_col.markdown("<div style='text-align:center;font-size:1.4rem'>：</div>" if st.session_state.question.get("ratio_pair") else "<div style='height:3px;background:currentColor;margin:-.25rem 0 .4rem;'></div>", unsafe_allow_html=True)
             fraction_col.number_input(
-                "分母",
+                "後項" if st.session_state.question.get("ratio_pair") else "分母",
                 value=None,
                 step=1,
                 min_value=1,
                 format="%d",
                 key="answer_denominator",
-                placeholder="分母",
+                placeholder="後項" if st.session_state.question.get("ratio_pair") else "分母",
             )
         else:
             is_decimal_unit = st.session_state.selected_unit.startswith(("3-", "4-"))
