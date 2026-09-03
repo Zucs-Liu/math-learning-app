@@ -20,6 +20,8 @@ BOSS_CONFIGS = {
     "4_elite": {"name": "九尾天狐", "element": "light", "image": "nine-tail-celestial-fox.webp", "hp": 1600, "damage": 120, "interval": 1.5, "exp": 300, "skill": "天降雷劫", "skill_hp_threshold": 0.5, "true_damage": 70},
     "5_normal": {"name": "寒冰巨鯰", "element": "water", "image": "ice-giant-catfish.webp", "hp": 1500, "damage": 50, "interval": 2.0, "exp": 300, "hero_speed_reduction": 0.4},
     "5_elite": {"name": "暴風熊王", "element": "water", "image": "storm-bear-king.webp", "hp": 2000, "damage": 150, "interval": 1.5, "exp": 350, "skill": "狂風驟雨", "hero_damage_reduction": 0.40, "skill_at_start": True},
+    "6_normal": {"name": "巨爪鼠", "element": "earth", "image": "giant-claw-rat.webp", "hp": 1800, "damage": 60, "interval": 2.0, "exp": 350, "hero_damage_reduction": 0.25, "passive": "戰鬥即發動，勇者造成的傷害降低25%，直到戰鬥結束。", "skill_at_start": True},
+    "6_elite": {"name": "鬼火王", "element": "fire", "image": "ghost-flame-king.webp", "hp": 2400, "damage": 180, "interval": 1.5, "exp": 400, "skill": "烈鬼焚身", "skill_interval": 1.0, "true_damage": 30, "true_damage_below_half": 50, "skill_at_start": True},
 }
 
 BOSS_MAX_HP = 400
@@ -58,6 +60,7 @@ CHAPTERS = {
     "3": {"number": "第三章", "name": "小數的加減法"},
     "4": {"number": "第四章", "name": "小數乘除法"},
     "5": {"number": "第五章", "name": "因倍數與分數"},
+    "6": {"number": "第六章", "name": "比與比值"},
 }
 
 UNITS = {
@@ -77,6 +80,9 @@ UNITS = {
     "5-1": {"name": "最大公因數", "slots": ["helmet", "armor", "gloves"], "description": "例如：（15，20）的最大公因數＝5"},
     "5-2": {"name": "最小公倍數", "slots": ["weapon", "boots", "necklace"], "description": "例如：（4，9）的最小公倍數＝36"},
     "5-3": {"name": "最簡分數", "slots": ["ring", "belt", "shield"], "description": "例如：78／65＝6／5"},
+    "6-1": {"name": "最簡整數比", "slots": ["helmet", "armor", "gloves"], "description": "例如：8：6＝4：3、0.4：5＝2：25"},
+    "6-2": {"name": "計算比值", "slots": ["weapon", "boots", "necklace"], "description": "例如：20：50的比值＝2／5"},
+    "6-3": {"name": "比例式的計算", "slots": ["ring", "belt", "shield"], "description": "例如：2：7＝（　）：14"},
 }
 
 FIXED_STATS = {
