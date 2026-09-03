@@ -12,6 +12,8 @@ RANKING_TABLES = {
     ("4", "elite"): "chapter4_elite_rankings",
     ("5", "normal"): "chapter5_rankings",
     ("5", "elite"): "chapter5_elite_rankings",
+    ("6", "normal"): "chapter6_rankings",
+    ("6", "elite"): "chapter6_elite_rankings",
 }
 
 

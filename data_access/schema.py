@@ -78,6 +78,16 @@ def initialize_schema(db_connection, use_postgres):
                 clear_time REAL NOT NULL, achieved_at TEXT NOT NULL,
                 FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS chapter6_rankings (
+                student_code TEXT PRIMARY KEY, hero_name TEXT NOT NULL, level INTEGER NOT NULL,
+                clear_time REAL NOT NULL, achieved_at TEXT NOT NULL,
+                FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS chapter6_elite_rankings (
+                student_code TEXT PRIMARY KEY, hero_name TEXT NOT NULL, level INTEGER NOT NULL,
+                clear_time REAL NOT NULL, achieved_at TEXT NOT NULL,
+                FOREIGN KEY(student_code) REFERENCES players(student_code) ON DELETE CASCADE
+            );
             CREATE TABLE IF NOT EXISTS attempts (
                 id {serial_primary_key},
                 student_code TEXT NOT NULL,
