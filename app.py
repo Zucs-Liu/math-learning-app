@@ -638,6 +638,8 @@ PET_FOOD_BOSS_REWARDS = {
     ("4", "elite"): ("chapter4_elite_boss_wins", 10),
     ("5", "normal"): ("chapter5_boss_wins", 5),
     ("5", "elite"): ("chapter5_elite_boss_wins", 10),
+    ("6", "normal"): ("chapter6_boss_wins", 5),
+    ("6", "elite"): ("chapter6_elite_boss_wins", 10),
 }
 
 
@@ -673,6 +675,7 @@ PET_SUMMON_CHAPTER_REWARDS = {
     "3": "chapter3_boss_wins",
     "4": "chapter4_boss_wins",
     "5": "chapter5_boss_wins",
+    "6": "chapter6_boss_wins",
 }
 
 
@@ -756,6 +759,9 @@ def get_profile():
         ("chapter-5", make_chapter5_reward),
         ("chapter-5-collection", make_chapter5_collection_reward),
         ("chapter-5-elite", make_chapter5_elite_reward),
+        ("chapter-6", make_chapter6_reward),
+        ("chapter-6-collection", make_chapter6_collection_reward),
+        ("chapter-6-elite", make_chapter6_elite_reward),
     ):
         migrated = sync_achievement_item(profile, unit_key, maker) or migrated
     if migrated or normalized_changed:
@@ -1189,6 +1195,7 @@ def special_task_definitions(code, profile=None):
         "3": ("chapter3_rankings", "chapter3_elite_rankings"),
         "4": ("chapter4_rankings", "chapter4_elite_rankings"),
         "5": ("chapter5_rankings", "chapter5_elite_rankings"),
+        "6": ("chapter6_rankings", "chapter6_elite_rankings"),
     }
     clear_times = {}
     union_parts = []
@@ -1419,6 +1426,18 @@ def make_chapter5_elite_reward():
     return make_achievement_reward("5", "elite", fixed_value_for, four_star_item_name)
 
 
+def make_chapter6_reward():
+    return make_achievement_reward("6", "chapter", fixed_value_for, four_star_item_name)
+
+
+def make_chapter6_collection_reward():
+    return make_achievement_reward("6", "collection", fixed_value_for, four_star_item_name)
+
+
+def make_chapter6_elite_reward():
+    return make_achievement_reward("6", "elite", fixed_value_for, four_star_item_name)
+
+
 def retroactively_grant_chapter3_rewards(profile):
     """依既有第三章進度補發新開放的三件四星裝備。"""
     changed = False
@@ -1618,6 +1637,8 @@ def unit_unlocked(profile, unit_id):
         return False
     if chapter_id == "5" and profile.get("chapter4_boss_wins", 0) <= 0 and st.session_state.active_player != "__TEACHER__":
         return False
+    if chapter_id == "6" and profile.get("chapter5_boss_wins", 0) <= 0 and st.session_state.active_player != "__TEACHER__":
+        return False
     order = chapter_unit_ids(chapter_id)
     index = order.index(unit_id)
     return index == 0 or profile["unit_best_stars"][order[index - 1]] > 0
@@ -1715,7 +1736,7 @@ def submit_quiz_answer():
         return
     question_text = st.session_state.question["text"]
     correct_answer = st.session_state.question["answer"]
-    if st.session_state.question.get("fraction"):
+    if st.session_state.question.get("fraction") or st.session_state.question.get("ratio_pair"):
         numerator = st.session_state.answer_numerator
         denominator = st.session_state.answer_denominator
         if numerator is None or denominator in (None, 0):
@@ -1734,7 +1755,7 @@ def submit_quiz_answer():
         submitted_text = submitted_answer
         correct_text = correct_answer
     st.session_state.attempts += 1
-    if st.session_state.question.get("fraction"):
+    if st.session_state.question.get("fraction") or st.session_state.question.get("ratio_pair"):
         # 最簡分數必須分子、分母皆完全正確；等值但未約分的答案不算答對。
         is_correct = (
             int(numerator) == st.session_state.question["answer_numerator"]
@@ -1753,7 +1774,7 @@ def submit_quiz_answer():
     answer_row = {
         "question_text": (
             f"{question_text}（學生填答：{submitted_text}）"
-            if st.session_state.question.get("fraction") else question_text
+            if st.session_state.question.get("fraction") or st.session_state.question.get("ratio_pair") else question_text
         ),
         "submitted_answer": submitted_answer,
         "correct_answer": correct_answer,
@@ -1794,7 +1815,7 @@ def process_rewards():
     if old_best == 0 and new_best > 0 and award_unit_ticket(profile, unit_id):
         st.session_state.extra_reward_messages.append("首次通過新單元，獲得1張擊殺券！")
     unit_chapter = unit_id.split("-", 1)[0]
-    if st.session_state.stars > 0 and unit_chapter in {"1", "2", "3", "4", "5"}:
+    if st.session_state.stars > 0 and unit_chapter in {"1", "2", "3", "4", "5", "6"}:
         profile["pet_food_cans"] = int(profile.get("pet_food_cans", 0)) + 2
         st.session_state.extra_reward_messages.append("寵物培養掉落：美味罐頭 ×2")
     item = make_random_item(profile, unit_id, st.session_state.stars)
@@ -1903,6 +1924,13 @@ def process_rewards():
         st.session_state.extra_reward_messages.append(
             f"第五章九部位收藏完成，獲得100 EXP與：{item_text(reward)}"
         )
+    if all(profile["unit_best_stars"][uid] == 3 for uid in chapter_unit_ids("6")) and not profile["chapter6_reward_claimed"]:
+        reward = make_chapter6_reward(); profile["inventory"].append(reward); profile["chapter6_reward_claimed"] = True
+        st.session_state.extra_reward_messages.append(f"第六章滿星獎勵：{item_text(reward)}")
+    if has_full_three_star_set(profile, "6") and not profile["chapter6_collection_reward_claimed"]:
+        collection_levels = add_exp(profile, 100); reward = make_chapter6_collection_reward(); profile["inventory"].append(reward); profile["chapter6_collection_reward_claimed"] = True
+        if collection_levels: st.session_state.collection_level_up_to = profile["level"]
+        st.session_state.extra_reward_messages.append(f"第六章九部位收藏完成，獲得100 EXP與：{item_text(reward)}")
     st.session_state.earned_exp = exp_gain
     st.session_state.result_processed = True
     save_profile(profile)
@@ -1931,6 +1959,8 @@ def finish_battle(result):
             ("4", "elite"): ("chapter4_elite_boss_wins", "chapter4_elite_boss_exp_claimed"),
             ("5", "normal"): ("chapter5_boss_wins", "chapter5_boss_exp_claimed"),
             ("5", "elite"): ("chapter5_elite_boss_wins", "chapter5_elite_boss_exp_claimed"),
+            ("6", "normal"): ("chapter6_boss_wins", "chapter6_boss_exp_claimed"),
+            ("6", "elite"): ("chapter6_elite_boss_wins", "chapter6_elite_boss_exp_claimed"),
         }
         wins_key, exp_key = key_map[(chapter_id, boss_type)]
         profile[wins_key] += 1
@@ -1946,6 +1976,7 @@ def finish_battle(result):
             "3": "chapter3_elite_reward_claimed",
             "4": "chapter4_elite_reward_claimed",
             "5": "chapter5_elite_reward_claimed",
+            "6": "chapter6_elite_reward_claimed",
         }.get(chapter_id)
         if boss_type == "elite" and reward_claimed_key and not profile[reward_claimed_key]:
             reward = {
@@ -1954,17 +1985,19 @@ def finish_battle(result):
                 "3": make_chapter3_elite_reward,
                 "4": make_chapter4_elite_reward,
                 "5": make_chapter5_elite_reward,
+                "6": make_chapter6_elite_reward,
             }[chapter_id]()
             profile["inventory"].append(reward)
             profile[reward_claimed_key] = True
             reward_item_uid = reward["uid"]
-        if boss_type == "elite" and chapter_id in ("1", "2", "3", "4", "5"):
+        if boss_type == "elite" and chapter_id in ("1", "2", "3", "4", "5", "6"):
             earned_title = {
                 "1": "好像有點勇哦",
                 "2": "別小看我！",
                 "3": "一刀斬龍",
                 "4": "渡雷劫方可成仙",
                 "5": "魚與熊掌我都要",
+                "6": "鬼火不滅",
             }[chapter_id]
             if earned_title not in profile["titles"]:
                 profile["titles"].append(earned_title)
@@ -1998,6 +2031,8 @@ BOSS_WIN_KEYS = {
     ("4", "elite"): "chapter4_elite_boss_wins",
     ("5", "normal"): "chapter5_boss_wins",
     ("5", "elite"): "chapter5_elite_boss_wins",
+    ("6", "normal"): "chapter6_boss_wins",
+    ("6", "elite"): "chapter6_elite_boss_wins",
 }
 def boss_has_been_cleared(profile, chapter_id, boss_type):
     """是否曾經成功擊敗這一章、這一類 BOSS。"""
@@ -2566,7 +2601,7 @@ elif st.session_state.screen == "menu":
     boss_unlocked = all(profile["unit_best_stars"][uid] == 3 for uid in current_unit_ids)
     normal_win_keys = {
         "1": "boss_wins", "2": "chapter2_boss_wins", "3": "chapter3_boss_wins",
-        "4": "chapter4_boss_wins", "5": "chapter5_boss_wins",
+        "4": "chapter4_boss_wins", "5": "chapter5_boss_wins", "6": "chapter6_boss_wins",
     }
     elite_unlocked = profile.get(normal_win_keys[chapter_id], 0) > 0
     st.write("### 章節 BOSS")
@@ -2976,8 +3011,14 @@ elif st.session_state.screen == "boss_ready":
         )
     if config.get("hero_damage_reduction"):
         st.error(
-            f"🌪️ BOSS技能「{config['skill']}」：戰鬥開始立即發動，勇者造成的傷害降低"
+            f"🪨 BOSS{'技能「' + config['skill'] + '」' if config.get('skill') else '被動'}：戰鬥開始立即發動，勇者造成的傷害降低"
             f" {config['hero_damage_reduction']:.0%}；可與對菁英BOSS傷害加成互相抵銷。"
+        )
+    if config.get("true_damage_below_half"):
+        st.error(
+            f"🔥 BOSS主動技能「{config['skill']}」：戰鬥開始立即發動，每秒造成"
+            f" {config['true_damage']:g} 點真實傷害；勇者血量低於50%時改為每秒"
+            f" {config['true_damage_below_half']:g} 點真實傷害。真實傷害無法被防禦、傷害減免或護盾抵銷。"
         )
     if config.get("skill"):
         if config.get("skill_at_start"):
