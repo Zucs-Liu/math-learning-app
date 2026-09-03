@@ -66,6 +66,18 @@ ACHIEVEMENT_REWARD_SPECS = {
         "unit": "chapter-5-elite", "slot": "shield", "name": "暴風王盾",
         "fixed_stat": "defense", "affix_stat": "boss_damage_pct", "include_chapter": True,
     },
+    ("6", "chapter"): {
+        "unit": "chapter-6", "slot": "gloves", "name": "黃金比例手甲",
+        "fixed_stat": "attack", "affix_stat": "attack_pct", "include_chapter": True,
+    },
+    ("6", "collection"): {
+        "unit": "chapter-6-collection", "slot": "ring", "name": "等比靈環",
+        "fixed_stat": "first_hit_percent", "affix_stat": "critical_rate", "include_chapter": True,
+    },
+    ("6", "elite"): {
+        "unit": "chapter-6-elite", "slot": "weapon", "name": "鬼火王刃",
+        "fixed_stat": "attack", "affix_stat": "boss_damage_pct", "include_chapter": True,
+    },
 }
 
 

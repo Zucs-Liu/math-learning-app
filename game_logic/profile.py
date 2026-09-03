@@ -93,6 +93,13 @@ def create_new_profile(name, slot_names, unit_ids):
         "chapter5_reward_claimed": False,
         "chapter5_collection_reward_claimed": False,
         "chapter5_elite_reward_claimed": False,
+        "chapter6_boss_exp_claimed": False,
+        "chapter6_boss_wins": 0,
+        "chapter6_elite_boss_exp_claimed": False,
+        "chapter6_elite_boss_wins": 0,
+        "chapter6_reward_claimed": False,
+        "chapter6_collection_reward_claimed": False,
+        "chapter6_elite_reward_claimed": False,
     }
 
 
@@ -143,6 +150,7 @@ def normalize_profile_data(profile, name, slot_names, unit_ids, item_chapter_id)
         ("chapter3_collection_reward_claimed", "3"),
         ("chapter4_collection_reward_claimed", "4"),
         ("chapter5_collection_reward_claimed", "5"),
+        ("chapter6_collection_reward_claimed", "6"),
     )
     for claimed_key, chapter_id in collection_claims:
         if profile.get(claimed_key):
@@ -164,6 +172,9 @@ def normalize_profile_data(profile, name, slot_names, unit_ids, item_chapter_id)
         ("chapter5_reward_claimed", "chapter-5", "armor"),
         ("chapter5_collection_reward_claimed", "chapter-5-collection", "necklace"),
         ("chapter5_elite_reward_claimed", "chapter-5-elite", "shield"),
+        ("chapter6_reward_claimed", "chapter-6", "gloves"),
+        ("chapter6_collection_reward_claimed", "chapter-6-collection", "ring"),
+        ("chapter6_elite_reward_claimed", "chapter-6-elite", "weapon"),
     )
     for claimed_key, unit_key, slot in achievement_history:
         if profile.get(claimed_key):
@@ -189,6 +200,7 @@ def normalize_profile_data(profile, name, slot_names, unit_ids, item_chapter_id)
         ("chapter3_elite_boss_wins", "一刀斬龍"),
         ("chapter4_elite_boss_wins", "渡雷劫方可成仙"),
         ("chapter5_elite_boss_wins", "魚與熊掌我都要"),
+        ("chapter6_elite_boss_wins", "鬼火不滅"),
     )
     for wins_key, title in title_rewards:
         if profile.get(wins_key, 0) > 0 and title not in profile["titles"]:

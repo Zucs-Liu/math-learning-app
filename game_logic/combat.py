@@ -74,6 +74,8 @@ def battle_passive_effects(stats, boss_type, chapter_id):
             "text": f"{config.get('skill', 'BOSS技能')}：勇者傷害 -{config['hero_damage_reduction']:.0%}",
             "direction": "decrease", "element": boss_element,
         })
+    if config.get("true_damage_below_half"):
+        effects["player"].append({"text": f"{config['skill']}：每秒{config['true_damage']:g}真實傷害，低於50%時改為{config['true_damage_below_half']:g}", "direction": "decrease", "element": boss_element})
     return effects
 
 
@@ -150,8 +152,8 @@ def simulate_battle(stats, boss_type, chapter_id):
         events.append({
             "time": 0.0, "boss_hp": boss_hp, "player_hp": player_hp,
             "text": (
-                f"BOSS施放技能「{config['skill']}」："
-                f"勇者造成的傷害降低{config.get('hero_damage_reduction', 0):.0%}"
+                f"BOSS{'施放技能「' + config['skill'] + '」' if config.get('skill') else '被動發動'}：" +
+                (f"勇者造成的傷害降低{config['hero_damage_reduction']:.0%}" if config.get('hero_damage_reduction') else f"每秒造成{config.get('true_damage', 0):g}點真實傷害")
             ),
         })
     for _ in range(10000):
@@ -233,7 +235,7 @@ def simulate_battle(stats, boss_type, chapter_id):
                     shield_hp -= shield_absorbed
                     core_hp = max(0.0, core_hp - (skill_damage - shield_absorbed))
             else:
-                skill_damage = config.get("true_damage", 0)
+                skill_damage = (config.get("true_damage_below_half", config.get("true_damage", 0)) if core_hp < stats["hp"] * 0.5 else config.get("true_damage", 0))
                 core_hp = max(0.0, core_hp - skill_damage)
             player_hp = core_hp + shield_hp
             events.append({

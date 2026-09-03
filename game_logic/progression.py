@@ -12,6 +12,8 @@ def add_experience(profile, amount):
 
 
 def highest_unlocked_chapter_id(profile):
+    if profile.get("chapter5_boss_wins", 0) > 0:
+        return "6"
     if profile.get("chapter4_boss_wins", 0) > 0:
         return "5"
     if profile.get("chapter3_boss_wins", 0) > 0:
@@ -53,6 +55,7 @@ def build_permanent_task_definitions(chapters, units, chapter_unit_ids):
         "3": ("chapter3_boss_wins", "chapter3_elite_boss_wins"),
         "4": ("chapter4_boss_wins", "chapter4_elite_boss_wins"),
         "5": ("chapter5_boss_wins", "chapter5_elite_boss_wins"),
+        "6": ("chapter6_boss_wins", "chapter6_elite_boss_wins"),
     }
     for chapter_id in chapters:
         for unit_id in chapter_unit_ids(chapter_id):
@@ -138,5 +141,6 @@ def boss_unlocked(profile, chapter_id, boss_type, chapter_unit_ids):
         "3": "chapter3_boss_wins",
         "4": "chapter4_boss_wins",
         "5": "chapter5_boss_wins",
+        "6": "chapter6_boss_wins",
     }[chapter_id]
     return profile.get(normal_wins_key, 0) > 0

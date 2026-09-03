@@ -9,6 +9,44 @@ import random
 
 
 def make_question(unit_id):
+    if unit_id == "6-1":
+        kind = random.choice(("integer", "decimal", "fraction"))
+        while True:
+            if kind == "integer":
+                left, right = random.randint(2, 99), random.randint(2, 99)
+                text = f"{left}：{right} ＝（　）：（　）"
+            elif kind == "decimal":
+                left_tenths, right_tenths = random.randint(1, 99), random.randint(1, 99)
+                left, right = left_tenths, right_tenths
+                text = f"{left_tenths / 10:g}：{right_tenths / 10:g} ＝（　）：（　）"
+            else:
+                n1, d1, n2, d2 = (random.randint(1, 20) for _ in range(4))
+                left, right = n1 * d2, n2 * d1
+                text = f"{n1}／{d1}：{n2}／{d2} ＝（　）：（　）"
+            divisor = math.gcd(left, right)
+            answer_left, answer_right = left // divisor, right // divisor
+            if answer_left > 0 and answer_right > 0:
+                return {"text": text, "answer": answer_left / answer_right,
+                        "answer_numerator": answer_left, "answer_denominator": answer_right,
+                        "ratio_pair": True}
+    if unit_id == "6-2":
+        while True:
+            left, right = random.randint(2, 99), random.randint(2, 99)
+            divisor = math.gcd(left, right)
+            numerator, denominator = left // divisor, right // divisor
+            if denominator > 1:
+                return {"text": f"{left}：{right} 的比值 ＝（　）／（　）",
+                        "answer": numerator / denominator,
+                        "answer_numerator": numerator, "answer_denominator": denominator,
+                        "fraction": True, "ratio_value": True}
+    if unit_id == "6-3":
+        while True:
+            left, right = random.randint(1, 99), random.randint(1, 99)
+            factor = random.randint(2, max(2, 99 // right))
+            if right * factor <= 99 and left * factor <= 99:
+                if random.choice((True, False)):
+                    return {"text": f"{left}：{right} ＝（　）：{right * factor}", "answer": left * factor}
+                return {"text": f"{left}：{right} ＝{left * factor}：（　）", "answer": right * factor}
     if unit_id == "5-1":
         while True:
             common = random.randint(1, 30)
